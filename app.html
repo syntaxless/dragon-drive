@@ -145,7 +145,6 @@ canvas.gg{display:block;width:100%;max-width:280px;aspect-ratio:1/1;margin:0 aut
 .comment .avatar{width:30px;height:30px;font-size:13px}
 .comment p{margin:0;overflow-wrap:anywhere}
 input[type=range]{width:100%;accent-color:var(--hl)}
-.seg-card canvas.route{aspect-ratio:21/9}
 .bars{display:flex;align-items:flex-end;gap:6px;height:120px}
 .bars .b{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;height:100%}
 .bars .b i{display:block;width:100%;background:var(--accent);border-radius:4px 4px 0 0;min-height:2px}
@@ -176,7 +175,7 @@ input[type=range]{width:100%;accent-color:var(--hl)}
 <nav class="tabs" aria-label="Sections"><div class="in">
   <a href="#feed" data-tab="feed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Feed</a>
   <a href="#record" data-tab="record" class="rec-tab"><span class="ring"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg></span>Drive</a>
-  <a href="#segments" data-tab="segments"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 18c4 0 4-10 9-10s5 6 9 6"/><circle cx="3" cy="18" r="1.5" fill="currentColor"/><circle cx="21" cy="14" r="1.5" fill="currentColor"/></svg>Segments</a>
+  <a href="#routes" data-tab="routes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/></svg>Routes</a>
   <a href="#you" data-tab="you"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg>You</a>
 </div></nav>
 
@@ -314,7 +313,7 @@ function headlineRun(st){for(const k of ["quarter","z60","s60_130","eighth","ft6
 function rng(seed){return()=>{seed=(seed*1664525+1013904223)%4294967296;return seed/4294967296}}
 function buildRoad(){
   const r=rng(42);let p=[37.8199,-122.4783],b=200,turn=0;const out=[];
-  for(let i=0;i<=520;i++){out.push([p[0],p[1],40+55*Math.sin(i/85)+18*Math.sin(i/23)]);turn+=(r()-.5)*6;turn*=.86;b+=turn;if(i>=180&&i<190)b+=7;if(i>=340&&i<350)b-=9;p=move(p,b,28)}
+  for(let i=0;i<=520;i++){out.push([p[0],p[1],95+55*Math.sin(i/85)+18*Math.sin(i/23)]);turn+=(r()-.5)*6;turn*=.86;b+=turn;if(i>=180&&i<190)b+=7;if(i>=340&&i<350)b-=9;p=move(p,b,28)}
   return out;
 }
 const ROAD=buildRoad();
@@ -363,11 +362,7 @@ function seed(){
     mk("me","Strip night with the crew","My car","RaceBox Mini",now-3.4*D-H,dragRun(9,now-3.4*D-H,{a0:4.2,vtop:48,target:{d:1320*FT}})),
     mk("me","Weekend coast run","My car","Phone GPS",now-9*D,driveFrom(100,440,13,now-9*D,calm)),
   ];
-  const seg=(name,a,b,closed)=>({id:uid(),name,start:[ROAD[a][0],ROAD[a][1]],end:[ROAD[b][0],ROAD[b][1]],dist:pathLen(ROAD.slice(a,b+1)),closed,sample:true});
-  const stripEnd=move(STRIP,STRIP_BRG,1320*FT);
   const S0={v:2,people,drives,
-    segments:[{id:uid(),name:"Example raceway, quarter-mile strip",start:STRIP.slice(),end:stripEnd,dist:1320*FT,closed:true,sample:true},
-      seg("Headland bends",130,230,false),seg("Lighthouse climb",380,470,false)],
     kudos:{},kudosFrom:{},comments:{},
     settings:{units:(navigator.language||"en-US").match(/^en-(US|GB|LR|MM)/)?"mi":"km",vehicle:"My car",vehicles:["My car"],source:"phone",motion:true}};
   S0.drives.forEach((d,i)=>{S0.kudosFrom[d.id]=["p1","p2","p3","p4"].filter((p,j)=>p!==d.who&&(i+j)%2===0)});
@@ -381,29 +376,6 @@ if(!S||S.v!==2){S=seed();save()}
 const person=id=>id==="me"?{id:"me",name:"You",color:"var(--accent)"}:(S.people.find(p=>p.id===id)||{name:"Driver",color:"#666"});
 const initials=n=>n==="You"?"ME":n.split(/\s+/).map(x=>x[0]).join("").slice(0,2).toUpperCase();
 
-/* ================= segments ================= */
-function matchSeg(pts,seg){
-  const near=35;let si=-1,sBest=Infinity;
-  for(let i=0;i<pts.length;i++){
-    const ds=hav(pts[i],seg.start);
-    // closest approach to the start line; for ties (sitting still at the line) use the latest point
-    if(ds<near&&ds<=sBest+1){si=i;sBest=Math.min(sBest,ds);continue}
-    if(si>=0&&hav(pts[i],seg.end)<near){
-      let ei=i;while(ei+1<pts.length&&hav(pts[ei+1],seg.end)<hav(pts[ei],seg.end))ei++;
-      const slice=pts.slice(si,ei+1);const L=pathLen(slice);
-      if(L>seg.dist*0.8&&L<seg.dist*1.35)return{from:si,to:ei,stats:analyze(slice,false)};
-      si=-1;sBest=Infinity;
-    }
-    if(ds>=near&&si>=0&&sBest<near)sBest=Infinity;
-  }
-  return null;
-}
-function efforts(seg){
-  const out=[];for(const d of S.drives){const e=matchSeg(d.pts,seg);if(e)out.push({drive:d,...e})}
-  if(seg.closed)out.sort((a,b)=>a.stats.dur-b.stats.dur);else out.sort((a,b)=>b.drive.start-a.drive.start);
-  return out;
-}
-function bestPerDriver(all){const seen=new Set();return all.filter(e=>!seen.has(e.drive.who)&&seen.add(e.drive.who))}
 
 /* ================= drawing ================= */
 function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim()||"#888"}
@@ -475,10 +447,10 @@ function fillPhotos(root){(root||document).querySelectorAll("img[data-photo]").f
 let current="feed";
 function render(){
   const tab=(location.hash||"#feed").slice(1);
-  current=["feed","record","segments","you"].includes(tab)?tab:"feed";
+  current=["feed","record","routes","you"].includes(tab)?tab:"feed";
   document.querySelectorAll("nav.tabs a").forEach(a=>a.setAttribute("aria-current",a.dataset.tab===current?"page":"false"));
   $("#u-mi").setAttribute("aria-pressed",U()==="mi");$("#u-km").setAttribute("aria-pressed",U()==="km");
-  ({feed:viewFeed,record:viewRecord,segments:viewSegments,you:viewYou})[current]();
+  ({feed:viewFeed,record:viewRecord,routes:viewRoutes,you:viewYou})[current]();
   window.scrollTo(0,0);
 }
 function driveChips(d){
@@ -746,7 +718,6 @@ function runsTable(st){
 function openDrive(id,fresh){
   const d=S.drives.find(x=>x.id===id);if(!d)return;
   const p=person(d.who),s=d.stats,mine=d.who==="me";
-  const segs=S.segments.map(sg=>({sg,e:matchSeg(d.pts,sg)})).filter(x=>x.e);
   const hasAlt=d.pts.some(q=>q[4]!=null);const hasGG=d.pts.some(q=>q[5]!=null);
   const sh=$("#sheet");
   sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span>${d.sample?'<span class="chip example">Example</span>':""}<button class="btn primary" id="d-share" type="button">Share</button></div></div>
@@ -767,16 +738,6 @@ function openDrive(id,fresh){
     <div class="panel"><div class="row"><h3>Speed</h3><span class="spacer"></span><span class="muted small">${sLabel()} over distance</span></div><canvas class="chart" id="d-speed"></canvas></div>
     ${hasAlt?`<div class="panel"><div class="row"><h3>Elevation</h3><span class="spacer"></span><span class="muted small">${aLabel()} over distance</span></div><canvas class="chart" id="d-alt"></canvas></div>`:""}
     ${hasGG?`<div class="panel"><div class="row"><h3>G-force</h3><span class="spacer"></span><span class="muted small">Acceleration vs cornering</span></div><canvas class="gg" id="d-gg"></canvas></div>`:""}
-    <div class="panel"><h3>Segments on this drive</h3>
-      ${segs.length?segs.map(({sg,e})=>{const all=efforts(sg);const rank=sg.closed?all.findIndex(x=>x.drive.id===d.id)+1:0;return `<div class="effort">${sg.closed?`<span class="rank ${rank===1?"r1":""}">${rank}</span>`:""}<div style="flex:1;min-width:0"><div style="font-weight:600">${esc(sg.name)}</div><div class="muted small">${fDist(sg.dist).toFixed(2)} ${dLabel()}${sg.closed?" · closed course":" · public road, not ranked"}</div></div><span class="num" style="font-size:22px;font-weight:700">${fDur(e.stats.dur)}</span></div>`}).join(""):`<p class="muted" style="margin:0">No segments matched this route yet. Make one below.</p>`}
-    </div>
-    <div class="panel"><h3>Make a segment from this drive</h3>
-      <label class="field">Start <input type="range" id="sg-a" min="0" max="${d.pts.length-1}" value="${Math.floor(d.pts.length*.2)}"></label>
-      <label class="field">End <input type="range" id="sg-b" min="0" max="${d.pts.length-1}" value="${Math.floor(d.pts.length*.6)}"></label>
-      <label class="check"><input type="checkbox" id="sg-closed"> This is a closed course, such as a track or drag strip. Only closed-course segments rank drivers by time.</label>
-      <div class="row"><input type="text" id="sg-name" placeholder="Segment name, e.g. Ridge Road bends" style="flex:1;min-width:0"><button class="btn primary" id="sg-make" type="button">Create</button></div>
-      <div class="muted small" id="sg-len"></div>
-    </div>
     <div class="panel"><div class="row"><h3>Kudos & comments</h3><span class="spacer"></span><button class="kudos" id="d-kudos" aria-pressed="${!!S.kudos[d.id]}" aria-label="Kudos" ${mine?"disabled":""}>${heart}<span>${kudosCount(d)}</span></button></div>
       <div class="stack">${(S.comments[d.id]||[]).map(c=>{const cp=person(c.who);return `<div class="comment">${avatar(cp)}<div><div style="font-weight:600;font-size:13px">${esc(cp.name)} <span class="muted" style="font-weight:400">${ago(c.t)}</span></div><p>${esc(c.text)}</p></div></div>`}).join("")||'<p class="muted" style="margin:0">No comments yet.</p>'}</div>
       <form class="row" id="c-form"><input type="text" id="c-in" placeholder="Add a comment" style="flex:1;min-width:0" maxlength="280"><button class="btn" type="submit">Post</button></form>
@@ -786,17 +747,12 @@ function openDrive(id,fresh){
   </div>`;
   sh.hidden=false;sh.scrollTop=0;document.body.style.overflow="hidden";
   fillPhotos(sh);
-  const a=$("#sg-a"),b=$("#sg-b");
-  const redraw=()=>{let i=+a.value,j=+b.value;if(i>j)[i,j]=[j,i];drawRoute($("#d-route"),d.pts,{hl:[i,j]});
-    drawSeries($("#d-speed"),d.pts,q=>fSpeed(q[3]),{color:css("--accent"),hl:[i,j]});
-    if(hasAlt)drawSeries($("#d-alt"),d.pts,q=>q[4]==null?null:fAlt(q[4]),{color:css("--alt"),hl:[i,j],zero:false,minSpan:U()==="mi"?40:12});
-    $("#sg-len").textContent=`Selected: ${fDist(pathLen(d.pts.slice(i,j+1))).toFixed(2)} ${dLabel()}`};
-  a.oninput=b.oninput=redraw;redraw();
+  drawRoute($("#d-route"),d.pts);
+  drawSeries($("#d-speed"),d.pts,q=>fSpeed(q[3]),{color:css("--accent")});
+  if(hasAlt)drawSeries($("#d-alt"),d.pts,q=>q[4]==null?null:fAlt(q[4]),{color:css("--alt"),zero:false,minSpan:U()==="mi"?40:12});
   if(hasGG)drawGG($("#d-gg"),d.pts);
   $("#sh-x").onclick=closeSheet;
   $("#d-share").onclick=()=>openShare(d.id);
-  $("#sg-make").onclick=()=>{let i=+a.value,j=+b.value;if(i>j)[i,j]=[j,i];const L=pathLen(d.pts.slice(i,j+1));if(L<15){toast("Pick a longer stretch for the segment.");return}
-    const name=$("#sg-name").value.trim()||"Untitled segment";S.segments.push({id:uid(),name,start:d.pts[i].slice(0,2),end:d.pts[j].slice(0,2),dist:L,closed:$("#sg-closed").checked,mine:true});save();toast(`Segment “${name}” created`);openDrive(d.id)};
   const k=$("#d-kudos");k.onclick=()=>{S.kudos[d.id]=!S.kudos[d.id];save();k.setAttribute("aria-pressed",!!S.kudos[d.id]);k.querySelector("span").textContent=kudosCount(d)};
   $("#c-form").onsubmit=e=>{e.preventDefault();const v=$("#c-in").value.trim();if(!v)return;(S.comments[d.id]=S.comments[d.id]||[]).push({who:"me",text:v,t:Date.now()});save();openDrive(d.id);toast("Comment posted")};
   if(mine){$("#title-in").onchange=e=>{d.title=e.target.value.trim()||d.title;save()};
@@ -902,21 +858,40 @@ async function openShare(id){
   const sv=$("#card-save");sv.disabled=false;sv.onclick=()=>saveFile(blob,name);
 }
 
-/* ================= segments view ================= */
-function viewSegments(){
+/* ================= routes view ================= */
+// Group drives by area so a trip across the state doesn't shrink local roads to a dot.
+function areas(drives){
+  const out=[];
+  for(const d of drives){if(d.pts.length<2)continue;const c=d.pts[Math.floor(d.pts.length/2)];
+    let a=out.find(x=>hav(x.center,c)<25000);if(!a){a={center:c,drives:[]};out.push(a)}a.drives.push(d)}
+  return out.sort((x,y)=>y.drives.length-x.drives.length);
+}
+function drawHeat(c,drives){
+  const {g,w,h}=sizeCanvas(c);g.clearRect(0,0,w,h);
+  g.strokeStyle=css("--grid");g.lineWidth=1;
+  for(let x=0;x<w;x+=24){g.beginPath();g.moveTo(x+.5,0);g.lineTo(x+.5,h);g.stroke()}
+  for(let y=0;y<h;y+=24){g.beginPath();g.moveTo(0,y+.5);g.lineTo(w,y+.5);g.stroke()}
+  const all=[].concat(...drives.map(d=>d.pts));if(!all.length)return;
+  const P=projector(all,w,h,18);
+  g.globalAlpha=Math.max(.25,Math.min(.8,1.6/drives.length));
+  for(const d of drives)strokePath(g,P,d.pts,css("--route"),4);
+  g.globalAlpha=1;
+}
+let routeWho="me";
+function viewRoutes(){
+  const drives=S.drives.filter(d=>routeWho==="all"||d.who==="me");
+  const ar=areas(drives);
+  const total=drives.reduce((a,d)=>a+d.stats.dist,0);
   $("#view").innerHTML=`<div class="stack">
-    <div><div class="eyebrow">Leaderboards</div><h1>Segments</h1></div>
-    <div class="notice"><strong>Closed courses only.</strong> Tracks and drag strips rank drivers by time. Public-road segments show recent passes without ranking, so nobody wins by speeding on open roads.</div>
-    ${S.segments.map(sg=>{const all=efforts(sg);const list=sg.closed?bestPerDriver(all):all;return `<section class="card seg-card"><div style="padding:14px 14px 0" class="row"><div style="min-width:0;flex:1"><h2>${esc(sg.name)}</h2><div class="muted small">${fDist(sg.dist).toFixed(2)} ${dLabel()} · ${all.length} ${all.length===1?"pass":"passes"}</div></div>${sg.closed?'<span class="chip closed">Closed course</span>':'<span class="chip">Public road</span>'}${sg.sample?'<span class="chip example">Example</span>':""}</div>
-      <canvas class="route" data-seg="${sg.id}"></canvas>
-      <div style="padding:0 14px 10px">${list.slice(0,5).map((e,i)=>{const p=person(e.drive.who);return `<div class="effort">${sg.closed?`<span class="rank ${i===0?"r1":""}">${i+1}</span>`:""}${avatar(p,30)}<div style="flex:1;min-width:0"><div style="font-weight:600">${esc(p.name)}</div><div class="muted small">${esc(e.drive.vehicle)} · ${ago(e.drive.start)}</div></div><span class="num" style="font-size:24px;font-weight:700">${sg.closed?e.stats.dur.toFixed(2)+" s":fDur(e.stats.dur)}</span></div>`}).join("")||'<p class="muted">No passes yet.</p>'}</div>
-      ${sg.mine?`<div style="padding:0 14px 14px"><button class="btn danger" data-delseg="${sg.id}" type="button">Remove segment</button></div>`:""}
-    </section>`}).join("")}
-    <p class="muted small">To add a segment, open any drive and pick a start and end point.</p>
+    <div class="row"><div><div class="eyebrow">Where you've been</div><h1>Routes</h1></div><span class="spacer"></span>
+      <div class="unit-toggle" role="group" aria-label="Whose routes"><button type="button" data-who="me" aria-pressed="${routeWho==="me"}">Mine</button><button type="button" data-who="all" aria-pressed="${routeWho==="all"}">Everyone</button></div></div>
+    <p class="muted" style="margin:0">${drives.length} ${drives.length===1?"drive":"drives"} · ${fDist(total).toFixed(0)} ${dLabel()} on the road. Roads you drive often show brighter.</p>
+    ${ar.map((a,i)=>`<section class="card"><canvas class="route" data-area="${i}" style="aspect-ratio:4/3"></canvas>
+      <div style="padding:6px 14px 10px">${a.drives.sort((x,y)=>y.start-x.start).map(d=>`<button class="effort open-link" data-open="${d.id}" style="display:flex">${avatar(person(d.who),30)}<div style="flex:1;min-width:0"><div style="font-weight:600">${esc(d.title)}</div><div class="muted small">${routeWho==="all"?esc(person(d.who).name)+" · ":""}${ago(d.start)} · ${fDist(d.stats.dist).toFixed(1)} ${dLabel()}</div></div>${d.sample?'<span class="chip example">Example</span>':""}</button>`).join("")}</div>
+    </section>`).join("")||`<div class="empty">No routes yet. Tap <b>Drive</b> to record your first one.</div>`}
   </div>`;
-  document.querySelectorAll("canvas[data-seg]").forEach(c=>{const sg=S.segments.find(x=>x.id===c.dataset.seg);const best=efforts(sg)[0];
-    if(best)drawRoute(c,best.drive.pts,{hl:[best.from,best.to],context:best.drive.pts.slice(best.from,best.to+1),thin:true,noEnds:true});else drawRoute(c,[sg.start,sg.end],{color:css("--hl")})});
-  document.querySelectorAll("[data-delseg]").forEach(b=>b.onclick=()=>{S.segments=S.segments.filter(x=>x.id!==b.dataset.delseg);save();viewSegments();toast("Segment removed")});
+  document.querySelectorAll("canvas[data-area]").forEach(c=>drawHeat(c,ar[+c.dataset.area].drives));
+  document.querySelectorAll("[data-who]").forEach(b=>b.onclick=()=>{routeWho=b.dataset.who;viewRoutes()});
 }
 
 /* ================= you ================= */
@@ -938,14 +913,14 @@ function viewYou(){
       <form class="row" id="veh-form"><input type="text" id="veh-in" placeholder="Add a vehicle, e.g. 2018 Civic Si" style="flex:1;min-width:0" maxlength="60"><button class="btn" type="submit">Add</button></form>
     </div>
     <div class="panel"><h3>Your drives</h3>${mine.map(d=>`<button class="effort open-link" data-open="${d.id}" style="display:flex"><div style="flex:1;min-width:0"><div style="font-weight:600">${esc(d.title)}</div><div class="muted small">${ago(d.start)} · ${fDist(d.stats.dist).toFixed(1)} ${dLabel()} · top ${Math.round(fSpeed(d.stats.max))} ${sLabel()}</div></div>${headlineRun(d.stats)?`<span class="chip run">${headlineRun(d.stats).label} ${fSec(headlineRun(d.stats).v.t)}</span>`:""}</button>`).join("")||'<p class="muted" style="margin:0">Nothing recorded yet.</p>'}</div>
-    <div class="panel"><h3>Example data</h3><p class="muted" style="margin:0">The other drivers, their drives and the starter segments are examples so you can see how things work. Your own recordings and photos stay on this device.</p>
+    <div class="panel"><h3>Example data</h3><p class="muted" style="margin:0">The other drivers and their drives are examples so you can see how things work. Your own recordings and photos stay on this device.</p>
       <div class="row"><button class="btn" id="clr-ex" type="button">Remove examples</button><button class="btn ghost" id="reset" type="button">Reset everything</button></div>
-      <div id="reset-confirm" hidden class="row"><span style="flex:1">Erase all drives, photos, segments and comments on this device?</span><button class="btn danger" id="reset-yes" type="button">Erase</button></div>
+      <div id="reset-confirm" hidden class="row"><span style="flex:1">Erase all drives, photos and comments on this device?</span><button class="btn danger" id="reset-yes" type="button">Erase</button></div>
     </div>
   </div>`;
   document.querySelectorAll("[data-defveh]").forEach(b=>b.onclick=()=>{S.settings.vehicle=b.dataset.defveh;save();viewYou()});
   $("#veh-form").onsubmit=e=>{e.preventDefault();const v=$("#veh-in").value.trim();if(!v)return;if(!S.settings.vehicles.includes(v))S.settings.vehicles.push(v);S.settings.vehicle=v;save();viewYou();toast("Vehicle added")};
-  $("#clr-ex").onclick=()=>{S.drives=S.drives.filter(d=>!d.sample);S.segments=S.segments.filter(s=>!s.sample);save();viewYou();toast("Examples removed")};
+  $("#clr-ex").onclick=()=>{S.drives=S.drives.filter(d=>!d.sample);save();viewYou();toast("Examples removed")};
   $("#reset").onclick=()=>{$("#reset-confirm").hidden=false};
   $("#reset-yes").onclick=()=>{S.drives.forEach(d=>d.photo&&photos.del(d.id));try{localStorage.removeItem(KEY)}catch(e){}mem=null;S=seed();save();render();toast("Reset to a fresh start")};
 }
