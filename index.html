@@ -194,10 +194,6 @@ canvas.gg{display:block;width:100%;max-width:280px;aspect-ratio:1/1;margin:0 aut
 .comment .avatar{width:30px;height:30px;font-size:13px}
 .comment p{margin:0;overflow-wrap:anywhere}
 input[type=range]{width:100%;accent-color:var(--hl)}
-.bars{display:flex;align-items:flex-end;gap:6px;height:120px}
-.bars .b{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;height:100%}
-.bars .b i{display:block;width:100%;background:var(--accent);border-radius:4px 4px 0 0;min-height:2px}
-.bars .b span{font-size:11px;color:var(--muted)}
 .map-box{position:relative;z-index:0;isolation:isolate;width:100%;aspect-ratio:4/3;border-radius:14px;overflow:hidden;background:var(--surface-2)}
 .style-pick{gap:6px}
 .chip.pick{border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:5px 11px;font-size:13px;cursor:pointer}
@@ -1612,10 +1608,6 @@ function viewYou(){
   const mine=S.drives.filter(d=>d.who==="me").sort((a,b)=>b.start-a.start);
   const tot=mine.reduce((a,d)=>({dist:a.dist+d.stats.dist,top:Math.max(a.top,d.stats.max),up:a.up+(d.stats.up||0),g:Math.max(a.g,d.stats.gTot||0)}),{dist:0,top:0,up:0,g:0});
   const pb={};for(const d of mine)for(const r of RUN_DEFS){const v=d.stats.runs&&d.stats.runs[r.k];if(v&&(!pb[r.k]||v.t<pb[r.k].v.t))pb[r.k]={v,d}}
-  const weeks=[];const wk=7*864e5,now=Date.now();
-  for(let i=5;i>=0;i--){const a=now-(i+1)*wk,b=now-i*wk;const wd=mine.filter(d=>d.start>a&&d.start<=b);weeks.push({label:i===0?"Now":`-${i}w`,v:wd.length,dist:wd.reduce((s,d)=>s+fDist(d.stats.dist),0)})}
-  const wkDist=weeks.reduce((s,w)=>s+w.dist,0);
-  const mx=Math.max(1,...weeks.map(w=>w.v));
   $("#view").innerHTML=`<div class="stack">
     <div><div class="eyebrow">Your logbook and settings</div><h1>You</h1></div>
     <div class="panel"><div class="profile">${avatar(person("me"),84)}
@@ -1631,8 +1623,6 @@ function viewYou(){
     </div>
     <div class="panel"><h3>Your drives</h3>${mine.map(d=>`<button class="effort open-link" data-open="${d.id}" style="display:flex"><div style="flex:1;min-width:0"><div style="font-weight:600">${esc(d.title)}</div><div class="muted small">${ago(d.start)} · ${fDist(d.stats.dist).toFixed(1)} ${dLabel()} · top ${Math.round(fSpeed(d.stats.max))} ${sLabel()}</div></div>${headlineRun(d.stats)?`<span class="chip run">${headlineRun(d.stats).label} ${fSec(headlineRun(d.stats).v.t)}</span>`:""}</button>`).join("")||'<p class="muted" style="margin:0">Nothing recorded yet.</p>'}</div>
     <div class="panel"><h3>Personal bests</h3>${Object.keys(pb).length?`<table class="runs"><tbody>${RUN_DEFS.filter(r=>pb[r.k]).map(r=>`<tr><th scope="row">${r.label}</th><td class="t"><button class="open-link muted small" data-open="${pb[r.k].d.id}" style="text-align:right">${esc(pb[r.k].d.title)}</button></td><td class="v">${fSec(pb[r.k].v.t)}</td></tr>`).join("")}</tbody></table>`:'<p class="muted" style="margin:0">Record a run from a standing start to set your first times.</p>'}</div>
-    <div class="panel"><div class="row"><h3>Drives per week</h3><span class="spacer"></span><span class="muted small">${wkDist.toFixed(wkDist<10?1:0)} ${dLabel()} in the last 6 weeks</span></div>
-      <div class="bars" role="img" aria-label="Drives per week">${weeks.map(w=>`<div class="b"><span class="num">${w.v||""}</span><i style="height:${w.v/mx*80}%"></i><span>${w.label}</span></div>`).join("")}</div></div>
     <div class="panel"><h3>Map style</h3><p class="muted small" style="margin:0">Used behind routes everywhere, including share cards.</p>${stylePicker()}</div>
     <div class="panel"><div class="row"><h3>Units</h3><span class="spacer"></span>
       <div class="unit-toggle" role="group" aria-label="Units"><button id="u-mi" type="button" aria-pressed="${U()==="mi"}">Miles</button><button id="u-km" type="button" aria-pressed="${U()==="km"}">Kilometers</button></div></div></div>
