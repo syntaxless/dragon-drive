@@ -70,6 +70,7 @@ h3{font-size:18px}
 .btn.danger{color:var(--bad);border-color:currentColor;background:transparent}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:600;background:var(--surface-2);color:var(--muted);white-space:nowrap}
+.head-tags{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px;flex:none;max-width:45%}
 .chip.example{border:1px dashed var(--muted);background:transparent}
 .chip.run{color:var(--hl)}
 .chip.closed{color:var(--accent)}
@@ -663,14 +664,13 @@ function driveChips(d){
   if(hr)c.push(`<span class="chip run">${hr.label} ${fSec(hr.v.t)}</span>`);
   if(s.up>3)c.push(`<span class="chip">↑ ${Math.round(fAlt(s.up))} ${aLabel()}</span>`);
   if(s.gTot>0.05)c.push(`<span class="chip">${fG(s.gTot)} g max</span>`);
-  c.push(`<span class="chip">${esc(d.source||"Phone GPS")}</span>`);
   return c.join("");
 }
 function feedCard(d){
   const p=person(d.who),s=d.stats;
   return `<article class="card">
     <button class="open-link" data-open="${d.id}" aria-label="Open ${esc(d.title)}">
-      <div class="card-head">${avatar(p)}<div style="min-width:0"><div style="font-weight:600">${esc(p.name)}</div><div class="muted small">${ago(d.start)} · ${esc(d.vehicle)}</div></div><span class="spacer"></span>${d.sample?'<span class="chip example">Example</span>':""}</div>
+      <div class="card-head">${avatar(p)}<div style="min-width:0"><div style="font-weight:600">${esc(p.name)}</div><div class="muted small">${ago(d.start)} · ${esc(d.vehicle)}</div></div><span class="spacer"></span><span class="head-tags">${d.sample?'<span class="chip example">Example</span>':""}<span class="chip">${esc(d.source||"Phone GPS")}</span></span></div>
       <div class="card-title"><h3>${esc(d.title)}</h3></div>
       <div class="stats">${statBlock("Distance",fDist(s.dist).toFixed(fDist(s.dist)<10?2:1),dLabel())}${statBlock("Moving time",fDur(s.moving))}${statBlock("Top speed",Math.round(fSpeed(s.max)),sLabel())}</div>
       <div class="chips">${driveChips(d)}</div>
