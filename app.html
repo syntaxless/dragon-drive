@@ -419,7 +419,7 @@ const Sync=(()=>{
     try{
       const r=await api("/rest/v1/snapshots?select=data&user_id=eq."+ses.uid);if(!r.ok)throw new Error("read "+r.status);
       const rows=await r.json();const before=JSON.stringify(mineOnly(S));
-      if(rows[0]&&rows[0].data){const m=merge(S,rows[0].data);if(JSON.stringify(mineOnly(m))!==before){S=m;mem=S;lastSJ=JSON.stringify(S.settings);try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}if(!(SHEET&&!$("#sheet").hidden))rerender();loadAvatar()}}
+      if(rows[0]&&rows[0].data){const m=merge(S,rows[0].data);if(JSON.stringify(mineOnly(m))!==before){S=m;dropExamples();mem=S;lastSJ=JSON.stringify(S.settings);try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}if(!(SHEET&&!$("#sheet").hidden))rerender();loadAvatar()}}
       const w=await api("/rest/v1/snapshots",{method:"POST",headers:{"Content-Type":"application/json",Prefer:"resolution=merge-duplicates,return=minimal"},body:JSON.stringify({user_id:ses.uid,data:mineOnly(S),updated_at:new Date().toISOString()})});
       if(!w.ok)throw new Error("write "+w.status);status="Synced "+new Date().toLocaleTimeString([], {hour:"numeric",minute:"2-digit"});
     }catch(e){status=navigator.onLine===false?"Offline, will sync later":"Sync problem, will retry";clearTimeout(timer);timer=setTimeout(run,30000)}
@@ -447,6 +447,12 @@ const Sync=(()=>{
 let S=load();
 if(!S||S.v!==2){S=seed();save()}
 lastSJ=JSON.stringify(S.settings);
+// Example drives are only there to show how things work; they go away once you have a real drive of your own.
+const isReal=d=>d.who==="me"&&!d.sample&&!/^Simulated/.test(d.source||"");
+function dropExamples(){if(!S.drives.some(d=>d.sample)||!S.drives.some(isReal))return false;
+  const gone=new Set(S.drives.filter(d=>d.sample).map(d=>d.id));S.drives=S.drives.filter(d=>!d.sample);
+  for(const id of gone){delete S.kudos[id];delete S.comments[id];if(S.kudosFrom)delete S.kudosFrom[id]}return true}
+if(dropExamples())save();
 const person=id=>id==="me"?{id:"me",name:"You",color:"var(--accent)"}:(S.people.find(p=>p.id===id)||{name:"Driver",color:"#666"});
 const initials=n=>n==="You"?"ME":n.split(/\s+/).map(x=>x[0]).join("").slice(0,2).toUpperCase();
 
@@ -949,7 +955,7 @@ function finishRec(){
   const h=new Date(raw[0][2]).getHours();
   const title=h<11?"Morning drive":h<14?"Midday drive":h<18?"Afternoon drive":"Evening drive";
   const d={id:uid(),who:"me",title,vehicle:S.settings.vehicle,source:REC.source,start:raw[0][2],pts:thin(raw),stats:analyze(raw)};
-  S.drives.push(d);save();
+  S.drives.push(d);if(dropExamples())toast("First drive saved, example drives removed");save();
   if(CAM.rec||CAM.stream)stopCam().then(v=>{if(v){d.video=v;save();if(SHEET&&SHEET.kind==="drive"&&SHEET.id===d.id)openDrive(d.id,true)}});
   if(location.hash==="#feed"){render();openDrive(d.id,true)}else{pendingOpen=d.id;location.hash="#feed"}
 }
