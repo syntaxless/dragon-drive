@@ -462,9 +462,14 @@ const Sync=(()=>{
     run,
     async sendCode(email){const back=location.origin+location.pathname;const r=await fetch(CLOUD.url+"/auth/v1/otp?redirect_to="+encodeURIComponent(back),{method:"POST",headers:{apikey:CLOUD.anonKey,"Content-Type":"application/json"},body:JSON.stringify({email,create_user:true})});if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.msg||j.message||"Couldn't send the email")}},
     async fromLink(hash){const h=new URLSearchParams(hash.slice(1));if(!on()||!h.get("access_token"))return false;
-      try{const j={access_token:h.get("access_token"),refresh_token:h.get("refresh_token"),expires_in:+h.get("expires_in")||3600};const r=await fetch(CLOUD.url+"/auth/v1/user",{headers:{apikey:CLOUD.anonKey,Authorization:"Bearer "+j.access_token}});j.user=await r.json();if(!r.ok||!j.user.id)throw 0;keep(fromAuth(j));await this.uploadAll();await run();toast("Signed in, syncing")}catch(e){toast("That sign-in link has expired. Request a new one.")}return true},
-    async verify(email,code){const j=await auth("verify",{type:"email",email,token:code});keep(fromAuth(j));await this.uploadAll();await run();await Social.refresh()},
-    signOut(){keep(null);status="";Social.reset()},
+      try{const j={access_token:h.get("access_token"),refresh_token:h.get("refresh_token"),expires_in:+h.get("expires_in")||3600};const r=await fetch(CLOUD.url+"/auth/v1/user",{headers:{apikey:CLOUD.anonKey,Authorization:"Bearer "+j.access_token}});j.user=await r.json();if(!r.ok||!j.user.id)throw 0;keep(fromAuth(j));this.adopt();loadAvatar();await this.uploadAll();await run();toast("Signed in, syncing")}catch(e){toast("That sign-in link has expired. Request a new one.")}return true},
+    async verify(email,code){const j=await auth("verify",{type:"email",email,token:code});keep(fromAuth(j));this.adopt();loadAvatar();await this.uploadAll();await run();await Social.refresh()},
+    // Each account keeps its own copy of its data on this phone, so switching accounts never mixes them.
+    async signOut(){if(!ses)return;await run();const uid=ses.uid;try{localStorage.setItem(KEY+":"+uid,JSON.stringify(S))}catch(e){}
+      await photos.del("avatar:me",true);for(const n of Object.keys(S.settings.garage||{}))await photos.del("veh:"+n,true);AV.url=null;
+      keep(null);status="";Social.reset();S=seed();S.settings.garage={};lastSJ=JSON.stringify(S.settings);mem=S;try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}},
+    adopt(){if(!ses)return;let st=null;try{st=JSON.parse(localStorage.getItem(KEY+":"+ses.uid)||"null")}catch(e){}
+      if(st&&!S.drives.some(isReal)){S=st;lastSJ=JSON.stringify(S.settings);mem=S;try{localStorage.setItem(KEY,JSON.stringify(S));localStorage.removeItem(KEY+":"+ses.uid)}catch(e){}}},
     async uploadAll(){const ids=S.drives.filter(d=>d.who==="me"&&!d.sample&&d.photo).map(d=>d.id);if(S.settings.avatar)ids.push("avatar:me");for(const [n,i] of Object.entries(S.settings.garage||{}))if(i.photoAt)ids.push("veh:"+n);for(const id of ids){const b=await photos.get(id);if(b)await this.putPhoto(id,b)}},
     async putPhoto(id,blob){if(!on()||!ses)return;try{await api(objPath(id),{method:"POST",headers:{"Content-Type":blob.type||"image/jpeg","x-upsert":"true"},body:blob})}catch(e){}},
     async delPhoto(id){if(!on()||!ses)return;try{await api("/storage/v1/object/photos",{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({prefixes:[ses.uid+"/"+id]})})}catch(e){}},
@@ -1529,26 +1534,13 @@ function viewRoutes(){
 }
 
 /* ================= you ================= */
-const b64=blob=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(blob)});
-async function makeBackup(){
-  const ph={};const ids=S.drives.filter(d=>d.photo&&!d.sample).map(d=>d.id);if(S.settings.avatar)ids.push("avatar:me");
-  for(const id of ids){const b=await photos.get(id);if(b)ph[id]=await b64(b)}
-  return new Blob([JSON.stringify({app:"dragon-drive",v:1,saved:Date.now(),state:S,photos:ph})],{type:"application/json"});
-}
-async function restoreBackup(text){
-  const j=JSON.parse(text);if(!j||j.app!=="dragon-drive"||!j.state||!Array.isArray(j.state.drives))throw new Error("bad");
-  for(const [id,u] of Object.entries(j.photos||{})){const r=await fetch(u);await photos.put(id,await r.blob())}
-  // merge: keep drives already here, add any from the backup that are missing; backup wins for profile and garage
-  const have=new Set(S.drives.map(d=>d.id));const add=j.state.drives.filter(d=>!d.sample&&!have.has(d.id));
-  const veh=[...new Set([...(j.state.settings.vehicles||[]),...S.settings.vehicles])];
-  S={...S,...j.state,drives:[...S.drives,...add].sort((a,b)=>b.start-a.start),settings:{...S.settings,...j.state.settings,vehicles:veh}};save();
-}
 function viewYou(){
   const mine=S.drives.filter(d=>d.who==="me").sort((a,b)=>b.start-a.start);
   const tot=mine.reduce((a,d)=>({dist:a.dist+d.stats.dist,top:Math.max(a.top,d.stats.max),up:a.up+(d.stats.up||0),g:Math.max(a.g,d.stats.gTot||0)}),{dist:0,top:0,up:0,g:0});
   const pb={};for(const d of mine)for(const r of RUN_DEFS){const v=d.stats.runs&&d.stats.runs[r.k];if(v&&(!pb[r.k]||v.t<pb[r.k].v.t))pb[r.k]={v,d}}
   const weeks=[];const wk=7*864e5,now=Date.now();
-  for(let i=7;i>=0;i--){const a=now-(i+1)*wk,b=now-i*wk;weeks.push({label:i===0?"Now":`-${i}w`,v:mine.filter(d=>d.start>a&&d.start<=b).reduce((s,d)=>s+fDist(d.stats.dist),0)})}
+  for(let i=7;i>=0;i--){const a=now-(i+1)*wk,b=now-i*wk;const wd=mine.filter(d=>d.start>a&&d.start<=b);weeks.push({label:i===0?"Now":`-${i}w`,v:wd.length,dist:wd.reduce((s,d)=>s+fDist(d.stats.dist),0)})}
+  const wkDist=weeks.reduce((s,w)=>s+w.dist,0);
   const mx=Math.max(1,...weeks.map(w=>w.v));
   $("#view").innerHTML=`<div class="stack">
     <div><div class="eyebrow">Your logbook and settings</div><h1>You</h1></div>
@@ -1557,10 +1549,16 @@ function viewYou(){
         <label class="field">Name on share cards<input type="text" id="me-name" value="${esc(S.settings.name||"")}" placeholder="Your name or handle" maxlength="40"></label>
         <div class="row"><button class="btn" id="av-pick" type="button">${S.settings.avatar?"Change photo":"Add a profile photo"}</button>${S.settings.avatar?`<button class="btn ghost" id="av-rm" type="button">Remove</button>`:""}</div>
       </div></div></div>
+    ${Sync.on()?`<div class="panel"><h3>Account</h3>${Sync.user?`<p style="margin:0">Signed in as <b>${esc(Sync.user.email||"")}</b>${Social.me?` · <a href="#u/${esc(Social.me.handle)}">@${esc(Social.me.handle)}</a>`:""}. Your profile, garage, drives and photos sync to every device you sign in on.</p>
+      <div class="row"><span class="muted small" id="sync-status" style="flex:1">${esc(Sync.status)}</span><button class="btn" id="sync-now" type="button">Sync now</button><button class="btn ghost" id="sync-out" type="button">Sign out</button></div>`
+      :`<p class="muted" style="margin:0">Sign in or create an account to follow friends and keep your profile, garage, drives and photos on all your devices. We email you a sign-in link, no password needed.</p>
+      <form class="row" id="sync-form"><input type="email" id="sync-email" placeholder="you@example.com" autocomplete="email" style="flex:1;min-width:0" required><button class="btn primary" type="submit">Email me a link</button></form>
+      <p class="muted small" id="sync-sent" hidden style="margin:0">Check your email and tap the link. Using the Home Screen app on iPhone? Type the 6-digit code from the same email here instead.</p>
+      <form class="row" id="sync-code-form" hidden><input type="text" id="sync-code" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code" maxlength="10" style="flex:1;min-width:0" required><button class="btn primary" type="submit">Sign in</button></form>`}</div>`:""}
     <div class="detail-stats">${statBlock("Drives",mine.length)}${statBlock("Distance",fDist(tot.dist).toFixed(0),dLabel())}${statBlock("Climbed",Math.round(fAlt(tot.up)),aLabel())}${statBlock("Top speed",Math.round(fSpeed(tot.top)),sLabel())}${statBlock("Max g",fG(tot.g),"g")}</div>
     <div class="panel"><h3>Personal bests</h3>${Object.keys(pb).length?`<table class="runs"><tbody>${RUN_DEFS.filter(r=>pb[r.k]).map(r=>`<tr><th scope="row">${r.label}</th><td class="t"><button class="open-link muted small" data-open="${pb[r.k].d.id}" style="text-align:right">${esc(pb[r.k].d.title)}</button></td><td class="v">${fSec(pb[r.k].v.t)}</td></tr>`).join("")}</tbody></table>`:'<p class="muted" style="margin:0">Record a run from a standing start to set your first times.</p>'}</div>
-    <div class="panel"><div class="row"><h3>Distance per week</h3><span class="spacer"></span><span class="muted small">${dLabel()}, last 8 weeks</span></div>
-      <div class="bars" role="img" aria-label="Distance per week">${weeks.map(w=>`<div class="b"><span class="num">${w.v?w.v.toFixed(0):""}</span><i style="height:${w.v/mx*80}%"></i><span>${w.label}</span></div>`).join("")}</div></div>
+    <div class="panel"><div class="row"><h3>Drives per week</h3><span class="spacer"></span><span class="muted small">${wkDist.toFixed(wkDist<10?1:0)} ${dLabel()} in the last 8 weeks</span></div>
+      <div class="bars" role="img" aria-label="Drives per week">${weeks.map(w=>`<div class="b"><span class="num">${w.v||""}</span><i style="height:${w.v/mx*80}%"></i><span>${w.label}</span></div>`).join("")}</div></div>
     <div class="panel"><h3>Map style</h3><p class="muted small" style="margin:0">Used behind routes everywhere, including share cards.</p>${stylePicker()}</div>
     <div class="panel"><div class="row"><h3>Units</h3><span class="spacer"></span>
       <div class="unit-toggle" role="group" aria-label="Units"><button id="u-mi" type="button" aria-pressed="${U()==="mi"}">Miles</button><button id="u-km" type="button" aria-pressed="${U()==="km"}">Kilometers</button></div></div></div>
@@ -1570,12 +1568,6 @@ function viewYou(){
       <form class="row" id="veh-form"><input type="text" id="veh-in" placeholder="Add a vehicle, e.g. 2018 Civic Si or Ducati Monster" style="flex:1;min-width:0" maxlength="60"><button class="btn" type="submit">Add</button></form>
     </div>
     <div class="panel"><h3>Your drives</h3>${mine.map(d=>`<button class="effort open-link" data-open="${d.id}" style="display:flex"><div style="flex:1;min-width:0"><div style="font-weight:600">${esc(d.title)}</div><div class="muted small">${ago(d.start)} · ${fDist(d.stats.dist).toFixed(1)} ${dLabel()} · top ${Math.round(fSpeed(d.stats.max))} ${sLabel()}</div></div>${headlineRun(d.stats)?`<span class="chip run">${headlineRun(d.stats).label} ${fSec(headlineRun(d.stats).v.t)}</span>`:""}</button>`).join("")||'<p class="muted" style="margin:0">Nothing recorded yet.</p>'}</div>
-    ${Sync.on()?`<div class="panel"><h3>Account sync</h3>${Sync.user?`<p style="margin:0">Signed in as <b>${esc(Sync.user.email||"")}</b>. Your profile, garage, drives and photos sync to every device you sign in on.</p>
-      <div class="row"><span class="muted small" id="sync-status" style="flex:1">${esc(Sync.status)}</span><button class="btn" id="sync-now" type="button">Sync now</button><button class="btn ghost" id="sync-out" type="button">Sign out</button></div>`
-      :`<p class="muted" style="margin:0">Sign in to keep your profile, garage, drives and photos on all your devices. We email you a sign-in link, no password needed.</p>
-      <form class="row" id="sync-form"><input type="email" id="sync-email" placeholder="you@example.com" autocomplete="email" style="flex:1;min-width:0" required><button class="btn primary" type="submit">Email me a link</button></form>
-      <p class="muted small" id="sync-sent" hidden style="margin:0">Check your email and tap the link. Using the Home Screen app on iPhone? Type the 6-digit code from the same email here instead.</p>
-      <form class="row" id="sync-code-form" hidden><input type="text" id="sync-code" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code" maxlength="10" style="flex:1;min-width:0" required><button class="btn primary" type="submit">Sign in</button></form>`}</div>`:""}
     ${Social.ok()&&Social.SOC.loaded&&!Social.me?`<div class="panel"><h3>Pick your @handle</h3><p class="muted small" style="margin:0">This is how friends find and follow you. Lowercase letters, numbers and _ only.</p>
       <form class="row" id="h-form"><span style="font-weight:700">@</span><input type="text" id="h-in" placeholder="burnout" pattern="[a-z0-9_]{3,20}" maxlength="20" autocapitalize="none" autocomplete="username" style="flex:1;min-width:0" required><button class="btn primary" type="submit">Claim it</button></form></div>`:""}
     ${Social.ready()?`<div class="panel"><div class="row"><h3>Friends</h3><span class="spacer"></span><a class="muted small" href="#u/${esc(Social.me.handle)}">@${esc(Social.me.handle)}</a></div>
@@ -1585,14 +1577,6 @@ function viewYou(){
       <div id="f-res" class="stack" style="gap:0"></div>
       <label class="field">New drives are visible to<select id="def-vis"><option value="followers" ${(S.settings.defaultVis||"followers")==="followers"?"selected":""}>Followers</option><option value="public" ${S.settings.defaultVis==="public"?"selected":""}>Everyone</option><option value="private" ${S.settings.defaultVis==="private"?"selected":""}>Only me</option></select></label>
       <label class="check"><input type="checkbox" id="hide-ends" ${S.settings.hideEnds!==false?"checked":""}> Hide the first and last 300 m of shared routes, so they don't show where you live</label></div>`:""}
-    <div class="panel"><h3>Backup</h3><p class="muted" style="margin:0">Everything lives on this device, tied to this web address. Save a backup file to keep your profile, garage, drives and photos safe, or to move them to a new phone or address.</p>
-      <div class="row"><button class="btn" id="bk-save" type="button">Save backup</button><button class="btn ghost" id="bk-load" type="button">Restore from backup</button></div>
-      <input type="file" id="bk-in" accept="application/json,.json" class="sr" tabindex="-1" aria-hidden="true">
-    </div>
-    <div class="panel"><h3>Example data</h3><p class="muted" style="margin:0">The other drivers and their drives are examples so you can see how things work. Your own recordings and photos stay on this device.</p>
-      <div class="row"><button class="btn" id="clr-ex" type="button">Remove examples</button><button class="btn ghost" id="reset" type="button">Reset everything</button></div>
-      <div id="reset-confirm" hidden class="row"><span style="flex:1">Erase all drives, photos and comments on this device?</span><button class="btn danger" id="reset-yes" type="button">Erase</button></div>
-    </div>
   </div>`;
   $("#me-name").onchange=e=>{S.settings.name=e.target.value.trim();save();toast("Name saved")};
   $("#av-pick").onclick=()=>pickImage(async f=>{await photos.put("avatar:me",await squareCrop(f,400));S.settings.avatar=true;S.settings.avatarAt=Date.now();save();await loadAvatar();render();toast("Profile photo updated")});
@@ -1605,12 +1589,11 @@ function viewYou(){
   document.querySelectorAll("[data-vehphoto]").forEach(b=>b.onclick=()=>{const n=VN(b.dataset.vehphoto);pickImage(async f=>{try{await photos.put("veh:"+n,await downscale(f,1200));GI(n).photoAt=Date.now();save();viewYou();toast("Photo added")}catch(e){toast("That file couldn't be read as a photo.")}})});
   document.querySelectorAll("img[data-vehimg]").forEach(async im=>{const u=await photos.url("veh:"+im.dataset.vehimg);if(u)im.src=u});
   $("#veh-form").onsubmit=e=>{e.preventDefault();const v=$("#veh-in").value.trim();if(!v)return;if(!S.settings.vehicles.includes(v))S.settings.vehicles.push(v);S.settings.vehicle=v;save();viewYou();toast("Vehicle added")};
-  $("#clr-ex").onclick=()=>{S.drives=S.drives.filter(d=>!d.sample);save();viewYou();toast("Examples removed")};
   if(Sync.on()){
     const sf=$("#sync-form");if(sf)sf.onsubmit=async e=>{e.preventDefault();const em=$("#sync-email").value.trim();const b=sf.querySelector("button");b.disabled=true;try{await Sync.sendCode(em);sf.hidden=true;$("#sync-sent").hidden=false;$("#sync-code-form").hidden=false;toast("Sign-in email sent")}catch(err){toast(err.message)}b.disabled=false};
     const cf=$("#sync-code-form");if(cf)cf.onsubmit=async e=>{e.preventDefault();const b=cf.querySelector("button");b.disabled=true;try{await Sync.verify($("#sync-email").value.trim(),$("#sync-code").value.trim());toast("Signed in, syncing");viewYou()}catch(err){toast(err.message)}b.disabled=false};
     const sn=$("#sync-now");if(sn)sn.onclick=()=>Sync.run();
-    const so=$("#sync-out");if(so)so.onclick=()=>{Sync.signOut();viewYou();toast("Signed out. Your data stays on this device.")};
+    const so=$("#sync-out");if(so)so.onclick=async()=>{so.disabled=true;so.textContent="Signing out…";await Sync.signOut();render();toast("Signed out")};
   }
   const hf=$("#h-form");if(hf)hf.onsubmit=async e=>{e.preventDefault();const h=$("#h-in").value.trim().toLowerCase();if(!/^[a-z0-9_]{3,20}$/.test(h)){toast("Use 3–20 lowercase letters, numbers or _");return}const b=hf.querySelector("button");b.disabled=true;try{await Social.claim(h);toast("You're @"+h);viewYou()}catch(err){toast(err.message)}b.disabled=false};
   const inv=$("#inv");if(inv)inv.onclick=async()=>{const url=location.origin+location.pathname+"#u/"+Social.me.handle,text=`Follow me on Dragon Drive: ${url}`;
@@ -1619,10 +1602,6 @@ function viewYou(){
     try{const r=await Social.search($("#f-in").value);box.innerHTML=r.length?r.map(p=>{const pp=Social.person("u:"+p.id);return `<a class="effort" href="#u/${esc(p.handle)}" style="display:flex;text-decoration:none;color:inherit">${avatar(pp,32)}<div style="flex:1;min-width:0"><div style="font-weight:600">${nameHtml(pp)}</div><div class="muted small">@${esc(p.handle)}${Social.SOC.following.has(p.id)?" · Following":""}</div></div></a>`}).join(""):'<p class="muted small" style="margin:0">Nobody by that handle yet.</p>'}catch(err){box.innerHTML='<p class="muted small" style="margin:0">Search failed. Check your connection.</p>'}};
   const dvs=$("#def-vis");if(dvs)dvs.onchange=e=>{S.settings.defaultVis=e.target.value;save();toast("Saved")};
   const he=$("#hide-ends");if(he)he.onchange=e=>{S.settings.hideEnds=e.target.checked;save()};
-  $("#bk-save").onclick=async()=>{try{const blob=await makeBackup();await saveFile(blob,`dragon-drive-backup-${new Date().toISOString().slice(0,10)}.json`)}catch(e){toast("Couldn't build the backup.")}};
-  $("#bk-load").onclick=()=>{const inp=$("#bk-in");inp.value="";inp.onchange=async()=>{const f=inp.files&&inp.files[0];if(!f)return;try{await restoreBackup(await f.text());render();await loadAvatar();render();toast("Backup restored")}catch(e){toast("That file isn't a Dragon Drive backup.")}};inp.click()};
-  $("#reset").onclick=()=>{$("#reset-confirm").hidden=false};
-  $("#reset-yes").onclick=()=>{S.drives.forEach(d=>d.photo&&photos.del(d.id));try{localStorage.removeItem(KEY)}catch(e){}mem=null;S=seed();save();render();toast("Reset to a fresh start")};
 }
 
 /* ================= global events ================= */

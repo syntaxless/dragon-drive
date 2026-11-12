@@ -12,7 +12,7 @@ Live at https://dragondrive.turboloser.co
 - **Map styles:** routes are drawn over vector street maps (MapLibre GL with free OpenFreeMap tiles, no API key) in Streets, Light, Dark, Synthwave or Game Boy styles, or over a plain grid or solid color. The choice applies to drive pages, the feed, the Routes tab and share cards. Inside the Claude preview only grid and solid color are available.
 - **Photos and share cards:** attach a photo to a drive, then export a 1080 × 1350 card with the photo, route, your avatar and key numbers.
 - **Drive videos:** film the road while recording (exact sync), or import any clip and line it up; Dragon Drive burns in speed, g-force, the route and timed runs and exports an MP4.
-- **Accounts and backup:** optional email sign-in syncs profile, garage, drives and photos across devices (see Account sync below); a backup file works without an account.
+- **Accounts:** email sign-in syncs profile, garage, drives and photos across devices and unlocks following friends. Sign out and in to switch accounts; each account's data stays separate on the phone.
 
 ## Data sources
 
