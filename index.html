@@ -146,7 +146,7 @@ img.avatar{object-fit:cover;background:var(--surface-2);padding:0}
 
 /* sheet */
 .sheet{position:fixed;inset:0;z-index:25;background:var(--bg);overflow-y:auto;padding-top:env(safe-area-inset-top,0px)}
-.sheet-bar{position:sticky;top:0;z-index:2;background:var(--surface);border-bottom:1px solid var(--line)}
+.sheet-bar{position:sticky;top:0;z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
 .sheet-bar .wrap{display:flex;align-items:center;gap:10px;padding-block:10px}
 .sheet .body{padding-block:16px 40px}
 .detail-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px 8px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px}
@@ -178,7 +178,7 @@ input[type=range]{width:100%;accent-color:var(--hl)}
 .bars .b{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;height:100%}
 .bars .b i{display:block;width:100%;background:var(--accent);border-radius:4px 4px 0 0;min-height:2px}
 .bars .b span{font-size:11px;color:var(--muted)}
-.map-box{width:100%;aspect-ratio:4/3;border-radius:14px;overflow:hidden;background:var(--surface-2)}
+.map-box{position:relative;z-index:0;isolation:isolate;width:100%;aspect-ratio:4/3;border-radius:14px;overflow:hidden;background:var(--surface-2)}
 .style-pick{gap:6px}
 .chip.pick{border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:5px 11px;font-size:13px;cursor:pointer}
 .chip.pick[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
@@ -584,9 +584,9 @@ function toast(msg){const t=$("#toast");t.textContent=msg;t.hidden=false;clearTi
 // Your profile photo lives in IndexedDB next to drive photos.
 const AV={url:null};
 async function loadAvatar(){AV.url=S.settings.avatar?await photos.url("avatar:me"):null;document.querySelectorAll("img[data-avatar]").forEach(i=>{if(AV.url)i.src=AV.url})}
-function avatar(p,size){
-  if(p.id==="me"&&S.settings.avatar)return `<img class="avatar" data-avatar alt="" ${AV.url?`src="${AV.url}"`:""} style="${size?`width:${size}px;height:${size}px`:""}">`;
-  return `<span class="avatar" style="background:${p.color}${size?`;width:${size}px;height:${size}px`:""}" aria-hidden="true">${esc(initials(p.name))}</span>`}
+function avatar(p,size,extra=""){
+  if(p.id==="me"&&S.settings.avatar)return `<img class="avatar" data-avatar alt="" ${AV.url?`src="${AV.url}"`:""} style="${size?`width:${size}px;height:${size}px;`:""}${extra}">`;
+  return `<span class="avatar" style="background:${p.color}${p.id==="me"?";color:var(--accent-fg)":""}${size?`;width:${size}px;height:${size}px`:""};${extra}" aria-hidden="true">${esc(initials(p.name))}</span>`}
 function kudosCount(d){return (S.kudosFrom[d.id]||[]).length+(S.kudos[d.id]?1:0)}
 const heart=`<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 21V10l4-7c1.5 0 2.5 1 2.2 2.6L12.6 9H19a2 2 0 0 1 2 2.3l-1.3 7.6A2.5 2.5 0 0 1 17.2 21H7zM3 10h2.5v11H3z"/></svg>`;
 function statBlock(k,v,u){return `<div class="stat"><div class="k">${k}</div><div class="v">${v}${u?`<small>${u}</small>`:""}</div></div>`}
@@ -598,7 +598,7 @@ function render(){
   const tab=(location.hash||"#feed").slice(1);
   current=["feed","record","routes","you"].includes(tab)?tab:"feed";
   document.querySelectorAll("nav.tabs a").forEach(a=>a.setAttribute("aria-current",a.dataset.tab===current?"page":"false"));
-  $("#me-btn").setAttribute("aria-current",current==="you"?"page":"false");$("#me-btn").innerHTML=avatar(person("me"),36).replace('class="avatar"','class="avatar" style="color:var(--accent-fg);font-size:14px"');
+  $("#me-btn").setAttribute("aria-current",current==="you"?"page":"false");$("#me-btn").innerHTML=avatar(person("me"),36,"color:var(--accent-fg);font-size:14px");
   ({feed:viewFeed,record:viewRecord,routes:viewRoutes,you:viewYou})[current]();
   window.scrollTo(0,0);
 }
