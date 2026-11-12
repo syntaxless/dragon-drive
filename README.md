@@ -8,9 +8,11 @@ Live at https://dragondrive.turboloser.co
 
 - **Every drive:** distance, moving and elapsed time, average and top speed, elevation gain and profile, max acceleration, braking and lateral g (with a friction-circle plot).
 - **Timed runs**, detected automatically: 0–60 mph, 60–130 mph, 60 ft, ⅛ mile and ¼ mile (with trap speeds). Runs start when the car moves off from a stop (no rollout subtracted). Phone GPS logs about once a second, so those times are estimates; a 10–25 Hz device gives accurate ones.
-- **Segments:** closed-course segments (tracks, drag strips) rank drivers by time. Public-road segments list passes without ranking, so nobody wins by speeding on open roads.
-- **Map styles:** routes are drawn over vector street maps (MapLibre GL with free OpenFreeMap tiles, no API key) in Streets, Light, Dark, Monochrome or Blueprint styles, or over a plain grid or solid color. The choice applies to drive pages, the feed, the Routes tab and share cards. Inside the Claude preview only grid and solid color are available.
-- **Photos and share cards:** attach a photo to a drive, then export a 1080 × 1350 card with the photo, route and key numbers.
+- **Routes:** a map of every road you've driven, grouped by area. There are no leaderboards, so nobody is racing anyone on public roads.
+- **Map styles:** routes are drawn over vector street maps (MapLibre GL with free OpenFreeMap tiles, no API key) in Streets, Light, Dark, Synthwave or Game Boy styles, or over a plain grid or solid color. The choice applies to drive pages, the feed, the Routes tab and share cards. Inside the Claude preview only grid and solid color are available.
+- **Photos and share cards:** attach a photo to a drive, then export a 1080 × 1350 card with the photo, route, your avatar and key numbers.
+- **Drive videos:** film the road while recording (exact sync), or import any clip and line it up; Dragon Drive burns in speed, g-force, the route and timed runs and exports an MP4.
+- **Accounts and backup:** optional email sign-in syncs profile, garage, drives and photos across devices (see Account sync below); a backup file works without an account.
 
 ## Data sources
 
@@ -31,7 +33,7 @@ It's a static, installable web app with no build tools.
 - **Locally:** `python3 -m http.server` in this folder, then open http://localhost:8000. Browsers only allow GPS and Bluetooth on `localhost` or HTTPS.
 - **On your phone:** open the live site and use "Add to Home Screen".
 
-No GPS handy? Tap **Drive**, then **Simulate a road drive** or **Simulate a drag-strip pass**.
+No GPS handy? Tap **Drive**, then **Simulate a drive (demo)**.
 
 ## Files
 
@@ -41,13 +43,15 @@ No GPS handy? Tap **Drive**, then **Simulate a road drive** or **Simulate a drag
 | `build.sh` | Wraps `app.html` into `index.html` with the PWA head tags. Run `sh build.sh` after editing. |
 | `index.html` | Generated page that gets served. |
 | `manifest.webmanifest`, `sw.js`, `icon.svg` | Install metadata, offline cache, app icon. |
+| `icon-256.png` | PNG of the icon for emails. |
+| `supabase/` | Database setup and Burnout's sign-in email template. |
 | `vendor/maplibre/` | MapLibre GL JS 4.7.1 (BSD-3-Clause), served locally so it works offline. |
 | `CNAME` | Custom domain for GitHub Pages. |
 
 ## Current limits
 
-- Drives live on the device (localStorage; photos in IndexedDB). The storage keys still say `roadtripper` on purpose, so drives recorded before the rename are kept. The other drivers you see are labelled example data.
-- A real shared feed between friends needs a backend with accounts; that's the next step.
+- Drives live on the device (localStorage; photos and videos in IndexedDB) and sync through your account if you sign in. Videos stay on the device that filmed them. The storage keys still say `roadtripper` on purpose, so drives recorded before the rename are kept. The other drivers you see are labelled example data.
+- The feed shows your drives and the examples; seeing friends' drives needs a shared feed on top of the account backend.
 
 ## Account sync (optional)
 
