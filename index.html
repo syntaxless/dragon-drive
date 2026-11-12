@@ -1609,7 +1609,7 @@ function viewYou(){
   const tot=mine.reduce((a,d)=>({dist:a.dist+d.stats.dist,top:Math.max(a.top,d.stats.max),up:a.up+(d.stats.up||0),g:Math.max(a.g,d.stats.gTot||0)}),{dist:0,top:0,up:0,g:0});
   const pb={};for(const d of mine)for(const r of RUN_DEFS){const v=d.stats.runs&&d.stats.runs[r.k];if(v&&(!pb[r.k]||v.t<pb[r.k].v.t))pb[r.k]={v,d}}
   $("#view").innerHTML=`<div class="stack">
-    <div><div class="eyebrow">Your logbook and settings</div><h1>You</h1></div>
+    <div class="eyebrow">Your logbook and settings</div>
     <div class="panel"><div class="profile">${avatar(person("me"),84)}
       <div class="stack" style="flex:1;min-width:200px;gap:8px">
         <label class="field">Name on share cards<input type="text" id="me-name" value="${esc(S.settings.name||"")}" placeholder="Your name or handle" maxlength="40"></label>
