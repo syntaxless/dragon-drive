@@ -9,6 +9,7 @@ Live at https://roadtripper.itschefff.com
 - **Every drive:** distance, moving and elapsed time, average and top speed, elevation gain and profile, max acceleration, braking and lateral g (with a friction-circle plot).
 - **Timed runs**, detected automatically: 0–60 mph, 60–130 mph, 60 ft, ⅛ mile and ¼ mile (with trap speeds). Runs start when the car moves off from a stop (no rollout subtracted). Phone GPS logs about once a second, so those times are estimates; a 10–25 Hz device gives accurate ones.
 - **Segments:** closed-course segments (tracks, drag strips) rank drivers by time. Public-road segments list passes without ranking, so nobody wins by speeding on open roads.
+- **Map styles:** routes are drawn over vector street maps (MapLibre GL with free OpenFreeMap tiles, no API key) in Streets, Light, Dark, Monochrome or Blueprint styles, or over a plain grid or solid color. The choice applies to drive pages, the feed, the Routes tab and share cards. Inside the Claude preview only grid and solid color are available.
 - **Photos and share cards:** attach a photo to a drive, then export a 1080 × 1350 card with the photo, route and key numbers.
 
 ## Data sources
@@ -40,6 +41,7 @@ No GPS handy? Tap **Drive**, then **Simulate a road drive** or **Simulate a drag
 | `build.sh` | Wraps `app.html` into `index.html` with the PWA head tags. Run `sh build.sh` after editing. |
 | `index.html` | Generated page that gets served. |
 | `manifest.webmanifest`, `sw.js`, `icon.svg` | Install metadata, offline cache, app icon. |
+| `vendor/maplibre/` | MapLibre GL JS 4.7.1 (BSD-3-Clause), served locally so it works offline. |
 | `CNAME` | Custom domain for GitHub Pages. |
 
 ## Current limits

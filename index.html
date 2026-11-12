@@ -175,6 +175,11 @@ input[type=range]{width:100%;accent-color:var(--hl)}
 .bars .b{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;height:100%}
 .bars .b i{display:block;width:100%;background:var(--accent);border-radius:4px 4px 0 0;min-height:2px}
 .bars .b span{font-size:11px;color:var(--muted)}
+.map-box{width:100%;aspect-ratio:4/3;border-radius:14px;overflow:hidden;background:var(--surface-2)}
+.style-pick{gap:6px}
+.chip.pick{border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:5px 11px;font-size:13px;cursor:pointer}
+.chip.pick[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.chip.pick input[type=color]{width:22px;height:22px;border:0;padding:0;background:none;cursor:pointer}
 .share-preview{display:block;width:100%;max-width:420px;margin:0 auto;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.18)}
 .photo-edit{position:relative}
 .photo-edit .photo{border-radius:14px;aspect-ratio:4/3}
@@ -413,17 +418,124 @@ function projector(pts,w,h,pad){
 function strokePath(g,P,arr,col,wd){if(arr.length<2)return;g.strokeStyle=col;g.lineWidth=wd;g.lineJoin="round";g.lineCap="round";g.beginPath();arr.forEach((p,i)=>{const[x,y]=P(p);i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke()}
 function drawRoute(c,pts,opt={}){
   const {g,w,h}=sizeCanvas(c);g.clearRect(0,0,w,h);
-  g.strokeStyle=css("--grid");g.lineWidth=1;
-  for(let x=0;x<w;x+=24){g.beginPath();g.moveTo(x+.5,0);g.lineTo(x+.5,h);g.stroke()}
-  for(let y=0;y<h;y+=24){g.beginPath();g.moveTo(0,y+.5);g.lineTo(w,y+.5);g.stroke()}
+  if(opt.bg){g.fillStyle=opt.bg;g.fillRect(0,0,w,h)}
+  else{g.strokeStyle=css("--grid");g.lineWidth=1;
+    for(let x=0;x<w;x+=24){g.beginPath();g.moveTo(x+.5,0);g.lineTo(x+.5,h);g.stroke()}
+    for(let y=0;y<h;y+=24){g.beginPath();g.moveTo(0,y+.5);g.lineTo(w,y+.5);g.stroke()}}
   const ctx=opt.context||pts;if(!ctx.length)return;
   const P=projector(ctx,w,h,18);
-  strokePath(g,P,pts,css("--surface"),opt.thin?5:7);
+  strokePath(g,P,pts,opt.casing||css("--surface"),opt.thin?5:7);
   strokePath(g,P,pts,opt.color||css("--route"),opt.thin?3:4);
   if(opt.hl)strokePath(g,P,pts.slice(opt.hl[0],opt.hl[1]+1),css("--hl"),opt.thin?3.5:5);
   const dot=(p,col)=>{const[x,y]=P(p);g.fillStyle=css("--surface");g.beginPath();g.arc(x,y,6,0,7);g.fill();g.fillStyle=col;g.beginPath();g.arc(x,y,4,0,7);g.fill()};
   if(!opt.noEnds&&pts.length>1){dot(pts[0],css("--good"));dot(pts[pts.length-1],css("--bad"))}
   if(opt.live&&pts.length){const[x,y]=P(pts[pts.length-1]);g.fillStyle=css("--accent");g.beginPath();g.arc(x,y,7,0,7);g.fill()}
+}
+/* ================= map backdrops ================= */
+// Route backdrops: vector map styles (MapLibre + OpenFreeMap), a grid, or a solid color.
+const IN_ARTIFACT=!!window.claude;
+const OFM="https://tiles.openfreemap.org";
+function vecStyle(c){
+  const roads=(id,classes,w0,w1,col)=>({id,type:"line",source:"omt","source-layer":"transportation",filter:["match",["get","class"],classes,true,false],
+    layout:{"line-cap":"round","line-join":"round"},paint:{"line-color":col,"line-width":["interpolate",["exponential",1.5],["zoom"],8,w0,18,w1]}});
+  return{version:8,sources:{omt:{type:"vector",url:OFM+"/planet"}},layers:[
+    {id:"bg",type:"background",paint:{"background-color":c.bg}},
+    {id:"landcover",type:"fill",source:"omt","source-layer":"landcover",paint:{"fill-color":c.park,"fill-opacity":.5}},
+    {id:"park",type:"fill",source:"omt","source-layer":"park",paint:{"fill-color":c.park}},
+    {id:"water",type:"fill",source:"omt","source-layer":"water",paint:{"fill-color":c.water}},
+    {id:"building",type:"fill",source:"omt","source-layer":"building",minzoom:14,paint:{"fill-color":c.building}},
+    roads("minor",["minor","service","track"],.3,8,c.minor),
+    roads("major",["tertiary","secondary","primary","trunk"],.6,14,c.major),
+    roads("motorway",["motorway"],.9,18,c.motorway)]};
+}
+const BACKDROPS={
+  streets:{label:"Streets",map:()=>OFM+"/styles/liberty",route:"#e8590c",casing:"#ffffff"},
+  light:{label:"Light",map:()=>OFM+"/styles/positron",route:"#e8590c",casing:"#ffffff"},
+  dark:{label:"Dark",map:()=>vecStyle({bg:"#12171a",park:"#16201b",water:"#0b1a24",building:"#1b2226",minor:"#263036",major:"#36434c",motorway:"#4a5963"}),route:"#f2a93b",casing:"#0b0f10"},
+  mono:{label:"Monochrome",map:()=>vecStyle({bg:"#f3f3f1",park:"#e7e9e5",water:"#d6dbde",building:"#e3e3e0",minor:"#dadad6",major:"#c2c2bd",motorway:"#a9a9a3"}),route:"#e04f1a",casing:"#ffffff"},
+  blueprint:{label:"Blueprint",map:()=>vecStyle({bg:"#0d3b66",park:"#0f416f",water:"#0a2f52",building:"#124a7d",minor:"#2c6aa3",major:"#5b9bd5",motorway:"#8cc4f0"}),route:"#ffd166",casing:"#082a4a"},
+  grid:{label:"Grid"},
+  solid:{label:"Solid color"}};
+const mapsOK=()=>!IN_ARTIFACT&&(()=>{try{const c=document.createElement("canvas");return!!(c.getContext("webgl2")||c.getContext("webgl"))}catch(e){return false}})();
+let _mapsOK=null;const canMap=()=>_mapsOK==null?(_mapsOK=mapsOK()):_mapsOK;
+function backdrop(){let k=S.settings.mapStyle||"streets";if(!BACKDROPS[k]||(BACKDROPS[k].map&&!canMap()))k="grid";return k}
+function lum(hex){const n=parseInt(hex.slice(1),16);const ch=[n>>16&255,n>>8&255,n&255].map(v=>{v/=255;return v<=.03928?v/12.92:((v+.055)/1.055)**2.4});return .2126*ch[0]+.7152*ch[1]+.0722*ch[2]}
+// colors for the route line on the current backdrop
+function routeInk(k){const b=BACKDROPS[k];if(b.map)return{route:b.route,casing:b.casing};
+  if(k==="solid"){const bg=S.settings.solidColor||"#0d3b66";return lum(bg)>.4?{route:"#e04f1a",casing:"rgba(255,255,255,.85)",bg}:{route:"#f2a93b",casing:"rgba(0,0,0,.35)",bg}}
+  return{route:css("--route"),casing:css("--surface")}}
+let mapLib=null;
+function loadMapLib(){
+  if(!mapLib)mapLib=new Promise((res,rej)=>{
+    const l=document.createElement("link");l.rel="stylesheet";l.href="vendor/maplibre/maplibre-gl.css";document.head.appendChild(l);
+    const s=document.createElement("script");s.src="vendor/maplibre/maplibre-gl.js";s.onload=()=>window.maplibregl?res(window.maplibregl):rej(new Error("maplibre"));s.onerror=()=>rej(new Error("maplibre"));document.head.appendChild(s)});
+  return mapLib;
+}
+function boundsOf(pts){let a=Infinity,b=-Infinity,c=Infinity,d=-Infinity;for(const p of pts){a=Math.min(a,p[0]);b=Math.max(b,p[0]);c=Math.min(c,p[1]);d=Math.max(d,p[1])}return[[c,a],[d,b]]}
+// One hidden map renders static snapshots one at a time (feed cards, routes, share card).
+const SNAP={map:null,div:null,style:null,q:Promise.resolve(),cache:new Map()};
+function snapshot(k,w,h,ratio,pts,pad,draw,key){
+  if(key&&SNAP.cache.has(key))return Promise.resolve(SNAP.cache.get(key));
+  const job=SNAP.q.then(async()=>{
+    const ml=await loadMapLib();
+    if(!SNAP.div){SNAP.div=document.createElement("div");SNAP.div.style.cssText="position:fixed;left:-10000px;top:0;pointer-events:none";SNAP.div.setAttribute("aria-hidden","true");document.body.appendChild(SNAP.div)}
+    SNAP.div.style.width=w+"px";SNAP.div.style.height=h+"px";
+    let err=null;
+    if(!SNAP.map||SNAP.map._rtRatio!==ratio){if(SNAP.map)SNAP.map.remove();
+      SNAP.map=new ml.Map({container:SNAP.div,style:BACKDROPS[k].map(),interactive:false,attributionControl:false,preserveDrawingBuffer:true,pixelRatio:ratio,fadeDuration:0});
+      SNAP.map._rtRatio=ratio;SNAP.style=k}
+    else if(SNAP.style!==k){SNAP.map.setStyle(BACKDROPS[k].map());SNAP.style=k}
+    const m=SNAP.map;const onErr=e=>{err=e};m.on("error",onErr);
+    m.resize();m.fitBounds(boundsOf(pts),{padding:pad,animate:false,maxZoom:16});
+    await new Promise(res=>{const t=setTimeout(res,9000);m.once("idle",()=>{clearTimeout(t);res()});m.triggerRepaint()});
+    m.off("error",onErr);
+    if(!m.isStyleLoaded()&&err)throw err;
+    const out=document.createElement("canvas");out.width=Math.round(w*ratio);out.height=Math.round(h*ratio);
+    const g=out.getContext("2d");g.drawImage(m.getCanvas(),0,0,out.width,out.height);g.setTransform(ratio,0,0,ratio,0,0);
+    draw(g,p=>{const q=m.project([p[1],p[0]]);return[q.x,q.y]},w,h);
+    g.font=`10px ${css("--body")}`;g.textAlign="right";g.textBaseline="bottom";g.fillStyle="rgba(0,0,0,.45)";g.fillText("© OpenStreetMap",w-4,h-3);
+    if(key){SNAP.cache.set(key,out);if(SNAP.cache.size>80)SNAP.cache.delete(SNAP.cache.keys().next().value)}
+    return out;
+  });
+  SNAP.q=job.catch(()=>{});return job;
+}
+function inkRoute(g,P,pts,ink,lw,ends=true){
+  strokePath(g,P,pts,ink.casing,lw+3);strokePath(g,P,pts,ink.route,lw);
+  if(ends&&pts.length>1){const dot=(p,col)=>{const[x,y]=P(p);g.fillStyle="#fff";g.beginPath();g.arc(x,y,lw+2,0,7);g.fill();g.fillStyle=col;g.beginPath();g.arc(x,y,lw,0,7);g.fill()};dot(pts[0],"#1d8a52");dot(pts[pts.length-1],"#c2410c")}
+}
+// Draw a route onto a canvas with the chosen backdrop; map styles fill in when ready.
+function paintRoute(c,pts,opt={}){
+  const k=backdrop(),ink=routeInk(k);
+  if(!BACKDROPS[k].map){drawRoute(c,pts,{...opt,bg:ink.bg,color:k==="grid"?opt.color:ink.route,casing:k==="grid"?undefined:ink.casing});return}
+  const {g,w,h}=sizeCanvas(c);g.fillStyle=css("--surface-2");g.fillRect(0,0,w,h);
+  const tok=c._tok=(c._tok||0)+1;const ratio=window.devicePixelRatio||1;
+  snapshot(k,w,h,ratio,opt.context||pts,28,(g2,P)=>inkRoute(g2,P,pts,ink,opt.thin?3:4,!opt.noEnds),opt.key?`${opt.key}|${k}|${w}x${h}@${ratio}`:null)
+    .then(img=>{if(c._tok!==tok||!c.isConnected)return;const g3=c.getContext("2d");g3.setTransform(1,0,0,1,0,0);g3.drawImage(img,0,0,c.width,c.height)})
+    .catch(()=>{if(c._tok===tok)drawRoute(c,pts,opt)});
+}
+function stylePicker(){
+  const keys=Object.keys(BACKDROPS).filter(k=>!BACKDROPS[k].map||canMap());const cur=backdrop();
+  return `<div class="row style-pick" role="group" aria-label="Route backdrop">${keys.map(k=>`<button type="button" class="chip pick" data-mapstyle="${k}" aria-pressed="${cur===k}">${BACKDROPS[k].label}</button>`).join("")}
+    ${cur==="solid"?`<label class="chip pick" style="gap:6px">Color <input type="color" id="solid-color" value="${S.settings.solidColor||"#0d3b66"}" aria-label="Background color"></label>`:""}</div>
+    ${IN_ARTIFACT?`<p class="muted small" style="margin:0">Street map styles show in the app at roadtripper.itschefff.com.</p>`:""}`;
+}
+let DETAIL_MAP=null;
+function mountDetailMap(el,pts){
+  if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}
+  const k=backdrop();if(!BACKDROPS[k].map)return false;
+  const ink=routeInk(k);
+  loadMapLib().then(ml=>{if(!el.isConnected)return;
+    const m=new ml.Map({container:el,style:BACKDROPS[k].map(),bounds:boundsOf(pts),fitBoundsOptions:{padding:30,maxZoom:16},attributionControl:{compact:true},cooperativeGestures:true});
+    DETAIL_MAP=m;
+    m.on("load",()=>{const line={type:"Feature",geometry:{type:"LineString",coordinates:pts.map(p=>[p[1],p[0]])}};
+      m.addSource("route",{type:"geojson",data:line});
+      m.addLayer({id:"route-casing",type:"line",source:"route",layout:{"line-cap":"round","line-join":"round"},paint:{"line-color":ink.casing,"line-width":8}});
+      m.addLayer({id:"route",type:"line",source:"route",layout:{"line-cap":"round","line-join":"round"},paint:{"line-color":ink.route,"line-width":4.5}});
+      m.addSource("ends",{type:"geojson",data:{type:"FeatureCollection",features:[[pts[0],"#1d8a52"],[pts[pts.length-1],"#c2410c"]].map(([p,c])=>({type:"Feature",properties:{c},geometry:{type:"Point",coordinates:[p[1],p[0]]}}))}});
+      m.addLayer({id:"ends",type:"circle",source:"ends",paint:{"circle-radius":6,"circle-color":["get","c"],"circle-stroke-color":"#fff","circle-stroke-width":2.5}})});
+    m.on("error",e=>{if(!m.isStyleLoaded()&&el.isConnected){m.remove();if(DETAIL_MAP===m)DETAIL_MAP=null;el.outerHTML=`<canvas class="route" id="d-route" style="border-radius:14px"></canvas>`;const c=$("#d-route");if(c)drawRoute(c,pts)}});
+  }).catch(()=>{});
+  return true;
 }
 function drawSeries(c,pts,valFn,{color,hl,fill=true,zero=true,minSpan=0}){
   const {g,w,h}=sizeCanvas(c);g.clearRect(0,0,w,h);
@@ -509,7 +621,7 @@ function viewFeed(){
     <div class="row"><div><div class="eyebrow">Your road crew</div><h1>Feed</h1></div><span class="spacer"></span><a class="btn primary" href="#record">Start a drive</a></div>
     ${drives.length?drives.map(feedCard).join(""):`<div class="empty">No drives yet. Tap <b>Drive</b> to record your first one.</div>`}
   </div>`;
-  document.querySelectorAll("canvas[data-route]").forEach(c=>{const d=S.drives.find(x=>x.id===c.dataset.route);if(d)drawRoute(c,d.pts,{thin:true})});
+  document.querySelectorAll("canvas[data-route]").forEach(c=>{const d=S.drives.find(x=>x.id===c.dataset.route);if(d)paintRoute(c,d.pts,{thin:true,key:d.id})});
   fillPhotos();
 }
 
@@ -765,8 +877,9 @@ function runsTable(st){
   if(!rows)return `<p class="muted" style="margin:0">No timed runs on this drive yet. They're logged automatically whenever you pull away from a stop (0–60, 60 ft, ⅛ and ¼ mile) or accelerate from 60 to 130 mph.</p>`;
   return `<table class="runs"><tbody>${rows}</tbody></table>${st.hz<5?`<p class="muted small" style="margin:0">Estimate: this drive was logged at about ${st.hz||1} Hz. A 10–25 Hz device like RaceBox or Dragy gives accurate times.</p>`:`<p class="muted small" style="margin:0">Logged at ${st.hz} Hz, no rollout subtracted.</p>`}`;
 }
+let SHEET=null;
 function openDrive(id,fresh){
-  const d=S.drives.find(x=>x.id===id);if(!d)return;
+  const d=S.drives.find(x=>x.id===id);if(!d)return;SHEET={kind:"drive",id};if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}
   const p=person(d.who),s=d.stats,mine=d.who==="me";
   const hasAlt=d.pts.some(q=>q[4]!=null);const hasGG=d.pts.some(q=>q[5]!=null);
   const sh=$("#sheet");
@@ -777,7 +890,8 @@ function openDrive(id,fresh){
     ${fresh?`<div class="notice">Drive saved. Give it a name, add a photo, then share it.</div>`:""}
     <div class="photo-edit">${d.photo?`<img class="photo" data-photo="${d.id}" alt="Photo from ${esc(d.title)}">`:""}
       ${mine?`<div class="row" style="margin-top:${d.photo?"8px":"0"}"><button class="btn" id="add-photo" type="button"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>${d.photo?"Change photo":"Add a photo"}</button>${d.photo?`<button class="btn ghost" id="rm-photo" type="button">Remove photo</button>`:""}</div>`:""}</div>
-    <canvas class="route" id="d-route" style="border-radius:14px"></canvas>
+    ${stylePicker()}
+    ${BACKDROPS[backdrop()].map?`<div class="map-box" id="d-map"></div>`:`<canvas class="route" id="d-route" style="border-radius:14px"></canvas>`}
     <div class="detail-stats">
       ${statBlock("Distance",fDist(s.dist).toFixed(2),dLabel())}${statBlock("Moving time",fDur(s.moving))}${statBlock("Elapsed",fDur(s.dur))}
       ${statBlock("Avg speed",Math.round(fSpeed(s.avg)),sLabel())}${statBlock("Top speed",Math.round(fSpeed(s.max)),sLabel())}${statBlock("Elev. gain",s.altMin==null?"–":Math.round(fAlt(s.up)),s.altMin==null?"":aLabel())}
@@ -797,7 +911,7 @@ function openDrive(id,fresh){
   </div>`;
   sh.hidden=false;sh.scrollTop=0;document.body.style.overflow="hidden";
   fillPhotos(sh);
-  drawRoute($("#d-route"),d.pts);
+  if($("#d-map"))mountDetailMap($("#d-map"),d.pts);else paintRoute($("#d-route"),d.pts);
   drawSeries($("#d-speed"),d.pts,q=>fSpeed(q[3]),{color:css("--accent")});
   if(hasAlt)drawSeries($("#d-alt"),d.pts,q=>q[4]==null?null:fAlt(q[4]),{color:css("--alt"),zero:false,minSpan:U()==="mi"?40:12});
   if(hasGG)drawGG($("#d-gg"),d.pts);
@@ -812,7 +926,7 @@ function openDrive(id,fresh){
   $("#del").onclick=()=>{$("#del-confirm").hidden=false};$("#del-no").onclick=()=>{$("#del-confirm").hidden=true};
   $("#del-yes").onclick=()=>{S.drives=S.drives.filter(x=>x.id!==d.id);photos.del(d.id);save();closeSheet();toast("Drive deleted")};
 }
-function closeSheet(){$("#sheet").hidden=true;document.body.style.overflow="";render()}
+function closeSheet(){if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET=null;$("#sheet").hidden=true;document.body.style.overflow="";render()}
 function pickPhoto(d){
   const inp=$("#photo-in");inp.value="";
   inp.onchange=async()=>{const f=inp.files&&inp.files[0];if(!f)return;
@@ -840,21 +954,27 @@ async function buildCard(d){
   const BG="#0f1513",FG="#f2f5f3",MUTED="#9fb0a9",AMBER="#f2a93b",GREEN="#3fbf8a";
   const DF='"Barlow Condensed","Arial Narrow",sans-serif',BF='"Barlow",system-ui,sans-serif';
   g.fillStyle=BG;g.fillRect(0,0,W,H);
-  const top=800;let photo=null;
+  const top=800;let photo=null;const k=backdrop(),ink=routeInk(k);let map=!!BACKDROPS[k].map;
   if(d.photo){const u=await photos.url(d.id);if(u)try{photo=await loadImage(u)}catch(e){}}
   const routeBox=(x,y,w,h,lw)=>{const P=projector(d.pts,w,h,Math.round(w*0.08));const P2=p=>{const[a,b]=P(p);return[a+x,b+y]};
-    g.save();g.shadowColor="rgba(0,0,0,.55)";g.shadowBlur=12;strokePath(g,P2,d.pts,"#ffffff",lw+5);g.restore();strokePath(g,P2,d.pts,AMBER,lw);
+    const solid=k==="solid";g.save();if(!solid){g.shadowColor="rgba(0,0,0,.55)";g.shadowBlur=12}strokePath(g,P2,d.pts,solid?ink.casing:"#ffffff",lw+5);g.restore();strokePath(g,P2,d.pts,solid?ink.route:AMBER,lw);
     const dot=(p,col)=>{const[a,b]=P2(p);g.fillStyle="#fff";g.beginPath();g.arc(a,b,lw*1.5,0,7);g.fill();g.fillStyle=col;g.beginPath();g.arc(a,b,lw,0,7);g.fill()};dot(d.pts[0],GREEN);dot(d.pts[d.pts.length-1],"#ff7a45")};
   if(photo){
     const k=Math.max(W/photo.naturalWidth,top/photo.naturalHeight);const pw=photo.naturalWidth*k,ph=photo.naturalHeight*k;
     g.save();g.beginPath();g.rect(0,0,W,top);g.clip();g.drawImage(photo,(W-pw)/2,(top-ph)/2,pw,ph);g.restore();
     const gr=g.createLinearGradient(0,top-300,0,top);gr.addColorStop(0,"rgba(15,21,19,0)");gr.addColorStop(1,BG);g.fillStyle=gr;g.fillRect(0,top-300,W,300);
     const gt=g.createLinearGradient(0,0,0,180);gt.addColorStop(0,"rgba(15,21,19,.65)");gt.addColorStop(1,"rgba(15,21,19,0)");g.fillStyle=gt;g.fillRect(0,0,W,180);
-    g.fillStyle="rgba(15,21,19,.55)";roundRect(g,W-380,top-400,330,330,28);g.fill();
-    routeBox(W-380,top-400,330,330,6);
+    const bx=W-380,by=top-400,bs=330;
+    if(map){try{const img=await snapshot(k,bs/2,bs/2,2,d.pts,18,(g2,P)=>inkRoute(g2,P,d.pts,ink,3));g.save();roundRect(g,bx,by,bs,bs,28);g.clip();g.drawImage(img,bx,by,bs,bs);g.restore()}catch(e){map=false}}
+    if(!map){g.fillStyle=k==="solid"?ink.bg:"rgba(15,21,19,.55)";roundRect(g,bx,by,bs,bs,28);g.fill();routeBox(bx,by,bs,bs,6)}
   }else{
-    g.strokeStyle="rgba(255,255,255,.05)";g.lineWidth=2;for(let x=0;x<W;x+=60){g.beginPath();g.moveTo(x,0);g.lineTo(x,top);g.stroke()}for(let y=0;y<top;y+=60){g.beginPath();g.moveTo(0,y);g.lineTo(W,y);g.stroke()}
-    routeBox(60,120,W-120,top-160,10);
+    if(map){try{const img=await snapshot(k,W/2,top/2,2,d.pts,50,(g2,P)=>inkRoute(g2,P,d.pts,ink,5));g.drawImage(img,0,0,W,top);
+      const gr=g.createLinearGradient(0,top-160,0,top);gr.addColorStop(0,"rgba(15,21,19,0)");gr.addColorStop(1,BG);g.fillStyle=gr;g.fillRect(0,top-160,W,160);
+      const gt=g.createLinearGradient(0,0,0,170);gt.addColorStop(0,"rgba(15,21,19,.7)");gt.addColorStop(1,"rgba(15,21,19,0)");g.fillStyle=gt;g.fillRect(0,0,W,170)}catch(e){map=false}}
+    if(!map){
+      if(k==="solid"){g.fillStyle=ink.bg;g.fillRect(0,0,W,top);const gr=g.createLinearGradient(0,top-160,0,top);gr.addColorStop(0,"rgba(15,21,19,0)");gr.addColorStop(1,BG);g.fillStyle=gr;g.fillRect(0,top-160,W,160)}
+      else{g.strokeStyle="rgba(255,255,255,.05)";g.lineWidth=2;for(let x=0;x<W;x+=60){g.beginPath();g.moveTo(x,0);g.lineTo(x,top);g.stroke()}for(let y=0;y<top;y+=60){g.beginPath();g.moveTo(0,y);g.lineTo(W,y);g.stroke()}}
+      routeBox(60,120,W-120,top-160,10)}
   }
   // brand
   g.fillStyle=GREEN;roundRect(g,60,52,52,52,12);g.fill();
@@ -888,17 +1008,19 @@ async function saveFile(blob,name){
     if(dl){await dl.save({filename:name,data:blob});toast("Saved");return}}catch(e){if(e&&e.code==="declined")return;}
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);
 }
-async function openShare(id){
+async function openShare(id,back){
   const d=S.drives.find(x=>x.id===id);if(!d)return;
-  const sh=$("#sheet");const wasOpen=!sh.hidden;
+  const sh=$("#sheet");const wasOpen=back!=null?back:(!sh.hidden&&SHEET&&SHEET.kind==="drive");
+  if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET={kind:"share",id,back:wasOpen};
   sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span><h3>Share card</h3></div></div>
-    <div class="wrap body stack"><div class="empty" id="card-wait">Building your card…</div><img class="share-preview" id="card-img" alt="Share card for ${esc(d.title)}" hidden>
+    <div class="wrap body stack">${stylePicker()}<div class="empty" id="card-wait">Building your card…</div><img class="share-preview" id="card-img" alt="Share card for ${esc(d.title)}" hidden>
     <div class="row" style="justify-content:center"><button class="btn primary" id="card-share" type="button" hidden>Share</button><button class="btn" id="card-save" type="button" disabled>Save image</button>${d.who==="me"&&!d.photo?`<button class="btn ghost" id="card-photo" type="button">Add a photo first</button>`:""}</div>
     <p class="muted small" style="text-align:center;margin:0">1080 × 1350, sized for Instagram, stories and group chats.</p></div>`;
   sh.hidden=false;sh.scrollTop=0;document.body.style.overflow="hidden";
   $("#sh-x").onclick=()=>wasOpen?openDrive(d.id):closeSheet();
-  const ph=$("#card-photo");if(ph)ph.onclick=()=>{const inp=$("#photo-in");inp.value="";inp.onchange=async()=>{const f=inp.files&&inp.files[0];if(!f)return;try{await photos.put(d.id,await downscale(f,1600));d.photo=true;save();openShare(d.id)}catch(e){toast("That file couldn't be read as a photo.")}};inp.click()};
-  const c=await buildCard(d);
+  const tok=openShare._tok=(openShare._tok||0)+1;
+  const ph=$("#card-photo");if(ph)ph.onclick=()=>{const inp=$("#photo-in");inp.value="";inp.onchange=async()=>{const f=inp.files&&inp.files[0];if(!f)return;try{await photos.put(d.id,await downscale(f,1600));d.photo=true;save();openShare(d.id,wasOpen)}catch(e){toast("That file couldn't be read as a photo.")}};inp.click()};
+  const c=await buildCard(d);if(tok!==openShare._tok)return;
   const blob=await new Promise(r=>c.toBlob(r,"image/png"));
   const img=$("#card-img");if(!img)return;img.src=URL.createObjectURL(blob);img.hidden=false;$("#card-wait").hidden=true;
   const name=(d.title.replace(/[^\w]+/g,"-")||"drive")+".png";
@@ -917,14 +1039,21 @@ function areas(drives){
   return out.sort((x,y)=>y.drives.length-x.drives.length);
 }
 function drawHeat(c,drives){
+  const k=backdrop(),ink=routeInk(k);
+  if(BACKDROPS[k].map){const all=[].concat(...drives.map(d=>d.pts));const {g,w,h}=sizeCanvas(c);g.fillStyle=css("--surface-2");g.fillRect(0,0,w,h);
+    const tok=c._tok=(c._tok||0)+1;const ratio=window.devicePixelRatio||1;
+    snapshot(k,w,h,ratio,all,24,(g2,P)=>{g2.globalAlpha=Math.max(.3,Math.min(.85,1.8/drives.length));for(const d of drives)strokePath(g2,P,d.pts,ink.route,3.5);g2.globalAlpha=1})
+      .then(img=>{if(c._tok!==tok||!c.isConnected)return;const g3=c.getContext("2d");g3.setTransform(1,0,0,1,0,0);g3.drawImage(img,0,0,c.width,c.height)}).catch(()=>{});
+    return}
   const {g,w,h}=sizeCanvas(c);g.clearRect(0,0,w,h);
+  if(k==="solid"){g.fillStyle=ink.bg;g.fillRect(0,0,w,h)}else{
   g.strokeStyle=css("--grid");g.lineWidth=1;
   for(let x=0;x<w;x+=24){g.beginPath();g.moveTo(x+.5,0);g.lineTo(x+.5,h);g.stroke()}
-  for(let y=0;y<h;y+=24){g.beginPath();g.moveTo(0,y+.5);g.lineTo(w,y+.5);g.stroke()}
+  for(let y=0;y<h;y+=24){g.beginPath();g.moveTo(0,y+.5);g.lineTo(w,y+.5);g.stroke()}}
   const all=[].concat(...drives.map(d=>d.pts));if(!all.length)return;
   const P=projector(all,w,h,18);
   g.globalAlpha=Math.max(.25,Math.min(.8,1.6/drives.length));
-  for(const d of drives)strokePath(g,P,d.pts,css("--route"),4);
+  for(const d of drives)strokePath(g,P,d.pts,ink.route,4);
   g.globalAlpha=1;
 }
 let routeWho="me";
@@ -936,6 +1065,7 @@ function viewRoutes(){
     <div class="row"><div><div class="eyebrow">Where you've been</div><h1>Routes</h1></div><span class="spacer"></span>
       <div class="unit-toggle" role="group" aria-label="Whose routes"><button type="button" data-who="me" aria-pressed="${routeWho==="me"}">Mine</button><button type="button" data-who="all" aria-pressed="${routeWho==="all"}">Everyone</button></div></div>
     <p class="muted" style="margin:0">${drives.length} ${drives.length===1?"drive":"drives"} · ${fDist(total).toFixed(0)} ${dLabel()} on the road. Roads you drive often show brighter.</p>
+    ${stylePicker()}
     ${ar.map((a,i)=>`<section class="card"><canvas class="route" data-area="${i}" style="aspect-ratio:4/3"></canvas>
       <div style="padding:6px 14px 10px">${a.drives.sort((x,y)=>y.start-x.start).map(d=>`<button class="effort open-link" data-open="${d.id}" style="display:flex">${avatar(person(d.who),30)}<div style="flex:1;min-width:0"><div style="font-weight:600">${esc(d.title)}</div><div class="muted small">${routeWho==="all"?esc(person(d.who).name)+" · ":""}${ago(d.start)} · ${fDist(d.stats.dist).toFixed(1)} ${dLabel()}</div></div>${d.sample?'<span class="chip example">Example</span>':""}</button>`).join("")}</div>
     </section>`).join("")||`<div class="empty">No routes yet. Tap <b>Drive</b> to record your first one.</div>`}
@@ -958,6 +1088,7 @@ function viewYou(){
     <div class="panel"><h3>Personal bests</h3>${Object.keys(pb).length?`<table class="runs"><tbody>${RUN_DEFS.filter(r=>pb[r.k]).map(r=>`<tr><th scope="row">${r.label}</th><td class="t"><button class="open-link muted small" data-open="${pb[r.k].d.id}" style="text-align:right">${esc(pb[r.k].d.title)}</button></td><td class="v">${fSec(pb[r.k].v.t)}</td></tr>`).join("")}</tbody></table>`:'<p class="muted" style="margin:0">Record a run from a standing start to set your first times.</p>'}</div>
     <div class="panel"><div class="row"><h3>Distance per week</h3><span class="spacer"></span><span class="muted small">${dLabel()}, last 8 weeks</span></div>
       <div class="bars" role="img" aria-label="Distance per week">${weeks.map(w=>`<div class="b"><span class="num">${w.v?w.v.toFixed(0):""}</span><i style="height:${w.v/mx*80}%"></i><span>${w.label}</span></div>`).join("")}</div></div>
+    <div class="panel"><h3>Map style</h3><p class="muted small" style="margin:0">Used behind routes everywhere, including share cards.</p>${stylePicker()}</div>
     <div class="panel"><div class="row"><h3>Units</h3><span class="spacer"></span>
       <div class="unit-toggle" role="group" aria-label="Units"><button id="u-mi" type="button" aria-pressed="${U()==="mi"}">Miles</button><button id="u-km" type="button" aria-pressed="${U()==="km"}">Kilometers</button></div></div></div>
     <div class="panel"><h3>Garage</h3>
@@ -981,11 +1112,14 @@ function viewYou(){
 /* ================= global events ================= */
 document.addEventListener("click",e=>{
   const k=e.target.closest("[data-kudos]");if(k&&!k.disabled){e.preventDefault();const id=k.dataset.kudos;S.kudos[id]=!S.kudos[id];save();const d=S.drives.find(x=>x.id===id);k.setAttribute("aria-pressed",!!S.kudos[id]);k.querySelector("span").textContent=kudosCount(d);if(S.kudos[id])toast("Kudos given");return}
+  const ms=e.target.closest("[data-mapstyle]");if(ms){S.settings.mapStyle=ms.dataset.mapstyle;save();rerender();return}
   const sh=e.target.closest("[data-share]");if(sh){e.preventDefault();openShare(sh.dataset.share);return}
   const o=e.target.closest("[data-open]");if(o){e.preventDefault();openDrive(o.dataset.open)}
 });
 
-window.addEventListener("hashchange",()=>{if(!$("#sheet").hidden){$("#sheet").hidden=true;document.body.style.overflow=""}render();if(pendingOpen){const id=pendingOpen;pendingOpen=null;openDrive(id,true)}});
+document.addEventListener("change",e=>{if(e.target.id==="solid-color"){S.settings.solidColor=e.target.value;save();rerender()}});
+function rerender(){if(SHEET&&!$("#sheet").hidden){if(SHEET.kind==="share")openShare(SHEET.id,SHEET.back);else openDrive(SHEET.id)}else render()}
+window.addEventListener("hashchange",()=>{if(!$("#sheet").hidden){if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET=null;$("#sheet").hidden=true;document.body.style.overflow=""}render();if(pendingOpen){const id=pendingOpen;pendingOpen=null;openDrive(id,true)}});
 let rz,lastW=window.innerWidth;window.addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(()=>{if(window.innerWidth===lastW)return;lastW=window.innerWidth;if($("#sheet").hidden)render()},200)});
 render();
 })();
