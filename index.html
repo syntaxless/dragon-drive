@@ -88,6 +88,15 @@ h3{font-size:18px}
 .photo-edit .photo,.veh-gallery img{cursor:zoom-in}
 .card.post{padding-bottom:0}.post-body{margin:0;padding:4px 14px 10px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:16px}.sheet .post-body{padding:0}
 .compose textarea{margin:0}
+.speed-row{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.speedo{display:flex;align-items:center;gap:22px;justify-content:center}.speedo .v{font-family:var(--display);font-weight:700;font-size:112px;line-height:.9;font-variant-numeric:tabular-nums}.speedo .k{font-family:var(--display);font-size:16px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.limit-us{width:64px;border:3px solid #111;border-radius:8px;background:#fff;color:#111;text-align:center;padding:4px 2px;box-shadow:0 0 0 2px #fff}.limit-us span{display:block;font-family:var(--display);font-weight:700;font-size:11px;line-height:1.05;text-transform:uppercase}.limit-us b{display:block;font-family:var(--display);font-size:34px;line-height:1}
+.limit-eu{width:72px;height:72px;border-radius:50%;border:8px solid #d0021b;background:#fff;color:#111;display:grid;place-items:center}.limit-eu b{font-family:var(--display);font-size:30px}
+.speedo .limit-us{width:84px}.speedo .limit-us b{font-size:46px}.speedo .limit-eu{width:96px;height:96px;border-width:10px}.speedo .limit-eu b{font-size:40px}
+.dm-warn{min-height:28px;font-family:var(--display);font-weight:700;font-size:24px;letter-spacing:.06em;text-transform:uppercase;color:#fff}
+.drive-mode.speeding{animation:speedflash 1s steps(1) infinite}.drive-mode.speeding .speedo .v{color:#fff}.drive-mode.speeding .road,.drive-mode.speeding .k,.drive-mode.speeding .muted,.drive-mode.speeding .v small{color:rgba(255,255,255,.85)}.drive-mode.speeding .gauge .v{color:#fff}.drive-mode.speeding .btn.ghost{color:#fff;border-color:rgba(255,255,255,.6)}.drive-mode.speeding .rec-btn.stop{background:#111}
+@keyframes speedflash{0%{background:#c2410c}50%{background:#7a1f05}}
+.off-route{position:absolute;top:10px;left:10px;background:#111;color:#fff}.off-route:empty{display:none}
 .garage-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
 .garage-grid figure{margin:0;border-radius:12px;overflow:hidden;background:var(--surface-2)}
 .garage-grid img,.garage-grid .ph{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--surface-2)}
@@ -655,8 +664,9 @@ function drawRoute(c,pts,opt={}){
   else{g.strokeStyle=css("--grid");g.lineWidth=1;
     for(let x=0;x<w;x+=24){g.beginPath();g.moveTo(x+.5,0);g.lineTo(x+.5,h);g.stroke()}
     for(let y=0;y<h;y+=24){g.beginPath();g.moveTo(0,y+.5);g.lineTo(w,y+.5);g.stroke()}}
-  const ctx=opt.context||pts;if(!ctx.length)return;
+  const ctx=opt.context||(opt.guide?[...opt.guide,...pts]:pts);if(!ctx.length)return;
   const P=projector(ctx,w,h,18);
+  if(opt.guide&&opt.guide.length>1){strokePath(g,P,opt.guide,css("--surface"),opt.thin?8:11);strokePath(g,P,opt.guide,css("--muted"),opt.thin?5:7)}
   strokePath(g,P,pts,opt.casing||css("--surface"),opt.thin?5:7);
   strokePath(g,P,pts,opt.color||css("--route"),opt.thin?3:4);
   if(opt.hl)strokePath(g,P,pts.slice(opt.hl[0],opt.hl[1]+1),css("--hl"),opt.thin?3.5:5);
@@ -1010,6 +1020,7 @@ function stopMotion(){if(MOT.handler)window.removeEventListener("devicemotion",M
 
 /* ================= recording ================= */
 const REC={on:false,pts:[],watch:null,start:0,wake:null,tick:null,lastStill:null,dismissed:false};
+const AL=()=>({overOn:false,over:U()==="mi"?5:10,aboveOn:false,above:U()==="mi"?80:130,...(S.settings.alerts||{})});
 function viewRecord(){
   const src=S.settings.source;const geoOK="geolocation" in navigator;
   $("#view").innerHTML=`<div class="stack">
@@ -1021,11 +1032,18 @@ function viewRecord(){
          ${hasBLE?"":`<div class="notice">Bluetooth devices need Chrome or Edge on Android, Windows, macOS or ChromeOS. iPhone browsers don't support Web Bluetooth yet, so on iPhone use Phone GPS.</div>`}
          ${src==="dragy"?`<p class="muted small" style="margin:0">Dragy doesn't publish its Bluetooth format. Dragon Drive tries the standard NMEA GPS format; if your Dragy connects but shows no data, let us know.</p>`:""}`}
     </div>
+    ${FOLLOW?`<div class="notice row" style="align-items:center"><div style="flex:1"><b>Following ${esc(FOLLOW.title)}</b><br><span class="small">The route shows in grey under your line while you drive.</span></div><button class="btn ghost" id="fol-x" type="button">Stop following</button></div>`:""}
+    <div class="panel stack" style="gap:8px"><h3 style="margin:0">Speed alerts</h3>
+      <label class="check"><input type="checkbox" id="al-over" ${AL().overOn?"checked":""}> Warn when I'm over the speed limit by <input type="number" id="al-over-v" inputmode="numeric" min="0" max="30" value="${AL().over}" style="width:64px"> ${sLabel()}</label>
+      <label class="check"><input type="checkbox" id="al-above" ${AL().aboveOn?"checked":""}> Warn above <input type="number" id="al-above-v" inputmode="numeric" min="10" max="250" value="${AL().above}" style="width:72px"> ${sLabel()}</label>
+      <label class="check"><input type="checkbox" id="al-lim" ${S.settings.limits!==false?"checked":""}> Show speed limits. They come from OpenStreetMap, which gets your approximate location while you drive. Main roads are well covered, side streets less so.</label>
+      <p class="muted small" style="margin:0">Alerts beep and flash the screen. Turn the ringer on to hear them.</p></div>
     <div class="panel"><div class="row"><div style="flex:1;min-width:200px"><h3 style="margin:0 0 4px">Drove with a GoPro?</h3><p class="muted small" style="margin:0">Import the video and Dragon Drive reads the GoPro's own GPS to log the drive, then lines the video up with it for the overlay. Pick every file from one recording if the GoPro split it.</p></div><button class="btn" id="gp-import" type="button" ${REC.on?"disabled":""}>Import GoPro video</button></div></div>
     <div class="panel"><label class="check"><input type="checkbox" id="film" ${S.settings.film?"checked":""} ${REC.on?"disabled":""}> Film the road while driving. Mount the phone facing forward; the video lines up with your data automatically. Uses about 20 MB per minute.</label>
       ${CAM.stream?`<video id="cam-prev" class="cam-prev" muted playsinline autoplay></video>`:""}</div>
     <div class="rec-panel">
       <div class="gps" id="gps"><span class="dot ${REC.on?"ok":""}"></span><span id="gps-t">${REC.on?"Recording":"Ready when you are"}</span></div>
+      <div class="speed-row"><div class="gauge"><div class="k">Speed</div><div class="v num" id="g-speed">–<small>${sLabel()}</small></div></div><div id="g-limit"></div></div>
       <div class="dash">
         <div class="gauge big"><div class="k">Distance</div><div class="v num" id="g-dist">0.0<small>${dLabel()}</small></div></div>
         <div class="gauge"><div class="k">Time</div><div class="v num" id="g-time">0:00</div></div>
@@ -1044,6 +1062,11 @@ function viewRecord(){
   $("#film").onchange=e=>{S.settings.film=e.target.checked;save()};
   const cp=$("#cam-prev");if(cp){cp.srcObject=CAM.stream;cp.play().catch(()=>{})}
   const c=$("#connect");if(c)c.onclick=()=>connectDevice(src);
+  const AS=()=>{S.settings.alerts=AL();return S.settings.alerts};
+  $("#al-over").onchange=e=>{AS().overOn=e.target.checked;save()};$("#al-over-v").onchange=e=>{AS().over=Math.max(0,Math.min(30,+e.target.value||0));save()};
+  $("#al-above").onchange=e=>{AS().aboveOn=e.target.checked;save()};$("#al-above-v").onchange=e=>{AS().above=Math.max(10,Math.min(250,+e.target.value||80));save()};
+  $("#al-lim").onchange=e=>{S.settings.limits=e.target.checked;if(!e.target.checked)LIMITS.cur=null;save()};
+  const fx=$("#fol-x");if(fx)fx.onclick=()=>{FOLLOW=null;viewRecord()};
   $("#gp-import").onclick=()=>pickVideos(fs=>{const b=$("#gp-import");if(b){b.disabled=true;b.textContent="Reading…"}importGoPro(fs).finally(()=>{const b2=$("#gp-import");if(b2){b2.disabled=false;b2.textContent="Import GoPro video"}})});
   $("#veh").onchange=e=>{S.settings.vehicle=e.target.value;save()};
   bindHold($("#rec-btn"));
@@ -1096,7 +1119,7 @@ async function delDriveVideo(v){for(let i=0;;i++){const k=v.key+":"+i;const b=aw
 function startRec(){
   const src=S.settings.source;
   if(src!=="phone"&&!(DEV.device&&DEV.device.gatt&&DEV.device.gatt.connected)){toast(`Connect your ${SOURCES[src].name} first, or switch to Phone GPS.`);return}
-  REC.on=true;REC.pts=[];REC.start=Date.now();REC.lastStill=null;REC.gaps=[];REC.hiddenAt=null;REC.source=src==="phone"?"Phone GPS":DEV.name||SOURCES[src].name;
+  REC.on=true;REC.pts=[];REC.start=Date.now();REC.lastStill=null;REC.gaps=[];REC.hiddenAt=null;REC.speeding="";LIMITS.cur=null;audioUnlock();REC.source=src==="phone"?"Phone GPS":DEV.name||SOURCES[src].name;
   wakeLock(true);
   if(src==="phone"){
     startMotion();
@@ -1137,10 +1160,17 @@ function updateLive(){
   const alt=n&&pts[n-1][4]!=null?Math.round(fAlt(pts[n-1][4])):null;
   const set=(id,h)=>{const e=document.getElementById(id);if(e)e.innerHTML=h};
   set("g-dist",`${fDist(dist).toFixed(2)}<small>${dLabel()}</small>`);set("g-time",fDur(el));set("g-alt",alt==null?"–":`${alt}<small>${aLabel()}</small>`);
-  const c=$("#live-route");if(c)drawRoute(c,thinLive(pts),{live:true,noEnds:n<2});
+  limitsUpdate();speedCheck();const v=speedNow();
+  set("g-speed",`${v==null?"–":Math.round(fSpeed(v))}<small>${sLabel()}</small>`);set("g-limit",S.settings.limits!==false?limitSign(LIMITS.cur):"");
+  set("dm-speed",v==null?"–":String(Math.round(fSpeed(v))));set("dm-limit",S.settings.limits!==false?limitSign(LIMITS.cur):"");
+  const dmw=$("#drivemode");if(dmw){dmw.classList.toggle("speeding",!!REC.speeding);set("dm-warn",REC.speeding?esc(REC.speeding):"")}
+  const c=$("#live-route");if(c)drawRoute(c,thinLive(pts),{live:true,noEnds:n<2,guide:FOLLOW&&FOLLOW.pts});
+  const fm=$("#dm-map");if(fm&&n){const cur=pts[n-1];const near=windowPts(cur,FOLLOW?FOLLOW.pts:[],900);drawRoute(fm,thinLive(pts).filter(q=>hav(cur,q)<900),{live:true,noEnds:true,guide:FOLLOW&&FOLLOW.pts,context:[...near,cur,[cur[0]+.004,cur[1]],[cur[0]-.004,cur[1]]]});set("dm-off",FOLLOW&&offRoute(cur)?"Off route":"")}
   const moving=REC.on&&n>2&&pts[n-1][3]>4;const dm=$("#drivemode");
   if(moving&&dm.hidden&&!REC.dismissed){dm.hidden=false;dm.innerHTML=`<div class="road">Eyes on the road${CAM.rec?' <span class="rec-dot">● REC</span>':""}</div>
-    <div class="stack" style="align-items:center;text-align:center"><div class="gauge big"><div class="k">Distance</div><div class="v num" id="dm-dist"></div></div><div class="gauge"><div class="k">Time</div><div class="v num" id="dm-time"></div></div></div>
+    <div class="stack" style="align-items:center;text-align:center;gap:10px"><div class="speedo"><div><div class="v num" id="dm-speed">–</div><div class="k">${sLabel()}</div></div><div id="dm-limit"></div></div><div class="dm-warn" id="dm-warn" role="alert"></div>
+      ${FOLLOW?`<div style="position:relative;width:100%"><canvas class="route" id="dm-map" style="border-radius:14px;aspect-ratio:4/3;max-height:34vh"></canvas><span class="chip off-route" id="dm-off"></span></div>`:""}
+      <div class="row" style="gap:28px;justify-content:center"><div class="gauge"><div class="k">Distance</div><div class="v num" id="dm-dist"></div></div><div class="gauge"><div class="k">Time</div><div class="v num" id="dm-time"></div></div></div></div>
     <div class="stack"><button class="rec-btn stop" id="dm-btn" type="button"><span class="fill"></span><span class="lbl">Hold to finish</span></button><button class="btn ghost" id="dm-x" type="button" style="justify-content:center">I'm a passenger, show full screen</button><p class="muted small" style="margin:0;text-align:center">Leave this screen open. GPS pauses if the phone locks or you switch apps.</p></div>`;
     bindHold($("#dm-btn"));$("#dm-x").onclick=()=>{REC.dismissed=true;dm.hidden=true}}
   set("dm-dist",`${fDist(dist).toFixed(1)}<small>${dLabel()}</small>`);set("dm-time",fDur(el));
@@ -1149,7 +1179,7 @@ function updateLive(){
 function thinLive(p){if(p.length<1500)return p;const k=Math.ceil(p.length/1500);return p.filter((_,i)=>i%k===0||i===p.length-1)}
 function stopSensors(){if(REC.watch!=null)navigator.geolocation.clearWatch(REC.watch);REC.watch=null;clearInterval(REC.tick);stopMotion();wakeLock(false)}
 function finishRec(){
-  stopSensors();REC.on=false;REC.dismissed=false;$("#drivemode").hidden=true;
+  stopSensors();REC.on=false;REC.dismissed=false;$("#drivemode").hidden=true;$("#drivemode").classList.remove("speeding");FOLLOW=null;
   const raw=REC.pts;REC.pts=[];
   if(raw.length<5||pathLen(raw)<100){stopCam(true).then(v=>{});if(CAM.key)delDriveVideo({key:CAM.key});toast("That drive was too short to save.");viewRecord();return}
   const h=new Date(raw[0][2]).getHours();
@@ -1159,6 +1189,47 @@ function finishRec(){
   if(CAM.rec||CAM.stream)stopCam().then(v=>{if(v){d.video=v;save();if(SHEET&&SHEET.kind==="drive"&&SHEET.id===d.id)openDrive(d.id,true)}});
   if(location.hash==="#feed"){render();openDrive(d.id,true)}else{pendingOpen=d.id;location.hash="#feed"}
 }
+
+/* ================= speed limits, alerts, follow a route ================= */
+// Speed limits come from OpenStreetMap (maxspeed tags) via the Overpass API, about 1 km² at a time.
+const LIMITS={tiles:new Map(),ways:[],cur:null,curAt:0,on:false};
+const OVERPASS=["https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter"];
+function parseMaxspeed(v){if(!v)return null;v=String(v).trim().toLowerCase().split(";")[0];const m=v.match(/^(\d+(?:\.\d+)?)\s*(mph|km\/h|kmh|kph|knots)?$/);if(!m)return null;const n=+m[1];if(!n)return null;return m[2]==="mph"?n*0.44704:m[2]==="knots"?n*0.514444:n/3.6}
+async function limitTile(lat,lon){const ky=Math.floor(lat*100)+":"+Math.floor(lon*100);if(LIMITS.tiles.has(ky))return;LIMITS.tiles.set(ky,"loading");
+  const s=Math.floor(lat*100)/100-.003,w=Math.floor(lon*100)/100-.003,n=s+.016,e=w+.016;
+  const q=`[out:json][timeout:15];way["highway"]["maxspeed"](${s.toFixed(4)},${w.toFixed(4)},${n.toFixed(4)},${e.toFixed(4)});out tags geom qt;`;
+  for(const url of OVERPASS){try{const r=await fetch(url,{method:"POST",body:"data="+encodeURIComponent(q),headers:{"Content-Type":"application/x-www-form-urlencoded"}});if(!r.ok)continue;const j=await r.json();
+    for(const el of j.elements||[]){if(!el.geometry||el.geometry.length<2)continue;const t=el.tags||{};const ms=parseMaxspeed(t.maxspeed);if(!ms)continue;
+      LIMITS.ways.push({id:el.id,ms,fwd:parseMaxspeed(t["maxspeed:forward"]),bwd:parseMaxspeed(t["maxspeed:backward"]),pts:el.geometry.map(g=>[g.lat,g.lon])})}
+    LIMITS.tiles.set(ky,"ok");return}catch(e){}}
+  LIMITS.tiles.delete(ky)}
+// nearest tagged road within ~30 m, preferring one that runs the way you're heading
+function matchLimit(p,head){const kx=Math.cos(rad(p[0]))*111320,ky=110540;let best=null;
+  for(const w of LIMITS.ways)for(let i=1;i<w.pts.length;i++){const a=w.pts[i-1],b=w.pts[i];
+    if((a[0]-p[0]>.003&&b[0]-p[0]>.003)||(p[0]-a[0]>.003&&p[0]-b[0]>.003)||(a[1]-p[1]>.004&&b[1]-p[1]>.004)||(p[1]-a[1]>.004&&p[1]-b[1]>.004))continue;
+    const ax=(a[1]-p[1])*kx,ay=(a[0]-p[0])*ky,bx=(b[1]-p[1])*kx,by=(b[0]-p[0])*ky;const dx=bx-ax,dy=by-ay,L=dx*dx+dy*dy||1;
+    const t=Math.max(0,Math.min(1,-(ax*dx+ay*dy)/L));const d=Math.hypot(ax+t*dx,ay+t*dy);if(d>30)continue;
+    let pen=0,dir=1;if(head!=null){const sb=Math.atan2(dx,dy)*180/Math.PI;let diff=Math.abs(((head-sb)%360+540)%360-180);dir=diff<90?1:-1;diff=Math.min(diff,180-diff);pen=diff>40?25:diff/4}
+    const score=d+pen;if(!best||score<best.score)best={score,ms:dir>0?(w.fwd||w.ms):(w.bwd||w.ms)}}
+  return best&&best.ms}
+function limitsUpdate(){if(!REC.on||S.settings.limits===false)return;const n=REC.pts.length;if(!n)return;const p=REC.pts[n-1];
+  limitTile(p[0],p[1]);const head=n>1&&hav(REC.pts[n-2],p)>3?bearing(REC.pts[n-2],p):null;const m=matchLimit(p,head);
+  if(m){LIMITS.cur=m;LIMITS.curAt=Date.now()}else if(Date.now()-LIMITS.curAt>15000)LIMITS.cur=null}
+function limitSign(ms){if(!ms)return"";const v=Math.round(fSpeed(ms)/(U()==="mi"?1:1));const val=U()==="mi"?Math.round(v/5)*5:Math.round(v);
+  return U()==="mi"?`<div class="limit-us" aria-label="Speed limit ${val} mph"><span>Speed<br>limit</span><b>${val}</b></div>`:`<div class="limit-eu" aria-label="Speed limit ${val} km/h"><b>${val}</b></div>`}
+// Alerts: over the limit by a margin, and/or above a fixed speed. Beep and flash, at most every 8 s.
+let AUDIO=null;function audioUnlock(){try{AUDIO=AUDIO||new (window.AudioContext||window.webkitAudioContext)();AUDIO.resume()}catch(e){}}
+function beep(){if(!AUDIO)return;try{const t=AUDIO.currentTime;for(const [f,at] of [[880,0],[1175,.18]]){const o=AUDIO.createOscillator(),g=AUDIO.createGain();o.frequency.value=f;o.type="square";g.gain.setValueAtTime(.0001,t+at);g.gain.exponentialRampToValueAtTime(.25,t+at+.02);g.gain.exponentialRampToValueAtTime(.0001,t+at+.15);o.connect(g).connect(AUDIO.destination);o.start(t+at);o.stop(t+at+.16)}}catch(e){}}
+function speedNow(){const n=REC.pts.length;if(!n)return null;const p=REC.pts[n-1];return Date.now()-p[2]<6000?p[3]:null}
+function speedCheck(){const a=S.settings.alerts||{};const v=speedNow();let why="";
+  if(v!=null){const sv=fSpeed(v);if(a.aboveOn&&a.above&&sv>a.above)why=`Over ${a.above} ${sLabel()}`;
+    else if(a.overOn&&LIMITS.cur&&sv>fSpeed(LIMITS.cur)+(+a.over||0))why=`${Math.round(sv-fSpeed(LIMITS.cur))} ${sLabel()} over the limit`}
+  REC.speeding=why;if(why&&Date.now()-(REC.lastBeep||0)>8000){REC.lastBeep=Date.now();beep()}}
+// Follow a route: any drive's line shown under yours while you record.
+let FOLLOW=null;
+function followRoute(d){FOLLOW={id:d.id,title:d.title,pts:d.pts.map(p=>[p[0],p[1],p[2]])};toast(`Following ${d.title}. Start a drive when you're ready.`);location.hash="#record"}
+function offRoute(p){if(!FOLLOW)return false;let m=Infinity;for(const q of FOLLOW.pts){const d=hav(p,q);if(d<m)m=d;if(m<120)return false}return m>=120}
+function windowPts(p,list,r){return list.filter(q=>hav(p,q)<r)}
 
 /* ================= GoPro ================= */
 // GoPro telemetry (GPMF) reader: finds the metadata track in a GoPro MP4 and pulls out GPS.
@@ -1283,6 +1354,7 @@ function openDrive(id,fresh){
       ${mine?`<div class="row" style="margin-top:${d.photo?"8px":"0"}"><button class="btn" id="add-photo" type="button"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>${d.photo?"Change photo":"Add a photo"}</button>${d.photo?`<button class="btn ghost" id="rm-photo" type="button">Remove photo</button>`:""}</div>`:""}</div>
     ${stylePicker()}
     ${BACKDROPS[backdrop()].map?`<div class="map-box" id="d-map"></div>`:`<canvas class="route" id="d-route" style="border-radius:14px"></canvas>`}
+    ${d.pts.length>1&&!REC.on?`<div class="row"><button class="btn" id="d-follow" type="button"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8z"/></svg>Follow this route</button></div>`:""}
     <div class="detail-stats">
       ${statBlock("Distance",fDist(s.dist).toFixed(2),dLabel())}${statBlock("Moving time",fDur(s.moving))}${statBlock("Elapsed",fDur(s.dur))}
       ${statBlock("Avg speed",Math.round(fSpeed(s.avg)),sLabel())}${statBlock("Top speed",Math.round(fSpeed(s.max)),sLabel())}${statBlock("Elev. gain",s.altMin==null?"–":Math.round(fAlt(s.up)),s.altMin==null?"":aLabel())}
@@ -1303,6 +1375,7 @@ function openDrive(id,fresh){
   sh.hidden=false;sh.scrollTop=0;document.body.style.overflow="hidden";
   fillPhotos(sh);
   if($("#d-map"))mountDetailMap($("#d-map"),d.pts);else paintRoute($("#d-route"),d.pts);
+  const dfl=$("#d-follow");if(dfl)dfl.onclick=()=>{closeSheet();followRoute(d)};
   drawSeries($("#d-speed"),d.pts,q=>fSpeed(q[3]),{color:css("--accent")});
   if(hasAlt)drawSeries($("#d-alt"),d.pts,q=>q[4]==null?null:fAlt(q[4]),{color:css("--alt"),zero:false,minSpan:U()==="mi"?40:12});
   if(hasGG)drawGG($("#d-gg"),d.pts);
