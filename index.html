@@ -971,7 +971,6 @@ function exportGpx(d){
 }
 
 /* ================= share card ================= */
-const LOGO_SVG="<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 64 64\"><rect width=\"64\" height=\"64\" rx=\"14\" fill=\"#fff4d6\"/><path d=\"M43 33q5-4 10-3q-2 2 0 3q4 1 9-1q-1 5-6 6q3 2 3 5q-6 0-9-3q-3 1-7-1z\" fill=\"#ff8a1f\" stroke=\"#b8400c\" stroke-width=\"1.6\" stroke-linejoin=\"round\"/><path d=\"M48 34q3-1 6 0q-2 2-6 1z\" fill=\"#ffd23f\"/><path d=\"M9 60q-2-14 2-24q3-10 11-15q8-5 16-2q6 2 8 7q5 1 6 5q1 5-4 6q-3 1-6 0q-1 4-6 6q-5 2-10 1q-3 5-2 16z\" fill=\"#61c24a\" stroke=\"#1e2a1c\" stroke-width=\"2.4\" stroke-linejoin=\"round\"/><path d=\"M12 36l-5-3l4-2l-5-5l6 0l-3-6l7 3\" fill=\"none\" stroke=\"#1e2a1c\" stroke-width=\"2.2\" stroke-linejoin=\"round\" stroke-linecap=\"round\"/><path d=\"M27 19l-3-9l6 6M35 17l2-10l2 9\" fill=\"#61c24a\" stroke=\"#1e2a1c\" stroke-width=\"2\" stroke-linejoin=\"round\" stroke-linecap=\"round\"/><circle cx=\"33\" cy=\"26\" r=\"5\" fill=\"#fff\" stroke=\"#1e2a1c\" stroke-width=\"1.8\"/><circle cx=\"35\" cy=\"25\" r=\"2\" fill=\"#1e2a1c\"/><path d=\"M47 30l2 0\" stroke=\"#1e2a1c\" stroke-width=\"2\" stroke-linecap=\"round\"/><path d=\"M40 37q-4 2-9 1\" fill=\"none\" stroke=\"#1e2a1c\" stroke-width=\"1.8\" stroke-linecap=\"round\"/><path d=\"M33 38l1 3l2-3\" fill=\"#fff\" stroke=\"#1e2a1c\" stroke-width=\"1.2\" stroke-linejoin=\"round\"/></svg>";
 async function buildCard(d){
   try{await document.fonts.load('italic 900 46px "Exo 2"');await document.fonts.load('700 64px "Barlow Condensed"');await document.fonts.load('500 28px "Barlow"')}catch(e){}
   const W=1080,H=1350,c=document.createElement("canvas");c.width=W;c.height=H;const g=c.getContext("2d");
@@ -1000,21 +999,23 @@ async function buildCard(d){
       else{g.strokeStyle="rgba(255,255,255,.05)";g.lineWidth=2;for(let x=0;x<W;x+=60){g.beginPath();g.moveTo(x,0);g.lineTo(x,top);g.stroke()}for(let y=0;y<top;y+=60){g.beginPath();g.moveTo(0,y);g.lineTo(W,y);g.stroke()}}
       routeBox(60,120,W-120,top-160,10)}
   }
-  // brand
-  try{const logo=await loadImage("data:image/svg+xml;charset=utf-8,"+encodeURIComponent(LOGO_SVG));g.drawImage(logo,56,44,72,72)}catch(e){}
-  g.fillStyle=FG;g.font=`italic 900 44px "Exo 2",${DF}`;g.textBaseline="middle";g.fillText("DRAGON DRIVE",142,82);
-  // title block
-  const p=person(d.who);g.textBaseline="alphabetic";
-  g.fillStyle=FG;g.font=`700 72px ${DF}`;fitText(g,d.title,60,top+70,W-120,72,DF);
-  // driver row: avatar circle, name, then date and vehicle
-  const ax=92,ay=top+130,ar=32;const who=d.who==="me"?(S.settings.name||""):p.name;
+  // driver row (top left): avatar circle, name, then date and vehicle
+  const p=person(d.who);const who=d.who==="me"?(S.settings.name||""):p.name;
+  const ax=92,ay=80,ar=34,tx=146,tmax=(photo?W-340-30:W-60)-tx;
   let face=null;if(d.who==="me"&&S.settings.avatar){const u=await photos.url("avatar:me");if(u)try{face=await loadImage(u)}catch(e){}}
+  g.save();g.shadowColor="rgba(0,0,0,.5)";g.shadowBlur=10;g.beginPath();g.arc(ax,ay,ar,0,7);g.fillStyle=BG;g.fill();g.restore();
   g.save();g.beginPath();g.arc(ax,ay,ar,0,7);g.closePath();
-  if(face){g.clip();g.drawImage(face,ax-ar,ay-ar,ar*2,ar*2)}else{g.fillStyle=d.who==="me"?GREEN:p.color;g.fill();g.fillStyle=d.who==="me"?BG:"#fff";g.font=`700 28px ${DF}`;g.textAlign="center";g.textBaseline="middle";g.fillText(d.who==="me"?(who?initials(who):"ME"):initials(p.name),ax,ay+1)}
-  g.restore();g.strokeStyle="rgba(255,255,255,.85)";g.lineWidth=3;g.beginPath();g.arc(ax,ay,ar,0,7);g.stroke();
-  g.textAlign="left";g.textBaseline="alphabetic";const meta=`${new Date(d.start).toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})} · ${d.vehicle}`.slice(0,60);
-  if(who){g.fillStyle=FG;g.font=`600 32px ${BF}`;g.fillText(who.slice(0,40),142,ay-6);g.fillStyle=MUTED;g.font=`500 26px ${BF}`;g.fillText(meta,142,ay+28)}
-  else{g.fillStyle=MUTED;g.font=`500 30px ${BF}`;g.fillText(meta,142,ay+10)}
+  if(face){g.clip();g.drawImage(face,ax-ar,ay-ar,ar*2,ar*2)}else{g.fillStyle=d.who==="me"?GREEN:p.color;g.fill();g.fillStyle=d.who==="me"?BG:"#fff";g.font=`700 30px ${DF}`;g.textAlign="center";g.textBaseline="middle";g.fillText(d.who==="me"?(who?initials(who):"ME"):initials(p.name),ax,ay+1)}
+  g.restore();g.strokeStyle="rgba(255,255,255,.9)";g.lineWidth=3;g.beginPath();g.arc(ax,ay,ar,0,7);g.stroke();
+  const clipTxt=t=>{if(g.measureText(t).width<=tmax)return t;while(t.length>2&&g.measureText(t+"…").width>tmax)t=t.slice(0,-1);return t+"…"};
+  const meta=`${new Date(d.start).toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})} · ${d.vehicle}`;
+  g.save();g.shadowColor="rgba(0,0,0,.6)";g.shadowBlur=8;g.textAlign="left";g.textBaseline="alphabetic";
+  if(who){g.fillStyle=FG;g.font=`600 34px ${BF}`;g.fillText(clipTxt(who),tx,ay-4);g.fillStyle="#d5dfdb";g.font=`500 26px ${BF}`;g.fillText(clipTxt(meta),tx,ay+30)}
+  else{g.fillStyle=FG;g.font=`500 30px ${BF}`;g.fillText(clipTxt(meta),tx,ay+10)}
+  g.restore();
+  // title block
+  g.textBaseline="alphabetic";
+  g.fillStyle=FG;g.font=`700 72px ${DF}`;fitText(g,d.title,60,top+80,W-120,72,DF);
   // metrics
   const s=d.stats;const m=[["Distance",fDist(s.dist).toFixed(fDist(s.dist)<10?2:1),dLabel()],["Top speed",Math.round(fSpeed(s.max)),sLabel()]];
   if(s.altMin!=null&&s.up>3)m.push(["Elev. gain",Math.round(fAlt(s.up)),aLabel()]);
@@ -1023,12 +1024,13 @@ async function buildCard(d){
   if(m.length<6)m.push(["Moving time",fDur(s.moving),""]);
   if(m.length<6)m.push(["Avg speed",Math.round(fSpeed(s.avg)),sLabel()]);
   const colW=(W-120)/3;
-  m.slice(0,6).forEach(([k,v,u],i)=>{const x=60+(i%3)*colW,y=top+215+Math.floor(i/3)*145;
+  m.slice(0,6).forEach(([k,v,u],i)=>{const x=60+(i%3)*colW,y=top+185+Math.floor(i/3)*150;
     g.fillStyle=MUTED;g.font=`600 26px ${DF}`;g.fillText(k.toUpperCase(),x,y);
     g.fillStyle=FG;g.font=`700 76px ${DF}`;g.fillText(String(v),x,y+76);const vw=g.measureText(String(v)).width;
     g.fillStyle=MUTED;g.font=`600 30px ${DF}`;g.fillText(u,x+vw+8,y+76)});
   g.fillStyle=AMBER;g.fillRect(60,H-46,80,6);
-  g.fillStyle=MUTED;g.font=`500 24px ${BF}`;g.textAlign="right";g.fillText(d.source&&d.source!=="Phone GPS"?`Logged with ${d.source}`:"Logged with Dragon Drive",W-60,H-38);g.textAlign="left";
+  {const foot=`Logged with ${d.source||"Phone GPS"} using Dragon Drive | dragondrive.itschefff.com`;let fs=24;g.font=`500 ${fs}px ${BF}`;while(fs>16&&g.measureText(foot).width>W-220){fs--;g.font=`500 ${fs}px ${BF}`}
+  g.fillStyle=MUTED;g.textAlign="right";g.fillText(foot,W-60,H-38);g.textAlign="left"}
   return c;
 }
 function roundRect(g,x,y,w,h,r){g.beginPath();g.moveTo(x+r,y);g.arcTo(x+w,y,x+w,y+h,r);g.arcTo(x+w,y+h,x,y+h,r);g.arcTo(x,y+h,x,y,r);g.arcTo(x,y,x+w,y,r);g.closePath()}
