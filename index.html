@@ -438,7 +438,8 @@ const Sync=(()=>{
     const gone=new Set([...(local.deleted||[]),...(remote.deleted||[])]);const by=new Map();
     for(const d of [...remote.drives,...local.drives.filter(d=>d.who==="me"&&!d.sample)]){if(gone.has(d.id))continue;const o=by.get(d.id);by.set(d.id,o?{...o,...d,photo:o.photo||d.photo}:d)}
     const newer=(remote.settingsAt||0)>(local.settingsAt||0)?remote:local;
-    const vehicles=[...new Set([...(newer.settings.vehicles||[]),...(local.settings.vehicles||[]),...(remote.settings.vehicles||[])])];
+    // the most recently edited garage wins, so removing a vehicle on one device sticks everywhere
+    const vehicles=[...(newer.settings.vehicles&&newer.settings.vehicles.length?newer.settings.vehicles:local.settings.vehicles)];
     return{...local,settingsAt:newer.settingsAt||0,settings:{...local.settings,...newer.settings,vehicles},deleted:[...gone],drives:[...local.drives.filter(d=>d.who!=="me"||d.sample),...by.values()].sort((a,b)=>b.start-a.start)};
   }
   async function run(){
