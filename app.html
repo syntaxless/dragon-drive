@@ -1,13 +1,13 @@
-<title>Roadbook</title>
+<title>RoadTripper</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap">
 <style>
-/* Layout: one-column phone app, sticky header, fixed bottom tab bar; road-sign green accent, amber for routes and highlights */
+/* Layout: one-column phone app, sticky header, fixed bottom tab bar; road-sign green accent, amber for routes, red-orange for highlights */
 :root{
   --bg:#eef1f0; --surface:#ffffff; --surface-2:#e3e8e6; --line:#d2d9d6;
   --fg:#16201c; --muted:#5b6a64; --accent:#0b6e4f; --accent-fg:#ffffff;
-  --route:#d98a00; --route-2:#0b6e4f; --hl:#e04f1a; --good:#1d8a52; --warn:#b7791f; --bad:#c2410c;
+  --route:#d98a00; --hl:#e04f1a; --good:#1d8a52; --warn:#b7791f; --bad:#c2410c; --alt:#5b6fd6;
   --grid:rgba(22,32,28,.07);
   --display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
   --body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
@@ -16,12 +16,12 @@
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#0f1513; --surface:#18201d; --surface-2:#212b27; --line:#2c3833;
   --fg:#e7eeeb; --muted:#94a39d; --accent:#3fbf8a; --accent-fg:#06110c;
-  --route:#f2a93b; --route-2:#3fbf8a; --hl:#ff7a45; --good:#4cc787; --warn:#e3a83f; --bad:#ff8a5c;
+  --route:#f2a93b; --hl:#ff7a45; --good:#4cc787; --warn:#e3a83f; --bad:#ff8a5c; --alt:#8c9cff;
   --grid:rgba(231,238,235,.07); color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0f1513; --surface:#18201d; --surface-2:#212b27; --line:#2c3833;
   --fg:#e7eeeb; --muted:#94a39d; --accent:#3fbf8a; --accent-fg:#06110c;
-  --route:#f2a93b; --route-2:#3fbf8a; --hl:#ff7a45; --good:#4cc787; --warn:#e3a83f; --bad:#ff8a5c;
+  --route:#f2a93b; --hl:#ff7a45; --good:#4cc787; --warn:#e3a83f; --bad:#ff8a5c; --alt:#8c9cff;
   --grid:rgba(231,238,235,.07); color-scheme:dark}
 html,body{height:100%}
 body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45}
@@ -45,20 +45,24 @@ h2{font-size:22px}
 h3{font-size:18px}
 .eyebrow{font-family:var(--display);font-weight:600;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
 .muted{color:var(--muted)}
+.small{font-size:13px}
 .stack{display:flex;flex-direction:column;gap:12px}
 .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .spacer{flex:1}
 .num{font-family:var(--display);font-variant-numeric:tabular-nums}
-.btn{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 14px;font-weight:600}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 14px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
 .btn.ghost{background:transparent}
 .btn.danger{color:var(--bad);border-color:currentColor;background:transparent}
 .btn:disabled{opacity:.5;cursor:not-allowed}
-.chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:600;background:var(--surface-2);color:var(--muted)}
+.chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:600;background:var(--surface-2);color:var(--muted);white-space:nowrap}
 .chip.example{border:1px dashed var(--muted);background:transparent}
-.chip.good{color:var(--good)} .chip.warn{color:var(--warn)} .chip.bad{color:var(--bad)}
+.chip.run{color:var(--hl)}
+.chip.closed{color:var(--accent)}
 input[type=text],select,textarea{width:100%;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 12px}
 label.field{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+label.check{display:flex;gap:8px;align-items:flex-start;font-size:14px}
+label.check input{margin-top:3px;accent-color:var(--accent)}
 
 /* feed */
 .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}
@@ -66,11 +70,17 @@ label.field{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(
 .avatar{width:38px;height:38px;border-radius:50%;flex:none;display:grid;place-items:center;font-family:var(--display);font-weight:700;color:#fff;font-size:16px}
 .card-title{padding:0 14px 8px;min-width:0}
 .card-title h3{font-size:20px;overflow-wrap:anywhere}
-.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:4px 14px 12px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:4px 14px 10px}
+.stat{min-width:0}
 .stat .k{font-size:12px;color:var(--muted);letter-spacing:.04em}
 .stat .v{font-family:var(--display);font-weight:600;font-size:22px;font-variant-numeric:tabular-nums;line-height:1.1}
 .stat .v small{font-size:13px;color:var(--muted);font-weight:500;margin-left:2px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;padding:0 14px 12px}
+.media{display:grid;grid-template-columns:1fr;gap:2px;background:var(--line)}
+.media.two{grid-template-columns:1fr 1fr}
+.media.two canvas.route,.media.two .photo{aspect-ratio:1/1}
 canvas.route{display:block;width:100%;aspect-ratio:16/9;max-width:100%;background:var(--surface-2)}
+.photo{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;background:var(--surface-2);max-width:100%}
 .card-foot{display:flex;gap:8px;padding:8px 10px;border-top:1px solid var(--line);align-items:center}
 .kudos{display:inline-flex;align-items:center;gap:6px;border:0;background:transparent;padding:6px 8px;border-radius:8px;font-weight:600;color:var(--muted)}
 .kudos[aria-pressed="true"]{color:var(--route)}
@@ -88,11 +98,19 @@ canvas.route{display:block;width:100%;aspect-ratio:16/9;max-width:100%;backgroun
 .rec-btn{width:100%;border:0;border-radius:16px;padding:22px;font-family:var(--display);font-weight:700;font-size:28px;letter-spacing:.06em;text-transform:uppercase;background:var(--accent);color:var(--accent-fg);position:relative;overflow:hidden;touch-action:manipulation;user-select:none;-webkit-user-select:none}
 .rec-btn.stop{background:var(--bad);color:#fff}
 .rec-btn .fill{position:absolute;inset:0;background:rgba(0,0,0,.22);transform-origin:left;transform:scaleX(0)}
+.rec-btn .lbl{position:relative}
 .gps{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
-.dot{width:10px;height:10px;border-radius:50%;background:var(--muted)}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--muted);flex:none}
 .dot.ok{background:var(--good)} .dot.wait{background:var(--warn)} .dot.off{background:var(--bad)}
 .notice{border:1px solid var(--line);background:var(--surface-2);border-radius:12px;padding:12px 14px;font-size:14px}
 .notice strong{font-family:var(--display);letter-spacing:.04em;text-transform:uppercase;font-size:14px}
+.sources{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.src{border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:10px 12px;text-align:left;display:flex;flex-direction:column;gap:2px}
+.src b{font-family:var(--display);font-size:17px;letter-spacing:.02em}
+.src span{font-size:12px;color:var(--muted)}
+.src[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.src:disabled{opacity:.5}
+.dev{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;flex-wrap:wrap}
 .drive-mode{position:fixed;inset:0;z-index:30;background:var(--bg);display:flex;flex-direction:column;justify-content:space-between;padding:calc(24px + env(safe-area-inset-top,0px)) max(20px,env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) max(20px,env(safe-area-inset-left,0px))}
 .drive-mode .road{font-family:var(--display);font-weight:700;font-size:26px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:center}
 
@@ -112,7 +130,13 @@ nav.tabs a.rec-tab[aria-current="page"] span.ring{box-shadow:0 0 0 3px var(--sur
 .sheet .body{padding-block:16px 40px}
 .detail-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px 8px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px}
 canvas.chart{display:block;width:100%;height:160px;max-width:100%}
+canvas.gg{display:block;width:100%;max-width:280px;aspect-ratio:1/1;margin:0 auto}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.runs{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.runs td,.runs th{padding:8px 4px;border-top:1px solid var(--line);text-align:left}
+.runs th{font-weight:500;color:var(--muted);font-size:13px}
+.runs td.v{font-family:var(--display);font-weight:700;font-size:22px;text-align:right}
+.runs td.t{color:var(--muted);text-align:right;font-size:13px;width:6.5em}
 .effort{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
 .effort:first-of-type{border-top:0}
 .rank{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;font-family:var(--display);font-weight:700;background:var(--surface-2);flex:none}
@@ -121,23 +145,25 @@ canvas.chart{display:block;width:100%;height:160px;max-width:100%}
 .comment .avatar{width:30px;height:30px;font-size:13px}
 .comment p{margin:0;overflow-wrap:anywhere}
 input[type=range]{width:100%;accent-color:var(--hl)}
-.seg-card{display:flex;flex-direction:column;gap:10px}
 .seg-card canvas.route{aspect-ratio:21/9}
 .bars{display:flex;align-items:flex-end;gap:6px;height:120px}
 .bars .b{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;height:100%}
 .bars .b i{display:block;width:100%;background:var(--accent);border-radius:4px 4px 0 0;min-height:2px}
 .bars .b span{font-size:11px;color:var(--muted)}
-.totals{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.share-preview{display:block;width:100%;max-width:420px;margin:0 auto;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.18)}
+.photo-edit{position:relative}
+.photo-edit .photo{border-radius:14px;aspect-ratio:4/3}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tab-h) + 16px + env(safe-area-inset-bottom,0px));z-index:40;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:600;max-width:calc(100% - 32px)}
 .empty{text-align:center;padding:30px 10px;color:var(--muted)}
-@media (max-width:380px){.gauge.big .v{font-size:64px}.gauge .v{font-size:36px}}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+@media (max-width:380px){.gauge.big .v{font-size:64px}.gauge .v{font-size:36px}.stat .v{font-size:19px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 
 <header class="top"><div class="wrap">
   <div class="brand">
     <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="1" y="1" width="26" height="26" rx="6" fill="var(--accent)"/><path d="M11 23 L13 5 M17 23 L15 5" stroke="var(--accent-fg)" stroke-width="2.4" stroke-linecap="round" fill="none"/><path d="M14 9v2M14 14v2M14 19v2" stroke="var(--accent-fg)" stroke-width="1.6" stroke-linecap="round"/></svg>
-    Roadbook
+    RoadTripper
   </div>
   <div class="unit-toggle" role="group" aria-label="Units">
     <button id="u-mi" type="button" aria-pressed="true">mi</button>
@@ -157,194 +183,295 @@ input[type=range]{width:100%;accent-color:var(--hl)}
 <div id="sheet" class="sheet" hidden></div>
 <div id="drivemode" class="drive-mode" hidden></div>
 <div id="toast" class="toast" hidden role="status"></div>
+<input type="file" id="photo-in" accept="image/*" class="sr" tabindex="-1" aria-hidden="true">
 
 <script>
 (function(){
 "use strict";
-/* ---------- storage ---------- */
-const KEY="roadbook.v1";
+/* ================= storage ================= */
+const KEY="roadtripper.v2";
 let mem=null;
 function load(){try{const s=localStorage.getItem(KEY);if(s)return JSON.parse(s)}catch(e){}return mem}
-function save(){mem=S;try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function save(){mem=S;try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast("This device is out of storage space. Delete a few old drives.")}}
+// Photos are large, so they live in IndexedDB (with an in-memory fallback).
+const photos=(()=>{
+  let dbp=null;const cache=new Map(),urls=new Map();
+  function open(){if(!dbp)dbp=new Promise((res,rej)=>{try{const r=indexedDB.open("roadtripper",1);r.onupgradeneeded=()=>r.result.createObjectStore("photos");r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}catch(e){rej(e)}});return dbp}
+  async function tx(mode,fn){const db=await open();return new Promise((res,rej)=>{const t=db.transaction("photos",mode);const r=fn(t.objectStore("photos"));t.oncomplete=()=>res(r&&r.result);t.onerror=()=>rej(t.error)})}
+  return{
+    async put(id,blob){cache.set(id,blob);urls.delete(id);try{await tx("readwrite",s=>s.put(blob,id))}catch(e){}},
+    async get(id){if(cache.has(id))return cache.get(id);try{const b=await tx("readonly",s=>s.get(id));if(b)cache.set(id,b);return b||null}catch(e){return null}},
+    async url(id){if(urls.has(id))return urls.get(id);const b=await this.get(id);if(!b)return null;const u=URL.createObjectURL(b);urls.set(id,u);return u},
+    async del(id){cache.delete(id);urls.delete(id);try{await tx("readwrite",s=>s.delete(id))}catch(e){}}
+  };
+})();
 
-/* ---------- geo math ---------- */
-const R=6371000,rad=d=>d*Math.PI/180;
+/* ================= geo + physics ================= */
+const R=6371000,rad=d=>d*Math.PI/180,G=9.80665;
+const MPH=0.44704,FT=0.3048;
 function hav(a,b){const dLat=rad(b[0]-a[0]),dLon=rad(b[1]-a[1]);const x=Math.sin(dLat/2)**2+Math.cos(rad(a[0]))*Math.cos(rad(b[0]))*Math.sin(dLon/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
-function move(p,bearing,dist){const la=rad(p[0]),lo=rad(p[1]),br=rad(bearing),d=dist/R;const la2=Math.asin(Math.sin(la)*Math.cos(d)+Math.cos(la)*Math.sin(d)*Math.cos(br));const lo2=lo+Math.atan2(Math.sin(br)*Math.sin(d)*Math.cos(la),Math.cos(d)-Math.sin(la)*Math.sin(la2));return[la2*180/Math.PI,lo2*180/Math.PI]}
+function bearing(a,b){const y=Math.sin(rad(b[1]-a[1]))*Math.cos(rad(b[0]));const x=Math.cos(rad(a[0]))*Math.sin(rad(b[0]))-Math.sin(rad(a[0]))*Math.cos(rad(b[0]))*Math.cos(rad(b[1]-a[1]));return Math.atan2(y,x)*180/Math.PI}
+function move(p,brg,dist){const la=rad(p[0]),lo=rad(p[1]),br=rad(brg),d=dist/R;const la2=Math.asin(Math.sin(la)*Math.cos(d)+Math.cos(la)*Math.sin(d)*Math.cos(br));const lo2=lo+Math.atan2(Math.sin(br)*Math.sin(d)*Math.cos(la),Math.cos(d)-Math.sin(la)*Math.sin(la2));return[la2*180/Math.PI,lo2*180/Math.PI]}
+function pathLen(p){let d=0;for(let i=1;i<p.length;i++)d+=hav(p[i-1],p[i]);return d}
 
-/* Point: [lat, lon, tMs, speed m/s] */
-function analyze(pts){
-  // Speeds are smoothed over 3 GPS fixes so single noisy readings don't count as events.
-  let dist=0,moving=0,max=0,brakes=0,accels=0,jerk=0,n=0,inB=false,inA=false;
-  const sp=pts.map((p,i)=>{const a=pts[Math.max(0,i-1)],b=pts[Math.min(pts.length-1,i+1)];return (a[3]+p[3]+b[3])/3});
-  for(let i=1;i<pts.length;i++){
-    const d=hav(pts[i-1],pts[i]),dt=(pts[i][2]-pts[i-1][2])/1000;
-    dist+=d; if(dt>0&&d/dt>1)moving+=dt;
-    max=Math.max(max,sp[i]);
-    if(dt>0){const acc=(sp[i]-sp[i-1])/dt;
-      // a hard brake (about 0.25 g) or hard launch counts once per burst
-      if(acc<-2.5){if(!inB)brakes++;inB=true}else inB=false;
-      if(acc>2){if(!inA)accels++;inA=true}else inA=false;
-      jerk+=Math.abs(acc);n++}
+/* A point is [lat, lon, tMs, speed m/s, altitude m|null, gLong|null, gLat|null, gTotal|null].
+   g values come from the device (RaceBox accelerometer, phone motion sensors) when present. */
+const RUN_DEFS=[
+  {k:"z60",label:"0–60 mph",kind:"speed",to:60*MPH},
+  {k:"s60_130",label:"60–130 mph",kind:"roll",from:60*MPH,to:130*MPH},
+  {k:"ft60",label:"60 ft",kind:"dist",d:60*FT},
+  {k:"eighth",label:"⅛ mile",kind:"dist",d:660*FT,trap:true},
+  {k:"quarter",label:"¼ mile",kind:"dist",d:1320*FT,trap:true}];
+function timedRuns(pts){
+  const out={};const n=pts.length;if(n<3)return out;
+  const best=(k,v)=>{if(!out[k]||v.t<out[k].t)out[k]=v};
+  const lerp=(a,b,f)=>a+(b-a)*f;
+  // cumulative distance from integrated speed (more accurate than positions over short runs)
+  const cd=[0];for(let i=1;i<n;i++)cd.push(cd[i-1]+(pts[i-1][3]+pts[i][3])/2*Math.max(0,(pts[i][2]-pts[i-1][2])/1000));
+  const STILL=0.5;
+  for(let i=1;i<n;i++){
+    const v0=pts[i-1][3],v1=pts[i][3];
+    // standing launch: speed rises through 0.5 m/s after being below it
+    if(v0<=STILL&&v1>STILL){
+      const f=(STILL-v0)/((v1-v0)||1);const t0=lerp(pts[i-1][2],pts[i][2],f);const d0=lerp(cd[i-1],cd[i],f);
+      const need={z60:1,ft60:1,eighth:1,quarter:1};
+      for(let j=i;j<n;j++){
+        const a=pts[j-1],b=pts[j];if(b[3]<=STILL)break;
+        if(need.z60&&a[3]<60*MPH&&b[3]>=60*MPH){const g=(60*MPH-a[3])/(b[3]-a[3]);best("z60",{t:(lerp(a[2],b[2],g)-t0)/1000});need.z60=0}
+        for(const r of RUN_DEFS){if(r.kind!=="dist"||!need[r.k])continue;
+          if(cd[j-1]-d0<r.d&&cd[j]-d0>=r.d){const g=(r.d-(cd[j-1]-d0))/((cd[j]-cd[j-1])||1);best(r.k,{t:(lerp(a[2],b[2],g)-t0)/1000,trap:lerp(a[3],b[3],g)});need[r.k]=0}}
+        if(!need.z60&&!need.ft60&&!need.eighth&&!need.quarter)break;
+      }
+    }
+    // rolling pull: speed rises through 60 mph and reaches 130 mph without dropping back
+    if(v0<60*MPH&&v1>=60*MPH){
+      const f=(60*MPH-v0)/(v1-v0);const t0=lerp(pts[i-1][2],pts[i][2],f);
+      for(let j=i+1;j<n;j++){const a=pts[j-1],b=pts[j];if(b[3]<60*MPH)break;
+        if(a[3]<130*MPH&&b[3]>=130*MPH){const g=(130*MPH-a[3])/(b[3]-a[3]);best("s60_130",{t:(lerp(a[2],b[2],g)-t0)/1000});break}}
+    }
   }
-  const dur=pts.length>1?(pts[pts.length-1][2]-pts[0][2])/1000:0;
-  const perKm=Math.max(dist/1000,1);
-  const smooth=Math.round(Math.max(0,Math.min(100,100-(n?jerk/n:0)*120-(brakes*3+accels*2)/perKm*6)));
-  return {dist,dur,moving,avg:moving?dist/moving:0,max,brakes,accels,smooth};
+  return out;
 }
+function analyze(pts,full){
+  let dist=0,moving=0,max=0,up=0,down=0,altMin=Infinity,altMax=-Infinity,lastAlt=null;
+  let gAcc=0,gBrk=0,gLat=0,gTot=0,sensor=false;
+  const n=pts.length;
+  // 3-point smoothed speed for GPS-derived g when the device gives none
+  const sp=pts.map((p,i)=>(pts[Math.max(0,i-1)][3]+p[3]+pts[Math.min(n-1,i+1)][3])/3);
+  for(let i=0;i<n;i++){
+    const p=pts[i];
+    if(p[4]!=null){altMin=Math.min(altMin,p[4]);altMax=Math.max(altMax,p[4]);
+      // count climbs only past 2 m so GPS altitude jitter doesn't add up
+      if(lastAlt==null)lastAlt=p[4];else if(p[4]-lastAlt>2){up+=p[4]-lastAlt;lastAlt=p[4]}else if(lastAlt-p[4]>2){down+=lastAlt-p[4];lastAlt=p[4]}}
+    max=Math.max(max,p[3]);
+    if(p[5]!=null||p[7]!=null){sensor=true;
+      if(p[5]!=null){gAcc=Math.max(gAcc,p[5]);gBrk=Math.max(gBrk,-p[5])}
+      if(p[6]!=null)gLat=Math.max(gLat,Math.abs(p[6]));
+      gTot=Math.max(gTot,p[7]!=null?p[7]:Math.hypot(p[5]||0,p[6]||0));}
+    if(i===0)continue;
+    const a=pts[i-1],d=hav(a,p),dt=(p[2]-a[2])/1000;
+    dist+=d;if(dt>0&&d/dt>1)moving+=dt;
+    if(!sensor&&dt>0&&dt<5){
+      const lo=(sp[i]-sp[i-1])/dt/G;
+      let la=0;if(i>1&&p[3]>5){const h1=bearing(pts[i-2],a),h2=bearing(a,p);let dh=h2-h1;dh=((dh+540)%360)-180;la=Math.abs(rad(dh)/dt*p[3])/G}
+      if(Math.abs(lo)<1.6){gAcc=Math.max(gAcc,lo);gBrk=Math.max(gBrk,-lo)}
+      if(la<1.3)gLat=Math.max(gLat,la);
+    }
+  }
+  if(!sensor)gTot=Math.max(gAcc,gBrk,gLat);
+  const dur=n>1?(pts[n-1][2]-pts[0][2])/1000:0;
+  const hz=dur>0?Math.round((n-1)/dur*10)/10:0;
+  return {dist,dur,moving,avg:moving?dist/moving:0,max,up,down,altMin:isFinite(altMin)?altMin:null,altMax:isFinite(altMax)?altMax:null,
+    gAcc,gBrk,gLat,gTot,gSensor:sensor,hz,runs:full===false?{}:timedRuns(pts)};
+}
+// Keep full-rate data for the stats, but store a lighter copy for maps and charts.
+function thin(pts){
+  if(pts.length<3)return pts.map(compact);
+  const out=[pts[0]];
+  for(let i=1;i<pts.length-1;i++){const l=out[out.length-1],p=pts[i];
+    if(hav(l,p)>=8||p[2]-l[2]>=3000||(l[3]<=0.5)!==(p[3]<=0.5))out.push(p)}
+  out.push(pts[pts.length-1]);return out.map(compact);
+}
+function compact(p){return[+p[0].toFixed(6),+p[1].toFixed(6),Math.round(p[2]),+p[3].toFixed(2),p[4]==null?null:+p[4].toFixed(1),p[5]==null?null:+p[5].toFixed(2),p[6]==null?null:+p[6].toFixed(2),p[7]==null?null:+p[7].toFixed(2)]}
 
-/* ---------- formatting ---------- */
+/* ================= formatting ================= */
 const U=()=>S.settings.units;
 const fDist=m=>U()==="mi"?(m/1609.344):(m/1000);
 const dLabel=()=>U();
 const sLabel=()=>U()==="mi"?"mph":"km/h";
 const fSpeed=ms=>U()==="mi"?ms*2.23694:ms*3.6;
+const fAlt=m=>U()==="mi"?m/FT:m;
+const aLabel=()=>U()==="mi"?"ft":"m";
 function fDur(s){s=Math.round(s);const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return h?`${h}:${String(m).padStart(2,"0")}:${String(x).padStart(2,"0")}`:`${m}:${String(x).padStart(2,"0")}`}
+const fSec=s=>s.toFixed(s<10?2:2)+" s";
+const fG=g=>g.toFixed(2);
 function ago(t){const s=(Date.now()-t)/1000;if(s<60)return"just now";if(s<3600)return Math.floor(s/60)+" min ago";if(s<86400)return Math.floor(s/3600)+" h ago";const d=Math.floor(s/86400);if(d<7)return d+(d===1?" day ago":" days ago");return new Date(t).toLocaleDateString(undefined,{month:"short",day:"numeric"})}
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
-function smoothChip(v){const c=v>=80?"good":v>=60?"warn":"bad";return `<span class="chip ${c}">Smoothness ${v}</span>`}
 const uid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
+function headlineRun(st){for(const k of ["quarter","z60","s60_130","eighth","ft60"])if(st.runs&&st.runs[k])return{k,label:RUN_DEFS.find(r=>r.k===k).label,v:st.runs[k]};return null}
 
-/* ---------- sample world (clearly marked examples) ---------- */
+/* ================= example world ================= */
 function rng(seed){return()=>{seed=(seed*1664525+1013904223)%4294967296;return seed/4294967296}}
 function buildRoad(){
-  const r=rng(42);let p=[37.8199,-122.4783],b=200,turn=0;const out=[p];
-  for(let i=0;i<520;i++){turn+= (r()-.5)*6;turn*=.86;b+=turn;if(i===180)b+=70;if(i===340)b-=90;p=move(p,b,28);out.push(p)}
+  const r=rng(42);let p=[37.8199,-122.4783],b=200,turn=0;const out=[];
+  for(let i=0;i<=520;i++){out.push([p[0],p[1],40+55*Math.sin(i/85)+18*Math.sin(i/23)]);turn+=(r()-.5)*6;turn*=.86;b+=turn;if(i>=180&&i<190)b+=7;if(i>=340&&i<350)b-=9;p=move(p,b,28)}
   return out;
 }
-let ROAD=null;
-function driveFrom(road,from,to,seed,start,style){
-  const r=rng(seed);const pts=[];let v=8,t=start;
+const ROAD=buildRoad();
+function driveFrom(from,to,seed,start,style){
+  const r=rng(seed);const pts=[];let v=3,t=start;
   for(let i=from;i<=to;i++){
     const target=style.base+Math.sin(i/23)*style.wave+(r()-.5)*style.noise;
-    v+= (target-v)*style.resp;
-    if(r()<style.brakeP)v*=0.55;
-    v=Math.max(2,v);
-    if(i>from)t+=hav(road[i-1],road[i])/v*1000;
+    v+=(target-v)*style.resp;if(r()<style.brakeP)v*=0.6;v=Math.max(2,v);
+    if(i>from)t+=hav(ROAD[i-1],ROAD[i])/v*1000;
     const j=(r()-.5)*0.00004;
-    pts.push([road[i][0]+j,road[i][1]+j,Math.round(t),v]);
+    pts.push([ROAD[i][0]+j,ROAD[i][1]+j,Math.round(t),v,ROAD[i][2]+(r()-.5)*3,null,null,null]);
+  }
+  return pts;
+}
+// A straight-line run at 10 Hz, like a RaceBox or Dragy logs at a drag strip or closed course.
+const STRIP=[36.5865,-121.7550],STRIP_BRG=118;
+function dragRun(seed,start,{a0,vtop,roll=0,target,hold=3}){
+  const r=rng(seed);const pts=[];let p=STRIP.slice(),v=roll,t=start,d=0,phase=roll?"roll":"stage",clock=0;const dt=0.1;
+  for(let k=0;k<1200;k++){
+    let a=0;
+    if(phase==="stage"){a=0;if(clock>=hold)phase="go"}
+    else if(phase==="roll"){a=0;if(clock>=hold)phase="go"}
+    else if(phase==="go"){a=Math.min(a0,a0*1.15*(1-(v/vtop)**2));if((target.v&&v>=target.v)||(target.d&&d>=target.d+60))phase="brake"}
+    else if(phase==="brake"){a=-7.5;if(v<=0){v=0;break}}
+    const gl=(r()-.5)*0.04;
+    pts.push([p[0],p[1],Math.round(t),Math.max(0,v+(r()-.5)*0.05),12+(r()-.5)*0.4,+(a/G+(r()-.5)*0.02).toFixed(3),+gl.toFixed(3),null]);
+    v=Math.max(0,v+a*dt);const step=v*dt;d+=step;p=move(p,STRIP_BRG,step);t+=dt*1000;clock+=dt;
   }
   return pts;
 }
 function seed(){
-  ROAD=buildRoad();
   const now=Date.now(),H=3600e3,D=24*H;
   const people=[
-    {id:"p1",name:"Priya R.",color:"#7c4dcc"},
-    {id:"p2",name:"Marcus O.",color:"#c2410c"},
-    {id:"p3",name:"Lena V.",color:"#0e7490"},
-    {id:"p4",name:"Sam K.",color:"#4d7c0f"}];
-  const calm={base:15,wave:3,noise:2,resp:.2,brakeP:.004};
-  const jumpy={base:17,wave:5,noise:7,resp:.5,brakeP:.03};
-  const mid={base:16,wave:4,noise:4,resp:.3,brakeP:.012};
+    {id:"p1",name:"Priya R.",color:"#7c4dcc"},{id:"p2",name:"Marcus O.",color:"#c2410c"},
+    {id:"p3",name:"Lena V.",color:"#0e7490"},{id:"p4",name:"Sam K.",color:"#4d7c0f"}];
+  const calm={base:16,wave:3,noise:2,resp:.2,brakeP:.004},lively={base:19,wave:6,noise:6,resp:.45,brakeP:.02},mid={base:17,wave:4,noise:4,resp:.3,brakeP:.01};
+  const mk=(who,title,vehicle,source,start,raw)=>({id:uid(),who,title,vehicle,source,start,pts:thin(raw),stats:analyze(raw),sample:true});
   const drives=[
-    {who:"p1",title:"Sunday coast loop",vehicle:"2019 Mazda MX-5",from:0,to:420,style:calm,t:now-5*H,sd:7},
-    {who:"p2",title:"Late commute home",vehicle:"2016 Subaru WRX",from:60,to:360,style:jumpy,t:now-20*H,sd:8},
-    {who:"p3",title:"Morning run to the farm stand",vehicle:"2022 Ioniq 5",from:120,to:500,style:calm,t:now-1.6*D,sd:9},
-    {who:"p4",title:"Quick errand",vehicle:"2011 Honda Fit",from:200,to:330,style:mid,t:now-2.4*D,sd:10},
-    {who:"me",title:"Evening drive",vehicle:"My car",from:30,to:300,style:mid,t:now-3.2*D,sd:11},
-    {who:"p1",title:"Cliffside detour",vehicle:"2019 Mazda MX-5",from:150,to:480,style:calm,t:now-4.5*D,sd:12},
-    {who:"me",title:"Weekend fuel-saver attempt",vehicle:"My car",from:100,to:440,style:calm,t:now-9*D,sd:13},
-    {who:"p2",title:"Track day warm-up (on the way)",vehicle:"2016 Subaru WRX",from:0,to:260,style:jumpy,t:now-12*D,sd:14},
-  ].map(d=>{const pts=driveFrom(ROAD,d.from,d.to,d.sd,d.t,d.style);return{id:uid(),who:d.who,title:d.title,vehicle:d.vehicle,start:d.t,pts,sample:true,stats:analyze(pts)}});
-  const seg=(name,a,b)=>({id:uid(),name,start:ROAD[a],end:ROAD[b],dist:pathLen(ROAD.slice(a,b+1)),sample:true});
-  return {
-    v:1,people,drives,
-    segments:[seg("Headland bends",130,230),seg("Long straight to the bridge",250,330),seg("Lighthouse climb",380,470)],
+    mk("p2","Friday test & tune","2016 Subaru WRX","RaceBox Mini",now-3*H,dragRun(3,now-3*H,{a0:5.2,vtop:52,target:{d:1320*FT}})),
+    mk("p1","Sunday coast loop","2019 Mazda MX-5","Phone GPS",now-6*H,driveFrom(0,420,7,now-6*H,calm)),
+    mk("p3","Airstrip roll race, 60 to 130","2022 BMW M3 Competition","Dragy",now-26*H,dragRun(5,now-26*H,{a0:7.5,vtop:62,roll:24,hold:4,target:{v:130*MPH+0.5}})),
+    mk("p4","Quick errand","2011 Honda Fit","Phone GPS",now-1.6*D,driveFrom(200,330,10,now-1.6*D,mid)),
+    mk("me","Evening drive","My car","Phone GPS",now-2.2*D,driveFrom(30,300,11,now-2.2*D,mid)),
+    mk("p3","Strip night, best pass","2022 BMW M3 Competition","Dragy",now-3.4*D,dragRun(8,now-3.4*D,{a0:7.5,vtop:62,target:{d:1320*FT}})),
+    mk("p1","Cliffside detour","2019 Mazda MX-5","Phone GPS",now-4.5*D,driveFrom(150,480,12,now-4.5*D,lively)),
+    mk("me","Strip night with the crew","My car","RaceBox Mini",now-3.4*D-H,dragRun(9,now-3.4*D-H,{a0:4.2,vtop:48,target:{d:1320*FT}})),
+    mk("me","Weekend coast run","My car","Phone GPS",now-9*D,driveFrom(100,440,13,now-9*D,calm)),
+  ];
+  const seg=(name,a,b,closed)=>({id:uid(),name,start:[ROAD[a][0],ROAD[a][1]],end:[ROAD[b][0],ROAD[b][1]],dist:pathLen(ROAD.slice(a,b+1)),closed,sample:true});
+  const stripEnd=move(STRIP,STRIP_BRG,1320*FT);
+  const S0={v:2,people,drives,
+    segments:[{id:uid(),name:"Example raceway, quarter-mile strip",start:STRIP.slice(),end:stripEnd,dist:1320*FT,closed:true,sample:true},
+      seg("Headland bends",130,230,false),seg("Lighthouse climb",380,470,false)],
     kudos:{},kudosFrom:{},comments:{},
-    settings:{units:(navigator.language||"en-US").match(/^en-(US|GB|LR|MM)/)?"mi":"km",vehicle:"My car",vehicles:["My car"]}
-  };
+    settings:{units:(navigator.language||"en-US").match(/^en-(US|GB|LR|MM)/)?"mi":"km",vehicle:"My car",vehicles:["My car"],source:"phone",motion:true}};
+  S0.drives.forEach((d,i)=>{S0.kudosFrom[d.id]=["p1","p2","p3","p4"].filter((p,j)=>p!==d.who&&(i+j)%2===0)});
+  S0.comments[S0.drives[0].id]=[{who:"p3",text:"Clean launch. What tires are you on?",t:now-2*H}];
+  S0.comments[S0.drives[2].id]=[{who:"p2",text:"That 60–130 is unreal.",t:now-20*H}];
+  return S0;
 }
-function pathLen(p){let d=0;for(let i=1;i<p.length;i++)d+=hav(p[i-1],p[i]);return d}
 
 let S=load();
-if(!S||S.v!==1){S=seed();
-  // pre-seed some kudos and comments on examples
-  S.drives.forEach((d,i)=>{S.kudosFrom[d.id]=["p1","p2","p3","p4"].filter((p,j)=>p!==d.who&&(i+j)%2===0)});
-  const mine=S.drives.find(d=>d.who==="me");
-  if(mine)S.comments[mine.id]=[{who:"p3",text:"That smoothness score is creeping up. Nice.",t:Date.now()-3*86400e3}];
-  S.comments[S.drives[1].id]=[{who:"p1",text:"Easy on the brakes, Marcus.",t:Date.now()-18*3600e3}];
-  save();
-}
+if(!S||S.v!==2){S=seed();save()}
 const person=id=>id==="me"?{id:"me",name:"You",color:"var(--accent)"}:(S.people.find(p=>p.id===id)||{name:"Driver",color:"#666"});
 const initials=n=>n==="You"?"ME":n.split(/\s+/).map(x=>x[0]).join("").slice(0,2).toUpperCase();
 
-/* ---------- segment matching ---------- */
-function efforts(seg){
-  const out=[];
-  for(const d of S.drives){
-    const e=matchSeg(d.pts,seg);if(e)out.push({drive:d,...e});
-  }
-  out.sort((a,b)=>b.stats.smooth-a.stats.smooth||a.stats.dur-b.stats.dur);
-  return out;
-}
-function bestPerDriver(all){const seen=new Set();return all.filter(e=>!seen.has(e.drive.who)&&seen.add(e.drive.who))
-}
+/* ================= segments ================= */
 function matchSeg(pts,seg){
-  const near=35;let si=-1;
+  const near=35;let si=-1,sBest=Infinity;
   for(let i=0;i<pts.length;i++){
-    if(si<0){if(hav(pts[i],seg.start)<near)si=i}
-    else if(hav(pts[i],seg.end)<near){
-      const slice=pts.slice(si,i+1);const L=pathLen(slice);
-      if(L>seg.dist*0.85&&L<seg.dist*1.3)return{from:si,to:i,stats:analyze(slice)};
-      si=-1;
+    const ds=hav(pts[i],seg.start);
+    // closest approach to the start line; for ties (sitting still at the line) use the latest point
+    if(ds<near&&ds<=sBest+1){si=i;sBest=Math.min(sBest,ds);continue}
+    if(si>=0&&hav(pts[i],seg.end)<near){
+      let ei=i;while(ei+1<pts.length&&hav(pts[ei+1],seg.end)<hav(pts[ei],seg.end))ei++;
+      const slice=pts.slice(si,ei+1);const L=pathLen(slice);
+      if(L>seg.dist*0.8&&L<seg.dist*1.35)return{from:si,to:ei,stats:analyze(slice,false)};
+      si=-1;sBest=Infinity;
     }
+    if(ds>=near&&si>=0&&sBest<near)sBest=Infinity;
   }
   return null;
 }
+function efforts(seg){
+  const out=[];for(const d of S.drives){const e=matchSeg(d.pts,seg);if(e)out.push({drive:d,...e})}
+  if(seg.closed)out.sort((a,b)=>a.stats.dur-b.stats.dur);else out.sort((a,b)=>b.drive.start-a.drive.start);
+  return out;
+}
+function bestPerDriver(all){const seen=new Set();return all.filter(e=>!seen.has(e.drive.who)&&seen.add(e.drive.who))}
 
-/* ---------- canvas drawing ---------- */
+/* ================= drawing ================= */
 function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim()||"#888"}
 function sizeCanvas(c){const dpr=window.devicePixelRatio||1;const w=c.clientWidth||300,h=c.clientHeight||170;c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);const g=c.getContext("2d");g.setTransform(dpr,0,0,dpr,0,0);return{g,w,h}}
+function projector(pts,w,h,pad){
+  let a=Infinity,b=-Infinity,c=Infinity,d=-Infinity;for(const p of pts){a=Math.min(a,p[0]);b=Math.max(b,p[0]);c=Math.min(c,p[1]);d=Math.max(d,p[1])}
+  const k=Math.cos(rad((a+b)/2));const sw=(d-c)*k||1e-5,sh=(b-a)||1e-5;const sc=Math.min((w-2*pad)/sw,(h-2*pad)/sh);
+  const ox=(w-sw*sc)/2,oy=(h-sh*sc)/2;return p=>[ox+(p[1]-c)*k*sc,h-oy-(p[0]-a)*sc];
+}
+function strokePath(g,P,arr,col,wd){if(arr.length<2)return;g.strokeStyle=col;g.lineWidth=wd;g.lineJoin="round";g.lineCap="round";g.beginPath();arr.forEach((p,i)=>{const[x,y]=P(p);i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke()}
 function drawRoute(c,pts,opt={}){
-  const {g,w,h}=sizeCanvas(c);
-  g.clearRect(0,0,w,h);
-  // grid
+  const {g,w,h}=sizeCanvas(c);g.clearRect(0,0,w,h);
   g.strokeStyle=css("--grid");g.lineWidth=1;
   for(let x=0;x<w;x+=24){g.beginPath();g.moveTo(x+.5,0);g.lineTo(x+.5,h);g.stroke()}
   for(let y=0;y<h;y+=24){g.beginPath();g.moveTo(0,y+.5);g.lineTo(w,y+.5);g.stroke()}
-  const ctx=opt.context||pts; if(!ctx.length)return;
-  let mnLa=Infinity,mxLa=-Infinity,mnLo=Infinity,mxLo=-Infinity;
-  for(const p of ctx){mnLa=Math.min(mnLa,p[0]);mxLa=Math.max(mxLa,p[0]);mnLo=Math.min(mnLo,p[1]);mxLo=Math.max(mxLo,p[1])}
-  const k=Math.cos(rad((mnLa+mxLa)/2));const pad=18;
-  const sw=(mxLo-mnLo)*k||1e-5,sh=(mxLa-mnLa)||1e-5;const sc=Math.min((w-2*pad)/sw,(h-2*pad)/sh);
-  const ox=(w-sw*sc)/2,oy=(h-sh*sc)/2;
-  const P=p=>[ox+(p[1]-mnLo)*k*sc,h-oy-(p[0]-mnLa)*sc];
-  const line=(arr,col,wd)=>{if(arr.length<2)return;g.strokeStyle=col;g.lineWidth=wd;g.lineJoin="round";g.lineCap="round";g.beginPath();arr.forEach((p,i)=>{const[x,y]=P(p);i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke()};
-  if(opt.context)line(opt.context,css("--line"),4);
-  line(pts,css("--surface"),opt.thin?5:7);
-  line(pts,opt.color||css("--route"),opt.thin?3:4);
-  if(opt.hl)line(pts.slice(opt.hl[0],opt.hl[1]+1),css("--hl"),opt.thin?3.5:5);
-  if(!opt.noEnds&&pts.length){const dot=(p,col)=>{const[x,y]=P(p);g.fillStyle=css("--surface");g.beginPath();g.arc(x,y,6,0,7);g.fill();g.fillStyle=col;g.beginPath();g.arc(x,y,4,0,7);g.fill()};dot(pts[0],css("--good"));dot(pts[pts.length-1],css("--bad"))}
+  const ctx=opt.context||pts;if(!ctx.length)return;
+  const P=projector(ctx,w,h,18);
+  strokePath(g,P,pts,css("--surface"),opt.thin?5:7);
+  strokePath(g,P,pts,opt.color||css("--route"),opt.thin?3:4);
+  if(opt.hl)strokePath(g,P,pts.slice(opt.hl[0],opt.hl[1]+1),css("--hl"),opt.thin?3.5:5);
+  const dot=(p,col)=>{const[x,y]=P(p);g.fillStyle=css("--surface");g.beginPath();g.arc(x,y,6,0,7);g.fill();g.fillStyle=col;g.beginPath();g.arc(x,y,4,0,7);g.fill()};
+  if(!opt.noEnds&&pts.length>1){dot(pts[0],css("--good"));dot(pts[pts.length-1],css("--bad"))}
   if(opt.live&&pts.length){const[x,y]=P(pts[pts.length-1]);g.fillStyle=css("--accent");g.beginPath();g.arc(x,y,7,0,7);g.fill()}
 }
-function drawSpeed(c,pts,hl){
+function drawSeries(c,pts,valFn,{color,hl,fill=true,zero=true,minSpan=0}){
   const {g,w,h}=sizeCanvas(c);g.clearRect(0,0,w,h);
-  if(pts.length<2)return;
+  const vals=pts.map(valFn);const idx=vals.map((v,i)=>v==null?-1:i).filter(i=>i>=0);
+  if(idx.length<2){g.fillStyle=css("--muted");g.font=`14px ${css("--body")}`;g.fillText("No data recorded",10,24);return}
   const xs=[0];for(let i=1;i<pts.length;i++)xs.push(xs[i-1]+hav(pts[i-1],pts[i]));
-  const total=xs[xs.length-1]||1;const vmax=Math.max(...pts.map(p=>fSpeed(p[3])));
-  const top=Math.ceil(vmax/10)*10||10;
-  const L=34,B=20,T=8,Rr=8;const pw=w-L-Rr,ph=h-T-B;
-  const X=d=>L+d/total*pw,Y=v=>T+ph-v/top*ph;
+  const total=xs[xs.length-1]||1;
+  let lo=zero?0:Math.min(...idx.map(i=>vals[i])),hi=Math.max(...idx.map(i=>vals[i]));
+  if(minSpan&&hi-lo<minSpan){const m=(hi+lo)/2;lo=m-minSpan/2;hi=m+minSpan/2}
+  const span=hi-lo||1;const stepRaw=span/2;const mag=10**Math.floor(Math.log10(stepRaw));const step=Math.ceil(stepRaw/mag)*mag;
+  lo=Math.floor(lo/step)*step;hi=lo+step*Math.max(2,Math.ceil((hi-lo)/step));
+  const L=40,B=20,T=8,Rr=8;const pw=w-L-Rr,ph=h-T-B;
+  const X=d=>L+d/total*pw,Y=v=>T+ph-(v-lo)/(hi-lo)*ph;
   g.font=`12px ${css("--body")}`;g.fillStyle=css("--muted");g.strokeStyle=css("--grid");g.lineWidth=1;
-  for(let v=0;v<=top;v+=top/2){const y=Math.round(Y(v))+.5;g.beginPath();g.moveTo(L,y);g.lineTo(w-Rr,y);g.stroke();g.textAlign="right";g.textBaseline="middle";g.fillText(Math.round(v),L-6,y)}
-  g.textAlign="left";g.textBaseline="top";g.fillText("0",L,h-B+5);g.textAlign="right";g.fillText(fDist(total).toFixed(1)+" "+dLabel(),w-Rr,h-B+5);
+  for(let v=lo;v<=hi+1e-9;v+=step){const y=Math.round(Y(v))+.5;g.beginPath();g.moveTo(L,y);g.lineTo(w-Rr,y);g.stroke();g.textAlign="right";g.textBaseline="middle";g.fillText(step<1?v.toFixed(1):Math.round(v),L-6,y)}
+  g.textAlign="left";g.textBaseline="top";g.fillText("0",L,h-B+5);g.textAlign="right";g.fillText(fDist(total).toFixed(fDist(total)<10?2:1)+" "+dLabel(),w-Rr,h-B+5);
   if(hl){g.fillStyle=css("--hl");g.globalAlpha=.12;g.fillRect(X(xs[hl[0]]),T,X(xs[hl[1]])-X(xs[hl[0]]),ph);g.globalAlpha=1}
-  const acc=css("--accent");
-  g.beginPath();pts.forEach((p,i)=>{const x=X(xs[i]),y=Y(fSpeed(p[3]));i?g.lineTo(x,y):g.moveTo(x,y)});
-  g.strokeStyle=acc;g.lineWidth=2;g.stroke();
-  g.lineTo(X(total),Y(0));g.lineTo(X(0),Y(0));g.closePath();g.globalAlpha=.14;g.fillStyle=acc;g.fill();g.globalAlpha=1;
+  g.beginPath();idx.forEach((i,k)=>{const x=X(xs[i]),y=Y(vals[i]);k?g.lineTo(x,y):g.moveTo(x,y)});
+  g.strokeStyle=color;g.lineWidth=2;g.stroke();
+  if(fill){g.lineTo(X(xs[idx[idx.length-1]]),Y(lo));g.lineTo(X(xs[idx[0]]),Y(lo));g.closePath();g.globalAlpha=.14;g.fillStyle=color;g.fill();g.globalAlpha=1}
+}
+// Friction circle: longitudinal vs lateral g
+function drawGG(c,pts){
+  const {g,w,h}=sizeCanvas(c);g.clearRect(0,0,w,h);
+  const cx=w/2,cy=h/2,r=Math.min(w,h)/2-18;const maxG=1.5;const S_=v=>v/maxG*r;
+  g.strokeStyle=css("--grid");g.lineWidth=1;g.fillStyle=css("--muted");g.font=`11px ${css("--body")}`;g.textAlign="left";g.textBaseline="bottom";
+  for(const k of [0.5,1,1.5]){g.beginPath();g.arc(cx,cy,S_(k),0,7);g.stroke();g.fillText(k+" g",cx+S_(k)*0.71+3,cy-S_(k)*0.71)}
+  g.beginPath();g.moveTo(cx-r,cy);g.lineTo(cx+r,cy);g.moveTo(cx,cy-r);g.lineTo(cx,cy+r);g.stroke();
+  g.textAlign="center";g.textBaseline="top";g.fillText("Accel",cx,2);g.textBaseline="bottom";g.fillText("Brake",cx,h-2);
+  const pts2=pts.filter(p=>p[5]!=null);
+  g.fillStyle=css("--hl");g.globalAlpha=.5;
+  for(const p of pts2){g.beginPath();g.arc(cx+S_(Math.max(-maxG,Math.min(maxG,p[6]||0))),cy-S_(Math.max(-maxG,Math.min(maxG,p[5]))),2.2,0,7);g.fill()}
+  g.globalAlpha=1;
 }
 
-/* ---------- UI helpers ---------- */
+/* ================= UI helpers ================= */
 const $=s=>document.querySelector(s);
-function toast(msg){const t=$("#toast");t.textContent=msg;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,2200)}
+function toast(msg){const t=$("#toast");t.textContent=msg;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,2600)}
 function avatar(p,size){return `<span class="avatar" style="background:${p.color}${size?`;width:${size}px;height:${size}px`:""}" aria-hidden="true">${esc(initials(p.name))}</span>`}
 function kudosCount(d){return (S.kudosFrom[d.id]||[]).length+(S.kudos[d.id]?1:0)}
 const heart=`<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 21V10l4-7c1.5 0 2.5 1 2.2 2.6L12.6 9H19a2 2 0 0 1 2 2.3l-1.3 7.6A2.5 2.5 0 0 1 17.2 21H7zM3 10h2.5v11H3z"/></svg>`;
 function statBlock(k,v,u){return `<div class="stat"><div class="k">${k}</div><div class="v">${v}${u?`<small>${u}</small>`:""}</div></div>`}
+function fillPhotos(root){(root||document).querySelectorAll("img[data-photo]").forEach(async img=>{const u=await photos.url(img.dataset.photo);if(u)img.src=u;else img.hidden=true})}
 
-/* ---------- views ---------- */
+/* ================= views ================= */
 let current="feed";
 function render(){
   const tab=(location.hash||"#feed").slice(1);
@@ -354,246 +481,485 @@ function render(){
   ({feed:viewFeed,record:viewRecord,segments:viewSegments,you:viewYou})[current]();
   window.scrollTo(0,0);
 }
+function driveChips(d){
+  const s=d.stats,c=[];const hr=headlineRun(s);
+  if(hr)c.push(`<span class="chip run">${hr.label} ${fSec(hr.v.t)}</span>`);
+  if(s.up>3)c.push(`<span class="chip">↑ ${Math.round(fAlt(s.up))} ${aLabel()}</span>`);
+  if(s.gTot>0.05)c.push(`<span class="chip">${fG(s.gTot)} g max</span>`);
+  c.push(`<span class="chip">${esc(d.source||"Phone GPS")}</span>`);
+  return c.join("");
+}
 function feedCard(d){
   const p=person(d.who),s=d.stats;
   return `<article class="card">
     <button class="open-link" data-open="${d.id}" aria-label="Open ${esc(d.title)}">
-      <div class="card-head">${avatar(p)}<div style="min-width:0"><div style="font-weight:600">${esc(p.name)}</div><div class="muted" style="font-size:13px">${ago(d.start)} · ${esc(d.vehicle)}</div></div><span class="spacer"></span>${d.sample?'<span class="chip example">Example</span>':""}</div>
+      <div class="card-head">${avatar(p)}<div style="min-width:0"><div style="font-weight:600">${esc(p.name)}</div><div class="muted small">${ago(d.start)} · ${esc(d.vehicle)}</div></div><span class="spacer"></span>${d.sample?'<span class="chip example">Example</span>':""}</div>
       <div class="card-title"><h3>${esc(d.title)}</h3></div>
-      <div class="stats">${statBlock("Distance",fDist(s.dist).toFixed(1),dLabel())}${statBlock("Moving time",fDur(s.moving))}${statBlock("Smoothness",s.smooth,"/100")}</div>
-      <canvas class="route" data-route="${d.id}"></canvas>
+      <div class="stats">${statBlock("Distance",fDist(s.dist).toFixed(fDist(s.dist)<10?2:1),dLabel())}${statBlock("Moving time",fDur(s.moving))}${statBlock("Top speed",Math.round(fSpeed(s.max)),sLabel())}</div>
+      <div class="chips">${driveChips(d)}</div>
+      <div class="media ${d.photo?"two":""}">${d.photo?`<img class="photo" data-photo="${d.id}" alt="Photo from ${esc(d.title)}">`:""}<canvas class="route" data-route="${d.id}"></canvas></div>
     </button>
     <div class="card-foot">
-      <button class="kudos" data-kudos="${d.id}" aria-pressed="${!!S.kudos[d.id]}" ${d.who==="me"?"disabled title=\"You can't give kudos to your own drive\"":""}>${heart}<span>${kudosCount(d)}</span></button>
-      <button class="kudos" data-open="${d.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg><span>${(S.comments[d.id]||[]).length}</span></button>
-      <span class="spacer"></span>${smoothChip(s.smooth)}
+      <button class="kudos" data-kudos="${d.id}" aria-pressed="${!!S.kudos[d.id]}" aria-label="Kudos" ${d.who==="me"?"disabled title=\"You can't give kudos to your own drive\"":""}>${heart}<span>${kudosCount(d)}</span></button>
+      <button class="kudos" data-open="${d.id}" aria-label="Comments"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg><span>${(S.comments[d.id]||[]).length}</span></button>
+      <span class="spacer"></span>
+      <button class="kudos" data-share="${d.id}" aria-label="Share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M5 13v7h14v-7"/></svg><span>Share</span></button>
     </div></article>`;
 }
 function viewFeed(){
   const drives=[...S.drives].sort((a,b)=>b.start-a.start);
   $("#view").innerHTML=`<div class="stack">
-    <div class="row"><div><div class="eyebrow">Your road crew</div><h1>Feed</h1></div><span class="spacer"></span><a class="btn primary" href="#record" style="text-decoration:none">Start a drive</a></div>
+    <div class="row"><div><div class="eyebrow">Your road crew</div><h1>Feed</h1></div><span class="spacer"></span><a class="btn primary" href="#record">Start a drive</a></div>
     ${drives.length?drives.map(feedCard).join(""):`<div class="empty">No drives yet. Tap <b>Drive</b> to record your first one.</div>`}
   </div>`;
-  paintRoutes();
+  document.querySelectorAll("canvas[data-route]").forEach(c=>{const d=S.drives.find(x=>x.id===c.dataset.route);if(d)drawRoute(c,d.pts,{thin:true})});
+  fillPhotos();
 }
-function paintRoutes(){document.querySelectorAll("canvas[data-route]").forEach(c=>{const d=S.drives.find(x=>x.id===c.dataset.route);if(d)drawRoute(c,d.pts,{thin:true})})}
 
-/* ---------- recording ---------- */
-const REC={on:false,pts:[],watch:null,sim:null,start:0,status:"idle",wake:null,tick:null};
+/* ================= data sources ================= */
+const NUS="6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+const SOURCES={
+  phone:{name:"Phone GPS",note:"Built-in GPS and motion sensors, about 1 Hz"},
+  racebox:{name:"RaceBox",note:"Mini, Mini S or Micro over Bluetooth, up to 25 Hz",ble:{filters:[{namePrefix:"RaceBox"}],optionalServices:[NUS]}},
+  dragy:{name:"Dragy",note:"Over Bluetooth, 10 Hz. Experimental",ble:{filters:[{namePrefix:"Dragy"},{namePrefix:"DRAGY"}],optionalServices:[NUS,"0000ffe0-0000-1000-8000-00805f9b34fb","0000fff0-0000-1000-8000-00805f9b34fb","00001819-0000-1000-8000-00805f9b34fb"]}},
+  nmea:{name:"Other Bluetooth GPS",note:"Any receiver that streams NMEA",ble:{acceptAllDevices:true,optionalServices:[NUS,"0000ffe0-0000-1000-8000-00805f9b34fb","0000fff0-0000-1000-8000-00805f9b34fb"]}}};
+const DEV={device:null,name:"",status:"",battery:null,sats:null,hz:0,_n:0,_t:0,last:null};
+const hasBLE=!!(navigator.bluetooth&&navigator.bluetooth.requestDevice);
+
+// RaceBox "Data Message": UBX-framed, class 0xFF id 0x01, 80-byte payload (RaceBox BLE protocol)
+function makeUbxParser(onFix){
+  let buf=new Uint8Array(0);
+  return chunk=>{
+    const nb=new Uint8Array(buf.length+chunk.length);nb.set(buf);nb.set(chunk,buf.length);buf=nb;
+    let i=0;
+    while(buf.length-i>=8){
+      if(buf[i]!==0xB5||buf[i+1]!==0x62){i++;continue}
+      const len=buf[i+4]|(buf[i+5]<<8),total=8+len;if(buf.length-i<total)break;
+      let a=0,b=0;for(let k=i+2;k<i+6+len;k++){a=(a+buf[k])&255;b=(b+a)&255}
+      if(a===buf[i+6+len]&&b===buf[i+7+len]&&buf[i+2]===0xFF&&buf[i+3]===0x01&&len===80){
+        const v=new DataView(buf.buffer,buf.byteOffset+i+6,80);
+        const fix=v.getUint8(20),valid=v.getUint8(21)&1;
+        DEV.sats=v.getUint8(23);DEV.battery=v.getUint8(67)&0x7F;
+        if(fix>=2&&valid){
+          const t=Date.UTC(v.getUint16(4,true),v.getUint8(6)-1,v.getUint8(7),v.getUint8(8),v.getUint8(9),v.getUint8(10))+Math.round(v.getInt32(16,true)/1e6);
+          const gx=v.getInt16(68,true)/1000,gy=v.getInt16(70,true)/1000;
+          onFix({lat:v.getInt32(28,true)/1e7,lon:v.getInt32(24,true)/1e7,t,v:Math.max(0,v.getInt32(48,true)/1000),alt:v.getInt32(36,true)/1000,acc:v.getUint32(40,true)/1000,gLong:gx,gLat:gy,gTot:Math.hypot(gx,gy)});
+        }else onFix(null);
+      }
+      i+=total;
+    }
+    buf=buf.slice(i);
+  };
+}
+// Standard NMEA 0183: RMC gives position/speed/time, GGA gives altitude and satellites
+function makeNmeaParser(onFix){
+  let text="",alt=null;const dec=new TextDecoder();
+  const coord=(s,h)=>{if(!s)return NaN;const dot=s.indexOf(".");const deg=+s.slice(0,dot-2),min=+s.slice(dot-2);const v=deg+min/60;return h==="S"||h==="W"?-v:v};
+  return chunk=>{
+    text+=dec.decode(chunk,{stream:true});const lines=text.split(/\r?\n/);text=lines.pop();
+    for(const line of lines){
+      const m=line.match(/\$(..)(RMC|GGA),([^*]*)\*([0-9A-F]{2})/i);if(!m)continue;
+      let cs=0;const body=line.slice(line.indexOf("$")+1,line.indexOf("*"));for(const ch of body)cs^=ch.charCodeAt(0);
+      if(cs!==parseInt(m[4],16))continue;
+      const f=m[3].split(",");
+      if(m[2]==="GGA"){alt=f[8]?+f[8]:null;DEV.sats=+f[6]||DEV.sats;continue}
+      if(f[1]!=="A"){onFix(null);continue}
+      const tm=f[0],dt=f[8];
+      const t=Date.UTC(2000+ +dt.slice(4,6),+dt.slice(2,4)-1,+dt.slice(0,2),+tm.slice(0,2),+tm.slice(2,4),0)+Math.round(parseFloat(tm.slice(4))*1000);
+      onFix({lat:coord(f[2],f[3]),lon:coord(f[4],f[5]),t,v:(+f[6]||0)*0.514444,alt,acc:null,gLong:null,gLat:null,gTot:null});
+    }
+  };
+}
+async function connectDevice(kind){
+  const src=SOURCES[kind];
+  if(!hasBLE){toast("This browser can't use Bluetooth. Try Chrome on Android or a computer.");return}
+  try{
+    DEV.status="Choose your device…";updateDevice();
+    const device=await navigator.bluetooth.requestDevice(src.ble);
+    DEV.device=device;DEV.name=device.name||src.name;DEV.status="Connecting…";updateDevice();
+    device.addEventListener("gattserverdisconnected",()=>{DEV.status="Disconnected";DEV.hz=0;updateDevice();if(REC.on&&S.settings.source===kind)setGps("off","Device disconnected. Recording paused until it reconnects.")});
+    const server=await device.gatt.connect();
+    const services=await server.getPrimaryServices();
+    const onFix=fix=>{
+      const now=performance.now();DEV._n++;if(now-DEV._t>1000){DEV.hz=Math.round(DEV._n*1000/(now-DEV._t));DEV._n=0;DEV._t=now}
+      DEV.last=fix;DEV.status=fix?"Connected · GPS fix":"Connected · waiting for GPS fix";
+      if(fix&&REC.on&&!REC.simulating&&S.settings.source===kind)ingest(fix);
+      throttle(updateDevice,500);
+    };
+    const ubx=makeUbxParser(onFix),nmea=makeNmeaParser(onFix);let subscribed=0;
+    for(const s of services){let chars=[];try{chars=await s.getCharacteristics()}catch(e){}
+      for(const ch of chars){if(!ch.properties.notify)continue;
+        ch.addEventListener("characteristicvaluechanged",e=>{const u=new Uint8Array(e.target.value.buffer.slice(e.target.value.byteOffset,e.target.value.byteOffset+e.target.value.byteLength));if(u[0]===0xB5||kind==="racebox")ubx(u);else nmea(u)});
+        try{await ch.startNotifications();subscribed++}catch(e){}}}
+    DEV.status=subscribed?"Connected · waiting for data":"Connected, but the device sent nothing we can read";updateDevice();
+  }catch(e){DEV.status=e&&e.name==="NotFoundError"?"No device chosen":"Couldn't connect: "+(e&&e.message||e);updateDevice()}
+}
+let thr={};function throttle(fn,ms){if(thr[fn.name])return;thr[fn.name]=setTimeout(()=>{thr[fn.name]=0;fn()},ms)}
+function updateDevice(){const el=$("#dev-status");if(!el)return;
+  el.innerHTML=DEV.device||DEV.status?`<span class="dot ${DEV.last?"ok":DEV.device&&DEV.device.gatt&&DEV.device.gatt.connected?"wait":"off"}"></span><div style="flex:1;min-width:0"><div style="font-weight:600">${esc(DEV.name||"No device")}</div><div class="muted small">${esc(DEV.status)}</div></div>${DEV.hz?`<span class="chip">${DEV.hz} Hz</span>`:""}${DEV.sats!=null?`<span class="chip">${DEV.sats} sats</span>`:""}${DEV.battery!=null?`<span class="chip">${DEV.battery}% battery</span>`:""}`:`<span class="dot"></span><span class="muted small">No device connected</span>`}
+
+// Phone motion sensors: horizontal g (gravity removed), peak between GPS fixes
+const MOT={on:false,peak:0,handler:null};
+async function startMotion(){
+  if(!S.settings.motion||MOT.on||typeof DeviceMotionEvent==="undefined")return;
+  try{if(typeof DeviceMotionEvent.requestPermission==="function"){const r=await DeviceMotionEvent.requestPermission();if(r!=="granted")return}}catch(e){return}
+  MOT.handler=e=>{const a=e.acceleration,ai=e.accelerationIncludingGravity;if(!a||!ai||a.x==null||ai.x==null)return;
+    const gx=ai.x-a.x,gy=ai.y-a.y,gz=ai.z-a.z,gn=Math.hypot(gx,gy,gz)||1;
+    const dot=(a.x*gx+a.y*gy+a.z*gz)/gn;const hx=a.x-dot*gx/gn,hy=a.y-dot*gy/gn,hz=a.z-dot*gz/gn;
+    const g=Math.hypot(hx,hy,hz)/G;if(g<3)MOT.peak=Math.max(MOT.peak,g)};
+  window.addEventListener("devicemotion",MOT.handler);MOT.on=true;
+}
+function stopMotion(){if(MOT.handler)window.removeEventListener("devicemotion",MOT.handler);MOT.on=false;MOT.handler=null;MOT.peak=0}
+
+/* ================= recording ================= */
+const REC={on:false,pts:[],watch:null,sim:null,simulating:false,start:0,wake:null,tick:null,lastStill:null,dismissed:false};
 function viewRecord(){
-  const geoOK="geolocation" in navigator;
+  const src=S.settings.source;const geoOK="geolocation" in navigator;
   $("#view").innerHTML=`<div class="stack">
     <div><div class="eyebrow">Record</div><h1>New drive</h1></div>
+    <div class="panel"><h3>Data source</h3>
+      <div class="sources" role="group" aria-label="Data source">${Object.entries(SOURCES).map(([k,s])=>`<button class="src" type="button" data-src="${k}" aria-pressed="${src===k}" ${REC.on?"disabled":""}><b>${s.name}</b><span>${s.note}</span></button>`).join("")}</div>
+      ${src==="phone"?`<label class="check"><input type="checkbox" id="motion" ${S.settings.motion?"checked":""}> Use the phone's motion sensors for g-force (mount the phone so it can't slide)</label>`:
+        `<div class="dev" id="dev-status"></div><div class="row"><button class="btn primary" id="connect" type="button" ${hasBLE?"":"disabled"}>Connect ${SOURCES[src].name}</button></div>
+         ${hasBLE?"":`<div class="notice">Bluetooth devices need Chrome or Edge on Android, Windows, macOS or ChromeOS. iPhone browsers don't support Web Bluetooth yet, so on iPhone use Phone GPS.</div>`}
+         ${src==="dragy"?`<p class="muted small" style="margin:0">Dragy doesn't publish its Bluetooth format. RoadTripper tries the standard NMEA GPS format; if your Dragy connects but shows no data, let us know.</p>`:""}`}
+    </div>
     <div class="rec-panel">
-      <div class="gps" id="gps"><span class="dot ${REC.on?"ok":""}"></span><span id="gps-t">${REC.on?"Recording":"GPS ready when you are"}</span></div>
+      <div class="gps" id="gps"><span class="dot ${REC.on?"ok":""}"></span><span id="gps-t">${REC.on?"Recording":"Ready when you are"}</span></div>
       <div class="dash">
         <div class="gauge big"><div class="k">Distance</div><div class="v num" id="g-dist">0.0<small>${dLabel()}</small></div></div>
         <div class="gauge"><div class="k">Time</div><div class="v num" id="g-time">0:00</div></div>
-        <div class="gauge"><div class="k">Avg speed</div><div class="v num" id="g-avg">0<small>${sLabel()}</small></div></div>
+        <div class="gauge"><div class="k">Elevation</div><div class="v num" id="g-alt">–</div></div>
       </div>
       <canvas class="route" id="live-route" style="border-radius:12px"></canvas>
       <label class="field">Vehicle<select id="veh">${S.settings.vehicles.map(v=>`<option ${v===S.settings.vehicle?"selected":""}>${esc(v)}</option>`).join("")}</select></label>
       <button class="rec-btn" id="rec-btn" type="button"><span class="fill"></span><span class="lbl">${REC.on?"Hold to finish":"Start drive"}</span></button>
-      <button class="btn ghost" id="sim-btn" type="button">${REC.sim?"Simulating…":"Simulate a drive (demo)"}</button>
+      <div class="row"><button class="btn ghost" id="sim-btn" type="button" ${REC.on?"disabled":""}>Simulate a road drive</button><button class="btn ghost" id="sim-drag" type="button" ${REC.on?"disabled":""}>Simulate a drag-strip pass</button></div>
     </div>
-    <div class="notice"><strong>Drive first.</strong> Mount your phone and start recording before you pull away. Once you're moving, Roadbook switches to a minimal screen with one large control, and you finish a drive by holding the button so a stray tap can't end it. Segments rank smooth driving, not speed.</div>
-    ${geoOK?"":`<div class="notice">This browser doesn't offer location. Use the demo to see how recording works.</div>`}
+    <div class="notice"><strong>Drive first.</strong> Mount your phone and start recording before you pull away. Once you're moving, RoadTripper switches to a simple screen with one large control, and you finish by holding the button. Timed runs like 0–60 and the quarter mile are meant for drag strips and closed courses.</div>
+    ${geoOK||src!=="phone"?"":`<div class="notice">This browser doesn't offer location. Use the demo to see how recording works.</div>`}
   </div>`;
+  document.querySelectorAll("[data-src]").forEach(b=>b.onclick=()=>{S.settings.source=b.dataset.src;save();viewRecord()});
+  const m=$("#motion");if(m)m.onchange=e=>{S.settings.motion=e.target.checked;save()};
+  const c=$("#connect");if(c)c.onclick=()=>connectDevice(src);
   $("#veh").onchange=e=>{S.settings.vehicle=e.target.value;save()};
   bindHold($("#rec-btn"));
-  $("#sim-btn").onclick=()=>{if(!REC.on)startRec(true)};
-  updateLive();
+  $("#sim-btn").onclick=()=>{if(!REC.on)startRec("road")};
+  $("#sim-drag").onclick=()=>{if(!REC.on)startRec("drag")};
+  updateDevice();updateLive();
 }
 function bindHold(btn){
-  let t0=0,raf=0;
-  const fill=btn.querySelector(".fill");
+  let t0=0,raf=0;const fill=btn.querySelector(".fill");
   const stopAnim=()=>{cancelAnimationFrame(raf);fill.style.transform="scaleX(0)"};
-  btn.onpointerdown=e=>{
-    if(!REC.on){startRec(false);return}
-    t0=performance.now();btn.setPointerCapture?.(e.pointerId);
-    const step=()=>{const k=(performance.now()-t0)/1000;fill.style.transform=`scaleX(${Math.min(1,k)})`;if(k>=1){stopAnim();finishRec()}else raf=requestAnimationFrame(step)};
-    raf=requestAnimationFrame(step);
-  };
+  const run=()=>{t0=performance.now();const step=()=>{const k=(performance.now()-t0)/1000;fill.style.transform=`scaleX(${Math.min(1,k)})`;if(k>=1){stopAnim();finishRec()}else raf=requestAnimationFrame(step)};raf=requestAnimationFrame(step)};
+  btn.onpointerdown=e=>{if(!REC.on){startRec(null);return}btn.setPointerCapture?.(e.pointerId);run()};
   btn.onpointerup=btn.onpointercancel=btn.onpointerleave=stopAnim;
-  btn.onkeydown=e=>{if((e.key==="Enter"||e.key===" ")&&REC.on&&!e.repeat){e.preventDefault();t0=performance.now();const step=()=>{const k=(performance.now()-t0)/1000;fill.style.transform=`scaleX(${Math.min(1,k)})`;if(k>=1){stopAnim();finishRec()}else raf=requestAnimationFrame(step)};raf=requestAnimationFrame(step)}else if(e.key==="Enter"&&!REC.on){startRec(false)}};
+  btn.onkeydown=e=>{if((e.key==="Enter"||e.key===" ")&&!e.repeat){e.preventDefault();if(REC.on)run();else startRec(null)}};
   btn.onkeyup=stopAnim;
 }
 function setGps(cls,txt){const d=document.querySelector("#gps .dot"),t=$("#gps-t");if(d)d.className="dot "+cls;if(t)t.textContent=txt}
 async function wakeLock(on){try{if(on&&navigator.wakeLock)REC.wake=await navigator.wakeLock.request("screen");else if(!on&&REC.wake){await REC.wake.release();REC.wake=null}}catch(e){}}
 function startRec(sim){
-  REC.on=true;REC.pts=[];REC.start=Date.now();wakeLock(true);
-  if(sim){simulate()}
-  else{
+  const src=S.settings.source;
+  if(!sim&&src!=="phone"&&!(DEV.device&&DEV.device.gatt&&DEV.device.gatt.connected)){toast(`Connect your ${SOURCES[src].name} first, or switch to Phone GPS.`);return}
+  REC.on=true;REC.pts=[];REC.start=Date.now();REC.lastStill=null;REC.simulating=!!sim;REC.source=sim?"Simulated":(src==="phone"?"Phone GPS":DEV.name||SOURCES[src].name);
+  wakeLock(true);
+  if(sim)simulate(sim);
+  else if(src==="phone"){
+    startMotion();
     if(!("geolocation" in navigator)){REC.on=false;toast("Location isn't available here. Try the demo.");return}
     setGps("wait","Finding GPS…");
-    REC.watch=navigator.geolocation.watchPosition(onPos,err=>{
-      setGps("off",err.code===1?"Location permission was refused":"GPS unavailable");
-      if(!REC.pts.length){stopSensors();REC.on=false;viewRecord();setGps("off",err.code===1?"Location is blocked here. Allow location for this site, or try the demo.":"No GPS signal. Try again outdoors, or use the demo.")}
+    REC.watch=navigator.geolocation.watchPosition(pos=>{
+      const c=pos.coords;if(c.accuracy>40){setGps("wait",`Weak GPS (±${Math.round(c.accuracy)} m)`);return}
+      const last=REC.pts[REC.pts.length-1];let v=c.speed!=null&&c.speed>=0?c.speed:null;
+      if(v==null)v=last?hav(last,[c.latitude,c.longitude])/Math.max(.2,(pos.timestamp-last[2])/1000):0;
+      const g=MOT.on?MOT.peak:null;MOT.peak=0;
+      ingest({lat:c.latitude,lon:c.longitude,t:pos.timestamp,v,alt:c.altitude,acc:c.accuracy,gLong:null,gLat:null,gTot:g});
+    },err=>{
+      if(!REC.pts.length){stopSensors();REC.on=false;viewRecord();setGps("off",err.code===1?"Location is blocked here. Allow location for this site, or try a demo.":"No GPS signal. Try again outdoors, or use a demo.")}
+      else setGps("off","GPS signal lost");
     },{enableHighAccuracy:true,maximumAge:0,timeout:20000});
-  }
+  }else setGps("ok","Recording from "+REC.source);
   REC.tick=setInterval(updateLive,1000);
   viewRecord();
 }
-function onPos(pos){
-  const c=pos.coords;if(c.accuracy>40){setGps("wait",`Weak GPS (±${Math.round(c.accuracy)} m)`);return}
-  const last=REC.pts[REC.pts.length-1];const p=[c.latitude,c.longitude,pos.timestamp,0];
-  if(last){const d=hav(last,p),dt=(p[2]-last[2])/1000;if(dt<=0)return;if(d<3&&dt<10)return;const v=c.speed!=null&&c.speed>=0?c.speed:d/dt;if(v>90)return;p[3]=v}
-  else p[3]=c.speed||0;
-  REC.pts.push(p);setGps("ok",`Recording · GPS ±${Math.round(c.accuracy)} m`);updateLive();
+function ingest(f){
+  if(!REC.on||!isFinite(f.lat)||!isFinite(f.lon))return;
+  const p=[f.lat,f.lon,f.t,f.v,f.alt==null?null:f.alt,f.gLong,f.gLat,f.gTot];
+  const last=REC.pts[REC.pts.length-1];
+  if(last&&p[2]<=last[2])return;
+  if(last&&p[3]>90)return;
+  // while parked, keep one point every 2 s, but always keep the last one before the car moves off
+  if(p[3]<=0.5&&last&&last[3]<=0.5&&p[2]-last[2]<2000){REC.lastStill=p;return}
+  if(REC.lastStill&&p[3]>0.5){REC.pts.push(REC.lastStill)}
+  REC.lastStill=null;REC.pts.push(p);
+  if(!REC.simulating)setGps("ok",`Recording · ${REC.source}${f.acc?` · ±${Math.round(f.acc)} m`:""}`);
 }
-function simulate(){
-  const from=40+Math.floor(Math.random()*60),to=from+260;
-  const pts=driveFrom(ROAD,from,to,Math.floor(Math.random()*1e6),Date.now(),{base:15,wave:4,noise:3,resp:.25,brakeP:.01});
-  // shift timestamps so the replay runs ~12x real time
-  let i=0;setGps("ok","Demo: replaying a drive at 12× speed");
-  const t0=Date.now(),base=pts[0][2];
+function simulate(kind){
+  const raw=kind==="drag"?dragRun(Math.floor(Math.random()*1e6),Date.now(),{a0:4.6+Math.random()*2.5,vtop:50+Math.random()*12,target:{d:1320*FT}})
+    :driveFrom(40+Math.floor(Math.random()*60),340,Math.floor(Math.random()*1e6),Date.now(),{base:16,wave:4,noise:3,resp:.25,brakeP:.01});
+  const speed=kind==="drag"?1:12;let i=0;const t0=Date.now(),base=raw[0][2];
+  setGps("ok",kind==="drag"?"Demo: replaying a quarter-mile pass at real speed":"Demo: replaying a road drive at 12× speed");
+  REC.source=kind==="drag"?"Simulated RaceBox":"Simulated phone GPS";
   REC.sim=setInterval(()=>{
-    const simT=base+(Date.now()-t0)*12;
-    while(i<pts.length&&pts[i][2]<=simT){REC.pts.push(pts[i]);i++}
-    updateLive();
-    if(i>=pts.length){clearInterval(REC.sim);REC.sim=null;setGps("ok","Demo route complete. Hold to finish.")}
-  },250);
+    const simT=base+(Date.now()-t0)*speed;
+    while(i<raw.length&&raw[i][2]<=simT){const r=raw[i];ingest({lat:r[0],lon:r[1],t:r[2],v:r[3],alt:r[4],gLong:r[5],gLat:r[6],gTot:r[7]});i++}
+    if(i>=raw.length){clearInterval(REC.sim);REC.sim=null;setGps("ok","Demo complete. Hold the button to finish.")}
+  },100);
 }
-function liveStats(){const st=analyze(REC.pts);const el=REC.pts.length>1?(REC.pts[REC.pts.length-1][2]-REC.pts[0][2])/1000:(REC.on?(Date.now()-REC.start)/1000:0);return{...st,el}}
 function updateLive(){
-  const st=liveStats();
+  const pts=REC.pts;const n=pts.length;
+  let dist=0;for(let i=1;i<n;i++)dist+=hav(pts[i-1],pts[i]);
+  const el=n>1?(pts[n-1][2]-pts[0][2])/1000:(REC.on?(Date.now()-REC.start)/1000:0);
+  const alt=n&&pts[n-1][4]!=null?Math.round(fAlt(pts[n-1][4])):null;
   const set=(id,h)=>{const e=document.getElementById(id);if(e)e.innerHTML=h};
-  set("g-dist",`${fDist(st.dist).toFixed(2)}<small>${dLabel()}</small>`);
-  set("g-time",fDur(st.el));set("g-avg",`${Math.round(fSpeed(st.avg))}<small>${sLabel()}</small>`);
-  const c=$("#live-route");if(c)drawRoute(c,REC.pts,{live:true,noEnds:REC.pts.length<2});
-  // drive mode: once moving, cover the app with a minimal screen
-  const moving=REC.on&&REC.pts.length>2&&REC.pts[REC.pts.length-1][3]>4;
-  const dm=$("#drivemode");
+  set("g-dist",`${fDist(dist).toFixed(2)}<small>${dLabel()}</small>`);set("g-time",fDur(el));set("g-alt",alt==null?"–":`${alt}<small>${aLabel()}</small>`);
+  const c=$("#live-route");if(c)drawRoute(c,thinLive(pts),{live:true,noEnds:n<2});
+  const moving=REC.on&&n>2&&pts[n-1][3]>4;const dm=$("#drivemode");
   if(moving&&dm.hidden&&!REC.dismissed){dm.hidden=false;dm.innerHTML=`<div class="road">Eyes on the road</div>
     <div class="stack" style="align-items:center;text-align:center"><div class="gauge big"><div class="k">Distance</div><div class="v num" id="dm-dist"></div></div><div class="gauge"><div class="k">Time</div><div class="v num" id="dm-time"></div></div></div>
-    <div class="stack"><button class="rec-btn stop" id="dm-btn" type="button"><span class="fill"></span><span class="lbl">Hold to finish</span></button><button class="btn ghost" id="dm-x" type="button">I'm a passenger, show full screen</button></div>`;
+    <div class="stack"><button class="rec-btn stop" id="dm-btn" type="button"><span class="fill"></span><span class="lbl">Hold to finish</span></button><button class="btn ghost" id="dm-x" type="button" style="justify-content:center">I'm a passenger, show full screen</button></div>`;
     bindHold($("#dm-btn"));$("#dm-x").onclick=()=>{REC.dismissed=true;dm.hidden=true}}
-  set("dm-dist",`${fDist(st.dist).toFixed(1)}<small>${dLabel()}</small>`);set("dm-time",fDur(st.el));
+  set("dm-dist",`${fDist(dist).toFixed(1)}<small>${dLabel()}</small>`);set("dm-time",fDur(el));
   const b=$("#rec-btn");if(b){b.classList.toggle("stop",REC.on);b.querySelector(".lbl").textContent=REC.on?"Hold to finish":"Start drive"}
 }
-function stopSensors(){if(REC.watch!=null)navigator.geolocation.clearWatch(REC.watch);REC.watch=null;if(REC.sim)clearInterval(REC.sim);REC.sim=null;clearInterval(REC.tick);wakeLock(false)}
+function thinLive(p){if(p.length<1500)return p;const k=Math.ceil(p.length/1500);return p.filter((_,i)=>i%k===0||i===p.length-1)}
+function stopSensors(){if(REC.watch!=null)navigator.geolocation.clearWatch(REC.watch);REC.watch=null;if(REC.sim)clearInterval(REC.sim);REC.sim=null;clearInterval(REC.tick);stopMotion();wakeLock(false)}
 function finishRec(){
   stopSensors();REC.on=false;REC.dismissed=false;$("#drivemode").hidden=true;
-  const pts=REC.pts;REC.pts=[];
-  if(pts.length<5||pathLen(pts)<100){toast("Drive was too short to save.");viewRecord();return}
-  const h=new Date(pts[0][2]).getHours();
+  const raw=REC.pts;REC.pts=[];
+  if(raw.length<5||pathLen(raw)<100){toast("That drive was too short to save.");viewRecord();return}
+  const h=new Date(raw[0][2]).getHours();
   const title=h<11?"Morning drive":h<14?"Midday drive":h<18?"Afternoon drive":"Evening drive";
-  const d={id:uid(),who:"me",title,vehicle:S.settings.vehicle,start:pts[0][2],pts,stats:analyze(pts)};
+  const d={id:uid(),who:"me",title,vehicle:S.settings.vehicle,source:REC.source,start:raw[0][2],pts:thin(raw),stats:analyze(raw)};
   S.drives.push(d);save();
   if(location.hash==="#feed"){render();openDrive(d.id,true)}else{pendingOpen=d.id;location.hash="#feed"}
 }
 
-/* ---------- drive detail ---------- */
+/* ================= drive detail ================= */
+let pendingOpen=null;
+function runsTable(st){
+  const rows=RUN_DEFS.map(r=>{const v=st.runs&&st.runs[r.k];if(!v)return"";return `<tr><th scope="row">${r.label}</th><td class="t">${v.trap?`${Math.round(fSpeed(v.trap))} ${sLabel()} trap`:""}</td><td class="v">${fSec(v.t)}</td></tr>`}).join("");
+  if(!rows)return `<p class="muted" style="margin:0">No timed runs on this drive. Runs are detected from a standing start (0–60, 60 ft, ⅛ and ¼ mile) or a rolling pull from 60 to 130 mph.</p>`;
+  return `<table class="runs"><tbody>${rows}</tbody></table>${st.hz<5?`<p class="muted small" style="margin:0">Estimate: this drive was logged at about ${st.hz||1} Hz. A 10–25 Hz device like RaceBox or Dragy gives accurate times.</p>`:`<p class="muted small" style="margin:0">Logged at ${st.hz} Hz, no rollout subtracted.</p>`}`;
+}
 function openDrive(id,fresh){
   const d=S.drives.find(x=>x.id===id);if(!d)return;
   const p=person(d.who),s=d.stats,mine=d.who==="me";
   const segs=S.segments.map(sg=>({sg,e:matchSeg(d.pts,sg)})).filter(x=>x.e);
+  const hasAlt=d.pts.some(q=>q[4]!=null);const hasGG=d.pts.some(q=>q[5]!=null);
   const sh=$("#sheet");
-  sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span>${d.sample?'<span class="chip example">Example</span>':""}</div></div>
+  sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span>${d.sample?'<span class="chip example">Example</span>':""}<button class="btn primary" id="d-share" type="button">Share</button></div></div>
   <div class="wrap body stack">
-    <div class="row">${avatar(p)}<div><div style="font-weight:600">${esc(p.name)}</div><div class="muted" style="font-size:13px">${new Date(d.start).toLocaleString(undefined,{weekday:"short",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})} · ${esc(d.vehicle)}</div></div></div>
+    <div class="row">${avatar(p)}<div><div style="font-weight:600">${esc(p.name)}</div><div class="muted small">${new Date(d.start).toLocaleString(undefined,{weekday:"short",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})} · ${esc(d.vehicle)} · ${esc(d.source||"Phone GPS")}</div></div></div>
     ${mine?`<input type="text" id="title-in" value="${esc(d.title)}" aria-label="Drive title" style="font-family:var(--display);font-size:26px;font-weight:700">`:`<h1 style="text-transform:none">${esc(d.title)}</h1>`}
-    ${fresh?`<div class="notice">Drive saved. Give it a name, then tap Back to see it in your feed.</div>`:""}
+    ${fresh?`<div class="notice">Drive saved. Give it a name, add a photo, then share it.</div>`:""}
+    <div class="photo-edit">${d.photo?`<img class="photo" data-photo="${d.id}" alt="Photo from ${esc(d.title)}">`:""}
+      ${mine?`<div class="row" style="margin-top:${d.photo?"8px":"0"}"><button class="btn" id="add-photo" type="button"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>${d.photo?"Change photo":"Add a photo"}</button>${d.photo?`<button class="btn ghost" id="rm-photo" type="button">Remove photo</button>`:""}</div>`:""}</div>
     <canvas class="route" id="d-route" style="border-radius:14px"></canvas>
     <div class="detail-stats">
       ${statBlock("Distance",fDist(s.dist).toFixed(2),dLabel())}${statBlock("Moving time",fDur(s.moving))}${statBlock("Elapsed",fDur(s.dur))}
-      ${statBlock("Avg speed",Math.round(fSpeed(s.avg)),sLabel())}${statBlock("Hard brakes",s.brakes)}${statBlock("Smoothness",s.smooth,"/100")}
+      ${statBlock("Avg speed",Math.round(fSpeed(s.avg)),sLabel())}${statBlock("Top speed",Math.round(fSpeed(s.max)),sLabel())}${statBlock("Elev. gain",s.altMin==null?"–":Math.round(fAlt(s.up)),s.altMin==null?"":aLabel())}
+      ${statBlock("Max accel",fG(s.gAcc),"g")}${statBlock("Max braking",fG(s.gBrk),"g")}${statBlock("Max lateral",fG(s.gLat),"g")}
     </div>
-    <div class="panel"><div class="row"><h3>Speed</h3><span class="spacer"></span><span class="muted" style="font-size:13px">${sLabel()} over distance</span></div><canvas class="chart" id="d-speed"></canvas></div>
+    <p class="muted small" style="margin:-4px 2px 0">${s.gSensor?"G-force from the device's accelerometer.":"G-force estimated from GPS speed and heading."}${s.altMin!=null?` Elevation ranges ${Math.round(fAlt(s.altMin))}–${Math.round(fAlt(s.altMax))} ${aLabel()}.`:""}</p>
+    <div class="panel"><h3>Timed runs</h3>${runsTable(s)}</div>
+    <div class="panel"><div class="row"><h3>Speed</h3><span class="spacer"></span><span class="muted small">${sLabel()} over distance</span></div><canvas class="chart" id="d-speed"></canvas></div>
+    ${hasAlt?`<div class="panel"><div class="row"><h3>Elevation</h3><span class="spacer"></span><span class="muted small">${aLabel()} over distance</span></div><canvas class="chart" id="d-alt"></canvas></div>`:""}
+    ${hasGG?`<div class="panel"><div class="row"><h3>G-force</h3><span class="spacer"></span><span class="muted small">Acceleration vs cornering</span></div><canvas class="gg" id="d-gg"></canvas></div>`:""}
     <div class="panel"><h3>Segments on this drive</h3>
-      ${segs.length?segs.map(({sg,e})=>{const all=efforts(sg);const rank=all.findIndex(x=>x.drive.id===d.id)+1;/* rank among all passes, including your own earlier ones */return `<div class="effort"><span class="rank ${rank===1?"r1":""}">${rank}</span><div style="flex:1;min-width:0"><div style="font-weight:600">${esc(sg.name)}</div><div class="muted" style="font-size:13px">${fDur(e.stats.dur)} · ${fDist(sg.dist).toFixed(2)} ${dLabel()}</div></div>${smoothChip(e.stats.smooth)}</div>`}).join(""):`<p class="muted" style="margin:0">No segments matched this route yet. Make one below.</p>`}
+      ${segs.length?segs.map(({sg,e})=>{const all=efforts(sg);const rank=sg.closed?all.findIndex(x=>x.drive.id===d.id)+1:0;return `<div class="effort">${sg.closed?`<span class="rank ${rank===1?"r1":""}">${rank}</span>`:""}<div style="flex:1;min-width:0"><div style="font-weight:600">${esc(sg.name)}</div><div class="muted small">${fDist(sg.dist).toFixed(2)} ${dLabel()}${sg.closed?" · closed course":" · public road, not ranked"}</div></div><span class="num" style="font-size:22px;font-weight:700">${fDur(e.stats.dur)}</span></div>`}).join(""):`<p class="muted" style="margin:0">No segments matched this route yet. Make one below.</p>`}
     </div>
     <div class="panel"><h3>Make a segment from this drive</h3>
       <label class="field">Start <input type="range" id="sg-a" min="0" max="${d.pts.length-1}" value="${Math.floor(d.pts.length*.2)}"></label>
       <label class="field">End <input type="range" id="sg-b" min="0" max="${d.pts.length-1}" value="${Math.floor(d.pts.length*.6)}"></label>
+      <label class="check"><input type="checkbox" id="sg-closed"> This is a closed course, such as a track or drag strip. Only closed-course segments rank drivers by time.</label>
       <div class="row"><input type="text" id="sg-name" placeholder="Segment name, e.g. Ridge Road bends" style="flex:1;min-width:0"><button class="btn primary" id="sg-make" type="button">Create</button></div>
-      <div class="muted" style="font-size:13px" id="sg-len"></div>
+      <div class="muted small" id="sg-len"></div>
     </div>
-    <div class="panel"><div class="row"><h3>Kudos & comments</h3><span class="spacer"></span><button class="kudos" id="d-kudos" aria-pressed="${!!S.kudos[d.id]}" ${mine?"disabled":""}>${heart}<span>${kudosCount(d)}</span></button></div>
-      <div class="stack" id="cmts">${(S.comments[d.id]||[]).map(c=>{const cp=person(c.who);return `<div class="comment">${avatar(cp)}<div><div style="font-weight:600;font-size:13px">${esc(cp.name)} <span class="muted" style="font-weight:400">${ago(c.t)}</span></div><p>${esc(c.text)}</p></div></div>`}).join("")||'<p class="muted" style="margin:0">No comments yet.</p>'}</div>
+    <div class="panel"><div class="row"><h3>Kudos & comments</h3><span class="spacer"></span><button class="kudos" id="d-kudos" aria-pressed="${!!S.kudos[d.id]}" aria-label="Kudos" ${mine?"disabled":""}>${heart}<span>${kudosCount(d)}</span></button></div>
+      <div class="stack">${(S.comments[d.id]||[]).map(c=>{const cp=person(c.who);return `<div class="comment">${avatar(cp)}<div><div style="font-weight:600;font-size:13px">${esc(cp.name)} <span class="muted" style="font-weight:400">${ago(c.t)}</span></div><p>${esc(c.text)}</p></div></div>`}).join("")||'<p class="muted" style="margin:0">No comments yet.</p>'}</div>
       <form class="row" id="c-form"><input type="text" id="c-in" placeholder="Add a comment" style="flex:1;min-width:0" maxlength="280"><button class="btn" type="submit">Post</button></form>
     </div>
-    <div class="row">${!window.claude?`<button class="btn" id="gpx" type="button">Export GPX</button>`:""}<span class="spacer"></span>${mine||d.sample?`<button class="btn danger" id="del" type="button">Delete drive</button>`:""}</div>
+    <div class="row">${!window.claude?`<button class="btn" id="gpx" type="button">Export GPX</button>`:""}<span class="spacer"></span><button class="btn danger" id="del" type="button">Delete drive</button></div>
     <div id="del-confirm" hidden class="notice row"><span style="flex:1">Delete “${esc(d.title)}” for good?</span><button class="btn ghost" id="del-no" type="button">Keep</button><button class="btn danger" id="del-yes" type="button">Delete</button></div>
   </div>`;
   sh.hidden=false;sh.scrollTop=0;document.body.style.overflow="hidden";
+  fillPhotos(sh);
   const a=$("#sg-a"),b=$("#sg-b");
-  const redraw=()=>{let i=+a.value,j=+b.value;if(i>j)[i,j]=[j,i];drawRoute($("#d-route"),d.pts,{hl:[i,j]});drawSpeed($("#d-speed"),d.pts,[i,j]);$("#sg-len").textContent=`Selected: ${fDist(pathLen(d.pts.slice(i,j+1))).toFixed(2)} ${dLabel()}`};
+  const redraw=()=>{let i=+a.value,j=+b.value;if(i>j)[i,j]=[j,i];drawRoute($("#d-route"),d.pts,{hl:[i,j]});
+    drawSeries($("#d-speed"),d.pts,q=>fSpeed(q[3]),{color:css("--accent"),hl:[i,j]});
+    if(hasAlt)drawSeries($("#d-alt"),d.pts,q=>q[4]==null?null:fAlt(q[4]),{color:css("--alt"),hl:[i,j],zero:false,minSpan:U()==="mi"?40:12});
+    $("#sg-len").textContent=`Selected: ${fDist(pathLen(d.pts.slice(i,j+1))).toFixed(2)} ${dLabel()}`};
   a.oninput=b.oninput=redraw;redraw();
+  if(hasGG)drawGG($("#d-gg"),d.pts);
   $("#sh-x").onclick=closeSheet;
-  $("#sg-make").onclick=()=>{let i=+a.value,j=+b.value;if(i>j)[i,j]=[j,i];const L=pathLen(d.pts.slice(i,j+1));if(L<200){toast("Make the segment at least 200 m long.");return}
-    const name=$("#sg-name").value.trim()||"Untitled segment";S.segments.push({id:uid(),name,start:d.pts[i],end:d.pts[j],dist:L,mine:true});save();toast(`Segment “${name}” created`);openDrive(d.id)};
+  $("#d-share").onclick=()=>openShare(d.id);
+  $("#sg-make").onclick=()=>{let i=+a.value,j=+b.value;if(i>j)[i,j]=[j,i];const L=pathLen(d.pts.slice(i,j+1));if(L<15){toast("Pick a longer stretch for the segment.");return}
+    const name=$("#sg-name").value.trim()||"Untitled segment";S.segments.push({id:uid(),name,start:d.pts[i].slice(0,2),end:d.pts[j].slice(0,2),dist:L,closed:$("#sg-closed").checked,mine:true});save();toast(`Segment “${name}” created`);openDrive(d.id)};
   const k=$("#d-kudos");k.onclick=()=>{S.kudos[d.id]=!S.kudos[d.id];save();k.setAttribute("aria-pressed",!!S.kudos[d.id]);k.querySelector("span").textContent=kudosCount(d)};
   $("#c-form").onsubmit=e=>{e.preventDefault();const v=$("#c-in").value.trim();if(!v)return;(S.comments[d.id]=S.comments[d.id]||[]).push({who:"me",text:v,t:Date.now()});save();openDrive(d.id);toast("Comment posted")};
-  if(mine){$("#title-in").onchange=e=>{d.title=e.target.value.trim()||d.title;save()}}
+  if(mine){$("#title-in").onchange=e=>{d.title=e.target.value.trim()||d.title;save()};
+    $("#add-photo").onclick=()=>pickPhoto(d);
+    const rm=$("#rm-photo");if(rm)rm.onclick=async()=>{await photos.del(d.id);d.photo=false;save();openDrive(d.id);toast("Photo removed")}}
   const g=$("#gpx");if(g)g.onclick=()=>exportGpx(d);
-  const del=$("#del");if(del){del.onclick=()=>{$("#del-confirm").hidden=false};$("#del-no").onclick=()=>{$("#del-confirm").hidden=true};$("#del-yes").onclick=()=>{S.drives=S.drives.filter(x=>x.id!==d.id);save();closeSheet();toast("Drive deleted")}}
+  $("#del").onclick=()=>{$("#del-confirm").hidden=false};$("#del-no").onclick=()=>{$("#del-confirm").hidden=true};
+  $("#del-yes").onclick=()=>{S.drives=S.drives.filter(x=>x.id!==d.id);photos.del(d.id);save();closeSheet();toast("Drive deleted")};
 }
 function closeSheet(){$("#sheet").hidden=true;document.body.style.overflow="";render()}
+function pickPhoto(d){
+  const inp=$("#photo-in");inp.value="";
+  inp.onchange=async()=>{const f=inp.files&&inp.files[0];if(!f)return;
+    try{const blob=await downscale(f,1600);await photos.put(d.id,blob);d.photo=true;save();openDrive(d.id);toast("Photo added")}
+    catch(e){toast("That file couldn't be read as a photo. Try a JPEG or PNG.")}};
+  inp.click();
+}
+function loadImage(src){return new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=rej;im.src=src})}
+async function downscale(file,max){
+  const url=URL.createObjectURL(file);try{const im=await loadImage(url);
+    const k=Math.min(1,max/Math.max(im.naturalWidth,im.naturalHeight));const c=document.createElement("canvas");c.width=Math.round(im.naturalWidth*k);c.height=Math.round(im.naturalHeight*k);
+    c.getContext("2d").drawImage(im,0,0,c.width,c.height);return await new Promise((res,rej)=>c.toBlob(b=>b?res(b):rej(new Error("encode")),"image/jpeg",0.86));
+  }finally{URL.revokeObjectURL(url)}
+}
 function exportGpx(d){
-  const pts=d.pts.map(p=>`<trkpt lat="${p[0].toFixed(6)}" lon="${p[1].toFixed(6)}"><time>${new Date(p[2]).toISOString()}</time></trkpt>`).join("");
-  const xml=`<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="Roadbook" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>${esc(d.title)}</name><trkseg>${pts}</trkseg></trk></gpx>`;
-  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([xml],{type:"application/gpx+xml"}));a.download=d.title.replace(/[^\w]+/g,"-")+".gpx";a.click();
+  const pts=d.pts.map(p=>`<trkpt lat="${p[0]}" lon="${p[1]}">${p[4]!=null?`<ele>${p[4]}</ele>`:""}<time>${new Date(p[2]).toISOString()}</time></trkpt>`).join("");
+  const xml=`<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="RoadTripper" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>${esc(d.title)}</name><trkseg>${pts}</trkseg></trk></gpx>`;
+  saveFile(new Blob([xml],{type:"application/gpx+xml"}),d.title.replace(/[^\w]+/g,"-")+".gpx");
 }
 
-/* ---------- segments ---------- */
+/* ================= share card ================= */
+async function buildCard(d){
+  try{await document.fonts.load('700 64px "Barlow Condensed"');await document.fonts.load('500 28px "Barlow"')}catch(e){}
+  const W=1080,H=1350,c=document.createElement("canvas");c.width=W;c.height=H;const g=c.getContext("2d");
+  const BG="#0f1513",FG="#f2f5f3",MUTED="#9fb0a9",AMBER="#f2a93b",GREEN="#3fbf8a";
+  const DF='"Barlow Condensed","Arial Narrow",sans-serif',BF='"Barlow",system-ui,sans-serif';
+  g.fillStyle=BG;g.fillRect(0,0,W,H);
+  const top=800;let photo=null;
+  if(d.photo){const u=await photos.url(d.id);if(u)try{photo=await loadImage(u)}catch(e){}}
+  const routeBox=(x,y,w,h,lw)=>{const P=projector(d.pts,w,h,Math.round(w*0.08));const P2=p=>{const[a,b]=P(p);return[a+x,b+y]};
+    g.save();g.shadowColor="rgba(0,0,0,.55)";g.shadowBlur=12;strokePath(g,P2,d.pts,"#ffffff",lw+5);g.restore();strokePath(g,P2,d.pts,AMBER,lw);
+    const dot=(p,col)=>{const[a,b]=P2(p);g.fillStyle="#fff";g.beginPath();g.arc(a,b,lw*1.5,0,7);g.fill();g.fillStyle=col;g.beginPath();g.arc(a,b,lw,0,7);g.fill()};dot(d.pts[0],GREEN);dot(d.pts[d.pts.length-1],"#ff7a45")};
+  if(photo){
+    const k=Math.max(W/photo.naturalWidth,top/photo.naturalHeight);const pw=photo.naturalWidth*k,ph=photo.naturalHeight*k;
+    g.save();g.beginPath();g.rect(0,0,W,top);g.clip();g.drawImage(photo,(W-pw)/2,(top-ph)/2,pw,ph);g.restore();
+    const gr=g.createLinearGradient(0,top-300,0,top);gr.addColorStop(0,"rgba(15,21,19,0)");gr.addColorStop(1,BG);g.fillStyle=gr;g.fillRect(0,top-300,W,300);
+    const gt=g.createLinearGradient(0,0,0,180);gt.addColorStop(0,"rgba(15,21,19,.65)");gt.addColorStop(1,"rgba(15,21,19,0)");g.fillStyle=gt;g.fillRect(0,0,W,180);
+    g.fillStyle="rgba(15,21,19,.55)";roundRect(g,W-380,top-400,330,330,28);g.fill();
+    routeBox(W-380,top-400,330,330,6);
+  }else{
+    g.strokeStyle="rgba(255,255,255,.05)";g.lineWidth=2;for(let x=0;x<W;x+=60){g.beginPath();g.moveTo(x,0);g.lineTo(x,top);g.stroke()}for(let y=0;y<top;y+=60){g.beginPath();g.moveTo(0,y);g.lineTo(W,y);g.stroke()}
+    routeBox(60,120,W-120,top-160,10);
+  }
+  // brand
+  g.fillStyle=GREEN;roundRect(g,60,52,52,52,12);g.fill();
+  g.strokeStyle=BG;g.lineWidth=5;g.lineCap="round";g.beginPath();g.moveTo(80,95);g.lineTo(84,62);g.moveTo(92,95);g.lineTo(88,62);g.stroke();
+  g.fillStyle=FG;g.font=`700 44px ${DF}`;g.textBaseline="middle";g.fillText("ROADTRIPPER",128,80);
+  // title block
+  const p=person(d.who);g.textBaseline="alphabetic";
+  g.fillStyle=FG;g.font=`700 72px ${DF}`;fitText(g,d.title,60,top+70,W-120,72,DF);
+  g.fillStyle=MUTED;g.font=`500 30px ${BF}`;
+  g.fillText(`${p.name==="You"?"":p.name+" · "}${new Date(d.start).toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})} · ${d.vehicle}`.slice(0,70),60,top+120);
+  // metrics
+  const s=d.stats;const m=[["Distance",fDist(s.dist).toFixed(fDist(s.dist)<10?2:1),dLabel()],["Top speed",Math.round(fSpeed(s.max)),sLabel()]];
+  if(s.altMin!=null&&s.up>3)m.push(["Elev. gain",Math.round(fAlt(s.up)),aLabel()]);
+  m.push(["Max g",fG(s.gTot),"g"]);
+  for(const k of ["z60","quarter","s60_130","eighth","ft60"])if(s.runs&&s.runs[k]&&m.length<6)m.push([RUN_DEFS.find(r=>r.k===k).label,s.runs[k].t.toFixed(2),"s"]);
+  if(m.length<6)m.push(["Moving time",fDur(s.moving),""]);
+  if(m.length<6)m.push(["Avg speed",Math.round(fSpeed(s.avg)),sLabel()]);
+  const colW=(W-120)/3;
+  m.slice(0,6).forEach(([k,v,u],i)=>{const x=60+(i%3)*colW,y=top+200+Math.floor(i/3)*150;
+    g.fillStyle=MUTED;g.font=`600 26px ${DF}`;g.fillText(k.toUpperCase(),x,y);
+    g.fillStyle=FG;g.font=`700 76px ${DF}`;g.fillText(String(v),x,y+76);const vw=g.measureText(String(v)).width;
+    g.fillStyle=MUTED;g.font=`600 30px ${DF}`;g.fillText(u,x+vw+8,y+76)});
+  g.fillStyle=AMBER;g.fillRect(60,H-46,80,6);
+  g.fillStyle=MUTED;g.font=`500 24px ${BF}`;g.textAlign="right";g.fillText(d.source&&d.source!=="Phone GPS"?`Logged with ${d.source}`:"Logged with RoadTripper",W-60,H-38);g.textAlign="left";
+  return c;
+}
+function roundRect(g,x,y,w,h,r){g.beginPath();g.moveTo(x+r,y);g.arcTo(x+w,y,x+w,y+h,r);g.arcTo(x+w,y+h,x,y+h,r);g.arcTo(x,y+h,x,y,r);g.arcTo(x,y,x+w,y,r);g.closePath()}
+function fitText(g,t,x,y,maxW,size,font){let s=size;while(s>36){g.font=`700 ${s}px ${font}`;if(g.measureText(t).width<=maxW)break;s-=4}let txt=t;while(g.measureText(txt).width>maxW&&txt.length>4)txt=txt.slice(0,-2);g.fillText(txt===t?t:txt+"…",x,y)}
+async function saveFile(blob,name){
+  try{const dl=window.claude&&window.claude.use?await window.claude.use("downloads"):null;
+    if(dl){await dl.save({filename:name,data:blob});toast("Saved");return}}catch(e){if(e&&e.code==="declined")return;}
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+}
+async function openShare(id){
+  const d=S.drives.find(x=>x.id===id);if(!d)return;
+  const sh=$("#sheet");const wasOpen=!sh.hidden;
+  sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span><h3>Share card</h3></div></div>
+    <div class="wrap body stack"><div class="empty" id="card-wait">Building your card…</div><img class="share-preview" id="card-img" alt="Share card for ${esc(d.title)}" hidden>
+    <div class="row" style="justify-content:center"><button class="btn primary" id="card-share" type="button" hidden>Share</button><button class="btn" id="card-save" type="button" disabled>Save image</button>${d.who==="me"&&!d.photo?`<button class="btn ghost" id="card-photo" type="button">Add a photo first</button>`:""}</div>
+    <p class="muted small" style="text-align:center;margin:0">1080 × 1350, sized for Instagram, stories and group chats.</p></div>`;
+  sh.hidden=false;sh.scrollTop=0;document.body.style.overflow="hidden";
+  $("#sh-x").onclick=()=>wasOpen?openDrive(d.id):closeSheet();
+  const ph=$("#card-photo");if(ph)ph.onclick=()=>{const inp=$("#photo-in");inp.value="";inp.onchange=async()=>{const f=inp.files&&inp.files[0];if(!f)return;try{await photos.put(d.id,await downscale(f,1600));d.photo=true;save();openShare(d.id)}catch(e){toast("That file couldn't be read as a photo.")}};inp.click()};
+  const c=await buildCard(d);
+  const blob=await new Promise(r=>c.toBlob(r,"image/png"));
+  const img=$("#card-img");if(!img)return;img.src=URL.createObjectURL(blob);img.hidden=false;$("#card-wait").hidden=true;
+  const name=(d.title.replace(/[^\w]+/g,"-")||"drive")+".png";
+  const file=typeof File!=="undefined"?new File([blob],name,{type:"image/png"}):null;
+  const sb=$("#card-share");
+  if(file&&navigator.canShare&&(()=>{try{return navigator.canShare({files:[file]})}catch(e){return false}})()){sb.hidden=false;sb.onclick=async()=>{try{await navigator.share({files:[file],title:d.title,text:`${d.title} on RoadTripper`})}catch(e){}}}
+  const sv=$("#card-save");sv.disabled=false;sv.onclick=()=>saveFile(blob,name);
+}
+
+/* ================= segments view ================= */
 function viewSegments(){
   $("#view").innerHTML=`<div class="stack">
     <div><div class="eyebrow">Leaderboards</div><h1>Segments</h1></div>
-    <div class="notice"><strong>Ranked by smoothness.</strong> Every pass along a segment is scored on gentle braking and steady acceleration. Times are shown for reference but never ranked, so nobody wins by speeding on a public road.</div>
-    ${S.segments.map(sg=>{const all=efforts(sg);return `<section class="card seg-card"><div style="padding:14px 14px 0" class="row"><div style="min-width:0"><h2>${esc(sg.name)}</h2><div class="muted" style="font-size:13px">${fDist(sg.dist).toFixed(2)} ${dLabel()} · ${all.length} ${all.length===1?"pass":"passes"} · best per driver</div></div><span class="spacer"></span>${sg.sample?'<span class="chip example">Example</span>':""}</div>
+    <div class="notice"><strong>Closed courses only.</strong> Tracks and drag strips rank drivers by time. Public-road segments show recent passes without ranking, so nobody wins by speeding on open roads.</div>
+    ${S.segments.map(sg=>{const all=efforts(sg);const list=sg.closed?bestPerDriver(all):all;return `<section class="card seg-card"><div style="padding:14px 14px 0" class="row"><div style="min-width:0;flex:1"><h2>${esc(sg.name)}</h2><div class="muted small">${fDist(sg.dist).toFixed(2)} ${dLabel()} · ${all.length} ${all.length===1?"pass":"passes"}</div></div>${sg.closed?'<span class="chip closed">Closed course</span>':'<span class="chip">Public road</span>'}${sg.sample?'<span class="chip example">Example</span>':""}</div>
       <canvas class="route" data-seg="${sg.id}"></canvas>
-      <div style="padding:0 14px 10px">${bestPerDriver(all).slice(0,5).map((e,i)=>{const p=person(e.drive.who);return `<div class="effort"><span class="rank ${i===0?"r1":""}">${i+1}</span>${avatar(p,30)}<div style="flex:1;min-width:0"><div style="font-weight:600">${esc(p.name)}</div><div class="muted" style="font-size:13px">${esc(e.drive.vehicle)} · ${fDur(e.stats.dur)}</div></div><span class="num" style="font-size:24px;font-weight:700">${e.stats.smooth}</span></div>`}).join("")||'<p class="muted">No passes yet.</p>'}</div>
+      <div style="padding:0 14px 10px">${list.slice(0,5).map((e,i)=>{const p=person(e.drive.who);return `<div class="effort">${sg.closed?`<span class="rank ${i===0?"r1":""}">${i+1}</span>`:""}${avatar(p,30)}<div style="flex:1;min-width:0"><div style="font-weight:600">${esc(p.name)}</div><div class="muted small">${esc(e.drive.vehicle)} · ${ago(e.drive.start)}</div></div><span class="num" style="font-size:24px;font-weight:700">${sg.closed?e.stats.dur.toFixed(2)+" s":fDur(e.stats.dur)}</span></div>`}).join("")||'<p class="muted">No passes yet.</p>'}</div>
       ${sg.mine?`<div style="padding:0 14px 14px"><button class="btn danger" data-delseg="${sg.id}" type="button">Remove segment</button></div>`:""}
     </section>`}).join("")}
-    <p class="muted" style="font-size:13px">To add a segment, open any drive and pick a start and end point.</p>
+    <p class="muted small">To add a segment, open any drive and pick a start and end point.</p>
   </div>`;
-  document.querySelectorAll("canvas[data-seg]").forEach(c=>{const sg=S.segments.find(x=>x.id===c.dataset.seg);const all=efforts(sg);const best=all[0];
-    if(best){drawRoute(c,best.drive.pts,{hl:[best.from,best.to],context:best.drive.pts.slice(best.from,best.to+1),thin:true,noEnds:true})}else drawRoute(c,[sg.start,sg.end],{color:css("--hl")})});
+  document.querySelectorAll("canvas[data-seg]").forEach(c=>{const sg=S.segments.find(x=>x.id===c.dataset.seg);const best=efforts(sg)[0];
+    if(best)drawRoute(c,best.drive.pts,{hl:[best.from,best.to],context:best.drive.pts.slice(best.from,best.to+1),thin:true,noEnds:true});else drawRoute(c,[sg.start,sg.end],{color:css("--hl")})});
   document.querySelectorAll("[data-delseg]").forEach(b=>b.onclick=()=>{S.segments=S.segments.filter(x=>x.id!==b.dataset.delseg);save();viewSegments();toast("Segment removed")});
 }
 
-/* ---------- you ---------- */
+/* ================= you ================= */
 function viewYou(){
   const mine=S.drives.filter(d=>d.who==="me").sort((a,b)=>b.start-a.start);
-  const tot=mine.reduce((a,d)=>({dist:a.dist+d.stats.dist,t:a.t+d.stats.moving,sm:a.sm+d.stats.smooth}),{dist:0,t:0,sm:0});
-  const weeks=[];const wk=7*864e5;const now=Date.now();
+  const tot=mine.reduce((a,d)=>({dist:a.dist+d.stats.dist,top:Math.max(a.top,d.stats.max),up:a.up+(d.stats.up||0),g:Math.max(a.g,d.stats.gTot||0)}),{dist:0,top:0,up:0,g:0});
+  const pb={};for(const d of mine)for(const r of RUN_DEFS){const v=d.stats.runs&&d.stats.runs[r.k];if(v&&(!pb[r.k]||v.t<pb[r.k].v.t))pb[r.k]={v,d}}
+  const weeks=[];const wk=7*864e5,now=Date.now();
   for(let i=7;i>=0;i--){const a=now-(i+1)*wk,b=now-i*wk;weeks.push({label:i===0?"Now":`-${i}w`,v:mine.filter(d=>d.start>a&&d.start<=b).reduce((s,d)=>s+fDist(d.stats.dist),0)})}
   const mx=Math.max(1,...weeks.map(w=>w.v));
   $("#view").innerHTML=`<div class="stack">
     <div><div class="eyebrow">Your logbook</div><h1>You</h1></div>
-    <div class="totals detail-stats">${statBlock("Drives",mine.length)}${statBlock("Distance",fDist(tot.dist).toFixed(0),dLabel())}${statBlock("Avg smoothness",mine.length?Math.round(tot.sm/mine.length):"–")}</div>
-    <div class="panel"><div class="row"><h3>Distance per week</h3><span class="spacer"></span><span class="muted" style="font-size:13px">${dLabel()}, last 8 weeks</span></div>
+    <div class="detail-stats">${statBlock("Drives",mine.length)}${statBlock("Distance",fDist(tot.dist).toFixed(0),dLabel())}${statBlock("Climbed",Math.round(fAlt(tot.up)),aLabel())}${statBlock("Top speed",Math.round(fSpeed(tot.top)),sLabel())}${statBlock("Max g",fG(tot.g),"g")}</div>
+    <div class="panel"><h3>Personal bests</h3>${Object.keys(pb).length?`<table class="runs"><tbody>${RUN_DEFS.filter(r=>pb[r.k]).map(r=>`<tr><th scope="row">${r.label}</th><td class="t"><button class="open-link muted small" data-open="${pb[r.k].d.id}" style="text-align:right">${esc(pb[r.k].d.title)}</button></td><td class="v">${fSec(pb[r.k].v.t)}</td></tr>`).join("")}</tbody></table>`:'<p class="muted" style="margin:0">Record a run from a standing start to set your first times.</p>'}</div>
+    <div class="panel"><div class="row"><h3>Distance per week</h3><span class="spacer"></span><span class="muted small">${dLabel()}, last 8 weeks</span></div>
       <div class="bars" role="img" aria-label="Distance per week">${weeks.map(w=>`<div class="b"><span class="num">${w.v?w.v.toFixed(0):""}</span><i style="height:${w.v/mx*80}%"></i><span>${w.label}</span></div>`).join("")}</div></div>
     <div class="panel"><h3>Garage</h3>
       ${S.settings.vehicles.map(v=>`<div class="row"><span style="flex:1;font-weight:600">${esc(v)}</span>${v===S.settings.vehicle?'<span class="chip">Default</span>':`<button class="btn ghost" data-defveh="${esc(v)}" type="button">Make default</button>`}</div>`).join("")}
-      <form class="row" id="veh-form"><input type="text" id="veh-in" placeholder="Add a vehicle, e.g. 2018 Civic" style="flex:1;min-width:0" maxlength="60"><button class="btn" type="submit">Add</button></form>
+      <form class="row" id="veh-form"><input type="text" id="veh-in" placeholder="Add a vehicle, e.g. 2018 Civic Si" style="flex:1;min-width:0" maxlength="60"><button class="btn" type="submit">Add</button></form>
     </div>
-    <div class="panel"><h3>Your drives</h3>${mine.map(d=>`<button class="effort open-link" data-open="${d.id}" style="display:flex"><div style="flex:1;min-width:0"><div style="font-weight:600">${esc(d.title)}</div><div class="muted" style="font-size:13px">${ago(d.start)} · ${fDist(d.stats.dist).toFixed(1)} ${dLabel()} · ${fDur(d.stats.moving)}</div></div>${smoothChip(d.stats.smooth)}</button>`).join("")||'<p class="muted" style="margin:0">Nothing recorded yet.</p>'}</div>
-    <div class="panel"><h3>Example data</h3><p class="muted" style="margin:0">The other drivers, their drives and the starter segments are examples so you can see how things work. Your own recordings are kept on this device.</p>
+    <div class="panel"><h3>Your drives</h3>${mine.map(d=>`<button class="effort open-link" data-open="${d.id}" style="display:flex"><div style="flex:1;min-width:0"><div style="font-weight:600">${esc(d.title)}</div><div class="muted small">${ago(d.start)} · ${fDist(d.stats.dist).toFixed(1)} ${dLabel()} · top ${Math.round(fSpeed(d.stats.max))} ${sLabel()}</div></div>${headlineRun(d.stats)?`<span class="chip run">${headlineRun(d.stats).label} ${fSec(headlineRun(d.stats).v.t)}</span>`:""}</button>`).join("")||'<p class="muted" style="margin:0">Nothing recorded yet.</p>'}</div>
+    <div class="panel"><h3>Example data</h3><p class="muted" style="margin:0">The other drivers, their drives and the starter segments are examples so you can see how things work. Your own recordings and photos stay on this device.</p>
       <div class="row"><button class="btn" id="clr-ex" type="button">Remove examples</button><button class="btn ghost" id="reset" type="button">Reset everything</button></div>
-      <div id="reset-confirm" hidden class="row"><span style="flex:1">Erase all drives, segments and comments on this device?</span><button class="btn danger" id="reset-yes" type="button">Erase</button></div>
+      <div id="reset-confirm" hidden class="row"><span style="flex:1">Erase all drives, photos, segments and comments on this device?</span><button class="btn danger" id="reset-yes" type="button">Erase</button></div>
     </div>
   </div>`;
   document.querySelectorAll("[data-defveh]").forEach(b=>b.onclick=()=>{S.settings.vehicle=b.dataset.defveh;save();viewYou()});
   $("#veh-form").onsubmit=e=>{e.preventDefault();const v=$("#veh-in").value.trim();if(!v)return;if(!S.settings.vehicles.includes(v))S.settings.vehicles.push(v);S.settings.vehicle=v;save();viewYou();toast("Vehicle added")};
   $("#clr-ex").onclick=()=>{S.drives=S.drives.filter(d=>!d.sample);S.segments=S.segments.filter(s=>!s.sample);save();viewYou();toast("Examples removed")};
   $("#reset").onclick=()=>{$("#reset-confirm").hidden=false};
-  $("#reset-yes").onclick=()=>{try{localStorage.removeItem(KEY)}catch(e){}mem=null;S=seed();save();render();toast("Reset to a fresh start")};
+  $("#reset-yes").onclick=()=>{S.drives.forEach(d=>d.photo&&photos.del(d.id));try{localStorage.removeItem(KEY)}catch(e){}mem=null;S=seed();save();render();toast("Reset to a fresh start")};
 }
 
-/* ---------- global events ---------- */
+/* ================= global events ================= */
 document.addEventListener("click",e=>{
   const k=e.target.closest("[data-kudos]");if(k&&!k.disabled){e.preventDefault();const id=k.dataset.kudos;S.kudos[id]=!S.kudos[id];save();const d=S.drives.find(x=>x.id===id);k.setAttribute("aria-pressed",!!S.kudos[id]);k.querySelector("span").textContent=kudosCount(d);if(S.kudos[id])toast("Kudos given");return}
+  const sh=e.target.closest("[data-share]");if(sh){e.preventDefault();openShare(sh.dataset.share);return}
   const o=e.target.closest("[data-open]");if(o){e.preventDefault();openDrive(o.dataset.open)}
 });
 $("#u-mi").onclick=()=>{S.settings.units="mi";save();render()};
 $("#u-km").onclick=()=>{S.settings.units="km";save();render()};
-let pendingOpen=null;
 window.addEventListener("hashchange",()=>{if(!$("#sheet").hidden){$("#sheet").hidden=true;document.body.style.overflow=""}render();if(pendingOpen){const id=pendingOpen;pendingOpen=null;openDrive(id,true)}});
-let rz;window.addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(()=>{if($("#sheet").hidden)render()},200)});
-if(!ROAD)ROAD=buildRoad();
+let rz,lastW=window.innerWidth;window.addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(()=>{if(window.innerWidth===lastW)return;lastW=window.innerWidth;if($("#sheet").hidden)render()},200)});
 render();
 })();
 </script>

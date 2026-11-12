@@ -1,17 +1,36 @@
-# Roadbook
+# RoadTripper
 
-A Strava-style logbook for driving. Record a drive with your phone's GPS, see the route and stats, share drives in a feed with kudos and comments, and compare yourself on segments.
+A Strava-style logbook for driving. Record a drive with your phone or a performance GPS, see the route, elevation and g-force, time your runs, share drives in a feed with kudos and comments, and post a share card with your photo.
 
-**Segments are ranked by smoothness, not speed.** Each pass is scored on gentle braking and steady acceleration; times are shown but never ranked. While a drive is recording, the app switches to a minimal "Eyes on the road" screen, and finishing a drive needs a one-second hold.
+Live at https://roadtripper.itschefff.com
+
+## What it records
+
+- **Every drive:** distance, moving and elapsed time, average and top speed, elevation gain and profile, max acceleration, braking and lateral g (with a friction-circle plot).
+- **Timed runs**, detected automatically: 0–60 mph, 60–130 mph, 60 ft, ⅛ mile and ¼ mile (with trap speeds). Runs start when the car moves off from a stop (no rollout subtracted). Phone GPS logs about once a second, so those times are estimates; a 10–25 Hz device gives accurate ones.
+- **Segments:** closed-course segments (tracks, drag strips) rank drivers by time. Public-road segments list passes without ranking, so nobody wins by speeding on open roads.
+- **Photos and share cards:** attach a photo to a drive, then export a 1080 × 1350 card with the photo, route and key numbers.
+
+## Data sources
+
+| Source | How | Notes |
+| --- | --- | --- |
+| Phone GPS | Browser geolocation | About 1 Hz. Works everywhere, including iPhone. |
+| Phone motion sensors | `devicemotion`, gravity removed | Peak horizontal g between GPS fixes. Mount the phone firmly. |
+| RaceBox Mini / Mini S / Micro | Web Bluetooth, RaceBox BLE protocol (UBX-framed data message, class 0xFF id 0x01) | Position, speed, altitude and the device's own accelerometer at up to 25 Hz. |
+| Dragy | Web Bluetooth, NMEA | Experimental. Dragy doesn't publish its protocol; we try standard NMEA sentences. Needs testing with a real unit. |
+| Other Bluetooth GPS | Web Bluetooth, NMEA (RMC + GGA) | Any receiver that streams NMEA over a BLE serial service. |
+
+Web Bluetooth works in Chrome and Edge on Android, Windows, macOS and ChromeOS. iPhone browsers don't support it, so on iPhone use Phone GPS.
 
 ## Run it
 
 It's a static, installable web app with no build tools.
 
-- **Locally:** `python3 -m http.server` in this folder, then open http://localhost:8000. Browsers only allow GPS on `localhost` or HTTPS.
-- **On your phone:** enable GitHub Pages (Settings → Pages → Deploy from a branch → `main` / root), open the Pages URL, then "Add to Home Screen".
+- **Locally:** `python3 -m http.server` in this folder, then open http://localhost:8000. Browsers only allow GPS and Bluetooth on `localhost` or HTTPS.
+- **On your phone:** open the live site and use "Add to Home Screen".
 
-No GPS handy? Tap **Drive → Simulate a drive** to replay a demo route.
+No GPS handy? Tap **Drive**, then **Simulate a road drive** or **Simulate a drag-strip pass**.
 
 ## Files
 
@@ -21,8 +40,9 @@ No GPS handy? Tap **Drive → Simulate a drive** to replay a demo route.
 | `build.sh` | Wraps `app.html` into `index.html` with the PWA head tags. Run `sh build.sh` after editing. |
 | `index.html` | Generated page that gets served. |
 | `manifest.webmanifest`, `sw.js`, `icon.svg` | Install metadata, offline cache, app icon. |
+| `CNAME` | Custom domain for GitHub Pages. |
 
 ## Current limits
 
-- Data lives on the device (localStorage). The other drivers you see are labelled example data.
+- Drives live on the device (localStorage; photos in IndexedDB). The other drivers you see are labelled example data.
 - A real shared feed between friends needs a backend with accounts; that's the next step.
