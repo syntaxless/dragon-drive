@@ -528,7 +528,7 @@ function stylePicker(){
   const keys=Object.keys(BACKDROPS).filter(k=>!BACKDROPS[k].map||canMap());const cur=backdrop();
   return `<div class="row style-pick" role="group" aria-label="Route backdrop">${keys.map(k=>`<button type="button" class="chip pick" data-mapstyle="${k}" aria-pressed="${cur===k}">${BACKDROPS[k].label}</button>`).join("")}
     ${cur==="solid"?`<label class="chip pick" style="gap:6px">Color <input type="color" id="solid-color" value="${S.settings.solidColor||"#0d3b66"}" aria-label="Background color"></label>`:""}</div>
-    ${IN_ARTIFACT?`<p class="muted small" style="margin:0">Street map styles show in the app at dragondrive.itschefff.com.</p>`:""}`;
+    ${IN_ARTIFACT?`<p class="muted small" style="margin:0">Street map styles show in the app at dragondrive.turboloser.co.</p>`:""}`;
 }
 let DETAIL_MAP=null;
 function mountDetailMap(el,pts){
@@ -1029,7 +1029,7 @@ async function buildCard(d){
     g.fillStyle=FG;g.font=`700 76px ${DF}`;g.fillText(String(v),x,y+76);const vw=g.measureText(String(v)).width;
     g.fillStyle=MUTED;g.font=`600 30px ${DF}`;g.fillText(u,x+vw+8,y+76)});
   g.fillStyle=AMBER;g.fillRect(60,H-46,80,6);
-  {const foot=`Logged with ${d.source||"Phone GPS"} using Dragon Drive | dragondrive.itschefff.com`;let fs=24;g.font=`500 ${fs}px ${BF}`;while(fs>16&&g.measureText(foot).width>W-220){fs--;g.font=`500 ${fs}px ${BF}`}
+  {const foot=`Logged with ${d.source||"Phone GPS"} using Dragon Drive | dragondrive.turboloser.co`;let fs=24;g.font=`500 ${fs}px ${BF}`;while(fs>16&&g.measureText(foot).width>W-220){fs--;g.font=`500 ${fs}px ${BF}`}
   g.fillStyle=MUTED;g.textAlign="right";g.fillText(foot,W-60,H-38);g.textAlign="left"}
   return c;
 }

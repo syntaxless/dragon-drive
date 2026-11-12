@@ -2,7 +2,7 @@
 
 A Strava-style logbook for driving. Record a drive with your phone or a performance GPS, see the route, elevation and g-force, time your runs, share drives in a feed with kudos and comments, and post a share card with your photo.
 
-Live at https://dragondrive.itschefff.com
+Live at https://dragondrive.turboloser.co
 
 ## What it records
 
