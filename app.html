@@ -73,6 +73,8 @@ h3{font-size:18px}
 .viewer img{max-width:100%;max-height:100%;object-fit:contain;transform-origin:0 0;will-change:transform;user-select:none;-webkit-user-select:none;-webkit-user-drag:none}
 .viewer .vx{position:absolute;top:calc(env(safe-area-inset-top,0px) + 12px);right:12px;width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.18);color:#fff;font-size:22px;line-height:1}
 .photo-edit .photo,.veh-gallery img{cursor:zoom-in}
+.card.post{padding-bottom:0}.post-body{margin:0;padding:4px 14px 10px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:16px}.sheet .post-body{padding:0}
+.compose textarea{margin:0}
 .garage-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
 .garage-grid figure{margin:0;border-radius:12px;overflow:hidden;background:var(--surface-2)}
 .garage-grid img,.garage-grid .ph{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--surface-2)}
@@ -485,7 +487,7 @@ const Sync=(()=>{
 // Profiles, following, shared drives, kudos and comments on top of the account backend.
 // The database decides who can see what (supabase/social.sql); the app only asks.
 const Social=(()=>{
-  const SOC={me:undefined,profiles:new Map(),following:new Set(),drives:[],kudos:new Map(),comments:new Map(),loaded:false,photoUrls:new Map()};
+  const SOC={me:undefined,profiles:new Map(),following:new Set(),drives:[],kudos:new Map(),comments:new Map(),loaded:false,photoUrls:new Map(),posts:new Map()};
   const ok=()=>Sync.on()&&!!Sync.user;
   const ready=()=>ok()&&!!SOC.me;
   const J=async(path,opt={})=>{const r=await Sync.api(path,{...opt,headers:{"Content-Type":"application/json",...(opt.headers||{})}});if(!r.ok){const j=await r.json().catch(()=>({}));const e=new Error(j.message||("HTTP "+r.status));e.code=j.code;e.status=r.status;throw e}return r.status===204||r.headers.get("content-length")==="0"?null:r.json().catch(()=>null)};
@@ -497,6 +499,9 @@ const Social=(()=>{
   const r5=x=>x==null?null:Math.round(x*1e5)/1e5,r2=x=>x==null?null:Math.round(x*100)/100;
   function row(d){const pts=trimEnds(d.pts,S.settings.hideEnds===false?0:300).map(p=>[r5(p[0]),r5(p[1]),p[2],r2(p[3]),p[4]==null?null:Math.round(p[4]),r2(p[5]),r2(p[6]),r2(p[7])]);
     return{id:d.id,visibility:d.vis||S.settings.defaultVis||"followers",title:d.title,vehicle:vehPriv(d.vehicle)?"":(d.vehicle||""),source:d.source||"",start:new Date(d.start).toISOString(),stats:d.stats,pts,photo:!!d.photo}}
+  // Announcements share the drives table (kind "post"); keep them out of everything that expects a route.
+  function toPost(r){const me=Sync.user&&Sync.user.uid;return{id:r.id,who:r.user_id===me?"me":"u:"+r.user_id,uid:r.user_id,remote:true,post:true,body:r.body||"",start:Date.parse(r.start)}}
+  function split(rows){const out=[];for(const r of rows||[]){if(r.kind==="post")SOC.posts.set(r.id,toPost(r));else out.push(r)}return out}
   function toLocal(r){const p=SOC.profiles.get(r.user_id);return{id:r.id,who:"u:"+r.user_id,remote:true,title:r.title,vehicle:r.vehicle,source:r.source,start:Date.parse(r.start),stats:r.stats,pts:r.pts,photo:r.photo,vis:r.visibility}}
   const vehPriv=n=>!!(S.settings.garage&&S.settings.garage[n]&&S.settings.garage[n].priv);
   const sig=d=>JSON.stringify([d.title,d.vehicle,vehPriv(d.vehicle),d.vis||S.settings.defaultVis||"followers",!!d.photo,d.pts.length,S.settings.hideEnds!==false]);
@@ -507,8 +512,9 @@ const Social=(()=>{
       if(SOC.me===undefined)await loadMe();if(!SOC.me){SOC.loaded=true;return}
       const f=await J("/rest/v1/follows?select=followee&follower=eq."+u.uid);SOC.following=new Set(f.map(x=>x.followee));
       const ids=[...SOC.following];
-      if(ids.length){addProfiles(await J("/rest/v1/profiles?select=*&id="+inList(ids)));SOC.drives=(await J("/rest/v1/drives?select=*&user_id="+inList(ids)+"&order=start.desc&limit=60")).map(toLocal)}else SOC.drives=[];
-      await loadReactions([...SOC.drives.map(d=>d.id),...Object.keys(S.pub||{})]);
+      if(ids.length){addProfiles(await J("/rest/v1/profiles?select=*&id="+inList(ids)));SOC.drives=split(await J("/rest/v1/drives?select=*&user_id="+inList(ids)+"&order=start.desc&limit=60")).map(toLocal)}else SOC.drives=[];
+      try{const ps=await J("/rest/v1/drives?select=*&kind=eq.post&order=start.desc&limit=20");const pu=[...new Set(ps.map(x=>x.user_id))].filter(id=>!SOC.profiles.has(id));if(pu.length)addProfiles(await J("/rest/v1/profiles?select=*&id="+inList(pu)));split(ps)}catch(e){}
+      await loadReactions([...SOC.posts.keys(),...SOC.drives.map(d=>d.id),...Object.keys(S.pub||{})]);
       SOC.loaded=true;
       if(current==="feed"&&!(SHEET&&!$("#sheet").hidden))rerender();
     }catch(e){}
@@ -580,22 +586,26 @@ const Social=(()=>{
     async byHandle(h){const r=await J("/rest/v1/profiles?select=*&handle=eq."+encodeURIComponent(h.toLowerCase()));if(r[0])addProfiles(r);return r[0]||null},
     async search(q){q=q.replace(/[^a-z0-9_]/gi,"").toLowerCase();if(!q)return[];const r=await J("/rest/v1/profiles?select=*&handle=ilike."+encodeURIComponent("*"+q+"*")+"&limit=10");addProfiles(r);return r.filter(p=>p.id!==Sync.user.uid)},
     async profileData(p){const [drv,fol,fing,veh]=await Promise.all([J("/rest/v1/drives?select=*&user_id=eq."+p.id+"&order=start.desc&limit=50"),J("/rest/v1/follows?select=follower&followee=eq."+p.id),J("/rest/v1/follows?select=followee&follower=eq."+p.id),J("/rest/v1/vehicles?select=*&user_id=eq."+p.id+"&order=pos.asc")]);
-      const ds=drv.map(toLocal);for(const d of ds)if(!SOC.drives.some(x=>x.id===d.id))SOC.drives.push(d);await loadReactions(ds.map(d=>d.id));const ppl=[...new Set([...fol.map(x=>x.follower),...fing.map(x=>x.followee)])].filter(id=>!SOC.profiles.has(id));if(ppl.length)addProfiles(await J("/rest/v1/profiles?select=*&id="+inList(ppl)));
+      const ds=split(drv).map(toLocal);for(const d of ds)if(!SOC.drives.some(x=>x.id===d.id))SOC.drives.push(d);await loadReactions(ds.map(d=>d.id));const ppl=[...new Set([...fol.map(x=>x.follower),...fing.map(x=>x.followee)])].filter(id=>!SOC.profiles.has(id));if(ppl.length)addProfiles(await J("/rest/v1/profiles?select=*&id="+inList(ppl)));
       return{drives:ds,followers:fol.length,following:fing.length,followerIds:fol.map(x=>x.follower),followingIds:fing.map(x=>x.followee),vehicles:veh}},
     async follow(id,on){const u=Sync.user;if(on){await J("/rest/v1/follows",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify({follower:u.uid,followee:id})});SOC.following.add(id)}
       else{await J("/rest/v1/follows?follower=eq."+u.uid+"&followee=eq."+id,{method:"DELETE"});SOC.following.delete(id);SOC.drives=SOC.drives.filter(d=>d.who!=="u:"+id)}refresh()},
     async photoUrl(d){if(SOC.photoUrls.has(d.id))return SOC.photoUrls.get(d.id);const uid=d.who.slice(2);const r=await Sync.api("/storage/v1/object/authenticated/drive-photos/"+uid+"/"+encodeURIComponent(d.id)).catch(()=>null);
       const u=r&&r.ok?URL.createObjectURL(await r.blob()):null;SOC.photoUrls.set(d.id,u);return u},
+    posts:()=>[...SOC.posts.values()].sort((a,b)=>b.start-a.start),
+    async announce(body){const u=Sync.user;const row={id:"post-"+uid(),user_id:u.uid,kind:"post",body,title:"",visibility:"public",start:new Date().toISOString(),stats:{},pts:[]};
+      const r=await J("/rest/v1/drives",{method:"POST",headers:{Prefer:"return=representation"},body:JSON.stringify(row)});split(r);SOC.kudos.set(row.id,{n:0,mine:false});SOC.comments.set(row.id,[])},
+    async unannounce(id){await J("/rest/v1/drives?id=eq."+encodeURIComponent(id),{method:"DELETE"});SOC.posts.delete(id)},
     // Public ("Everyone") drives from people you don't follow yet, for discovery.
     async nearby(){const u=Sync.user;if(SOC.nearAt&&Date.now()-SOC.nearAt<120000)return SOC.near;
       const r=await J("/rest/v1/drives?select=*&visibility=eq.public&user_id=neq."+u.uid+"&order=start.desc&limit=300");
       const need=[...new Set(r.map(x=>x.user_id))].filter(id=>!SOC.profiles.has(id));if(need.length)addProfiles(await J("/rest/v1/profiles?select=*&id="+inList(need)));
-      SOC.near=r.map(toLocal);SOC.nearAt=Date.now();await loadReactions(SOC.near.map(d=>d.id)).catch(()=>{});return SOC.near},
-    reset(){SOC.near=[];SOC.nearAt=0;SOC.me=undefined;SOC.profiles.clear();SOC.following.clear();SOC.drives=[];SOC.kudos.clear();SOC.comments.clear();SOC.loaded=false}
+      SOC.near=split(r).map(toLocal);SOC.nearAt=Date.now();await loadReactions(SOC.near.map(d=>d.id)).catch(()=>{});return SOC.near},
+    reset(){SOC.posts.clear();SOC.near=[];SOC.nearAt=0;SOC.me=undefined;SOC.profiles.clear();SOC.following.clear();SOC.drives=[];SOC.kudos.clear();SOC.comments.clear();SOC.loaded=false}
   };
 })();
 function allDrives(){return Social.ok()?[...S.drives,...Social.SOC.drives.filter(r=>!S.drives.some(d=>d.id===r.id))]:S.drives}
-function findDrive(id){return S.drives.find(x=>x.id===id)||Social.SOC.drives.find(x=>x.id===id)||(Social.SOC.near||[]).find(x=>x.id===id)}
+function findDrive(id){return S.drives.find(x=>x.id===id)||Social.SOC.posts.get(id)||Social.SOC.drives.find(x=>x.id===id)||(Social.SOC.near||[]).find(x=>x.id===id)}
 
 let S=load();
 if(!S||S.v!==2){S=seed();save()}
@@ -847,17 +857,40 @@ function feedCard(d){
 }
 function viewFeed(){
   const all=allDrives(),groups=cruises(all),inCruise=new Set(groups.flatMap(g=>g.drives.map(d=>d.id)));
-  const items=[...all.filter(d=>!inCruise.has(d.id)).map(d=>({t:d.start,h:()=>feedCard(d)})),...groups.map(g=>({t:g.start,h:()=>cruiseCard(g)}))].sort((a,b)=>b.t-a.t);
+  const items=[...all.filter(d=>!inCruise.has(d.id)).map(d=>({t:d.start,h:()=>feedCard(d)})),...groups.map(g=>({t:g.start,h:()=>cruiseCard(g)})),...(Social.ok()?Social.posts():[]).map(p=>({t:p.start,h:()=>postCard(p)}))].sort((a,b)=>b.t-a.t);
+  const canPost=Social.ready()&&Social.me.verified;
   const drives=all;
   const nudge=Sync.on()&&!Sync.user?`<div class="notice signup"><div style="flex:1;min-width:180px"><b>Join Dragon Drive</b> to follow friends, share your drives and keep them on all your devices.</div><div class="row" style="gap:8px"><a class="btn" href="#you" data-signin="in" style="color:var(--fg)">Sign in</a><a class="btn primary" href="#you" data-signin="new" style="color:var(--accent-fg)">Create an account</a></div></div>`:Social.ok()&&Social.SOC.loaded&&!Social.me?`<a class="notice" href="#you" style="display:block;text-decoration:none;color:inherit"><b>Pick your @handle</b> so friends can find and follow you.</a>`:Social.ready()&&![...Social.SOC.following].some(id=>(Social.SOC.profiles.get(id)||{}).handle!=="burnout")?`<a class="notice" href="#you" style="display:block;text-decoration:none;color:inherit"><b>Follow your friends</b> to see their drives here. Find them by @handle or send your invite link.</a>`:"";
   $("#view").innerHTML=`<div class="stack">
     <div class="row"><div><div class="eyebrow">Your road crew</div><h1>Feed</h1></div><span class="spacer"></span><a class="btn primary" href="#record">Start a drive</a></div>
     ${nudge}
+    ${canPost?`<form class="panel compose" id="ann-form"><h3>Post an announcement</h3><textarea id="ann-in" rows="3" maxlength="1000" placeholder="Everyone on Dragon Drive will see this in their feed." required></textarea><div class="row"><span class="muted small" style="flex:1">Posting as ${nameHtml(Social.person("u:"+Sync.user.uid))}</span><button class="btn primary" type="submit">Post</button></div></form>`:""}
     ${items.length?items.map(x=>x.h()).join(""):`<div class="empty">No drives yet. Tap <b>Drive</b> to record your first one.</div>`}
   </div>`;
   document.querySelectorAll("canvas[data-route]").forEach(c=>{const d=findDrive(c.dataset.route);if(d)paintRoute(c,d.pts,{thin:true,key:d.id})});
   document.querySelectorAll("canvas[data-cruisemap]").forEach(c=>{const g=groups.find(x=>x.id===c.dataset.cruisemap);if(g)drawCruise(c,g.drives)});
   fillPhotos();
+  const af=$("#ann-form");if(af)af.onsubmit=async e=>{e.preventDefault();const v=$("#ann-in").value.trim();if(!v)return;const bt=af.querySelector("button");bt.disabled=true;
+    try{await Social.announce(v);toast("Announcement posted");viewFeed()}catch(err){toast(/column|kind|PGRST/i.test(err.message)?"Run announcements.sql in Supabase first":err.message);bt.disabled=false}};
+}
+function linkify(t){return esc(t).replace(/https?:\/\/[^\s<]+[^\s<.,!?)]/g,u=>`<a href="${u}" target="_blank" rel="noopener">${u}</a>`)}
+function postCard(d){const p=person(d.who),n=commentsOf(d).length;
+  return `<article class="card post"><div class="card-head">${p.handle?`<span data-user="${esc(p.handle)}" class="user-link">${avatar(p)}</span>`:avatar(p)}<div style="min-width:0"><div style="font-weight:600">${p.handle?`<span data-user="${esc(p.handle)}">${nameHtml(p)}</span>`:esc(p.name)}</div><div class="muted small">${ago(d.start)}</div></div><span class="spacer"></span><span class="head-tags"><span class="chip run">Announcement</span></span></div>
+    <p class="post-body">${linkify(d.body)}</p>
+    <div class="card-foot"><button class="kudos" data-kudos="${d.id}" aria-pressed="${kudosMine(d)}" aria-label="Kudos" ${d.who==="me"?"disabled":""}>${heart}<span>${kudosCount(d)}</span></button>
+      <button class="kudos" data-post="${d.id}" aria-label="Comments"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg><span>${n}</span></button></div></article>`}
+function openPost(id){const d=Social.SOC.posts.get(id);if(!d)return;if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET={kind:"post",id};const sh=$("#sheet");const p=person(d.who);
+  sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span>${d.who==="me"?'<button class="btn ghost" id="p-del" type="button">Delete</button>':""}</div></div>
+  <div class="wrap body stack">
+    <div class="row">${p.handle?`<a href="#u/${esc(p.handle)}" class="user-link">${avatar(p)}</a>`:avatar(p)}<div><div style="font-weight:600">${p.handle?`<a href="#u/${esc(p.handle)}" style="color:inherit">${nameHtml(p)}</a>`:esc(p.name)}</div><div class="muted small">${new Date(d.start).toLocaleString(undefined,{weekday:"short",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}</div></div></div>
+    <p class="post-body" style="font-size:17px">${linkify(d.body)}</p>
+    <div class="panel"><div class="row"><h3>Kudos & comments</h3><span class="spacer"></span><button class="kudos" data-kudos="${d.id}" aria-pressed="${kudosMine(d)}" aria-label="Kudos" ${d.who==="me"?"disabled":""}>${heart}<span>${kudosCount(d)}</span></button></div>
+      <div class="stack">${commentsOf(d).map(c=>{const cp=person(c.who);return `<div class="comment">${cp.handle?`<a href="#u/${esc(cp.handle)}" class="user-link">${avatar(cp)}</a>`:avatar(cp)}<div><div style="font-weight:600;font-size:13px">${cp.handle?`<a href="#u/${esc(cp.handle)}" style="color:inherit">${nameHtml(cp)}</a>`:esc(cp.name)} <span class="muted" style="font-weight:400">${ago(c.t)}</span></div><p>${esc(c.text)}</p></div></div>`}).join("")||'<p class="muted" style="margin:0">No comments yet.</p>'}</div>
+      ${Social.ready()?`<form class="row" id="pc-form"><input type="text" id="pc-in" placeholder="Add a comment" style="flex:1;min-width:0" maxlength="280"><button class="btn" type="submit">Post</button></form>`:""}</div>
+  </div>`;
+  sh.hidden=false;document.body.style.overflow="hidden";$("#sh-x").onclick=closeSheet;
+  const f=$("#pc-form");if(f)f.onsubmit=async e=>{e.preventDefault();const v=$("#pc-in").value.trim();if(!v)return;try{await Social.comment(d.id,v)}catch(err){toast("Couldn't post the comment");return}openPost(d.id);toast("Comment posted")};
+  const del=$("#p-del");if(del)del.onclick=async()=>{if(!confirm("Delete this announcement for everyone?"))return;try{await Social.unannounce(d.id);closeSheet();toast("Announcement deleted")}catch(e){toast("Couldn't reach the server")}};
 }
 
 /* ================= data sources ================= */
@@ -1670,13 +1703,14 @@ document.addEventListener("click",e=>{
   const ms=e.target.closest("[data-mapstyle]");if(ms){S.settings.mapStyle=ms.dataset.mapstyle;save();rerender();return}
   const sh=e.target.closest("[data-share]");if(sh){e.preventDefault();openShare(sh.dataset.share);return}
   const o=e.target.closest("[data-open]");if(o){e.preventDefault();openDrive(o.dataset.open);return}
+  const po=e.target.closest("[data-post]");if(po){e.preventDefault();openPost(po.dataset.post);return}
   const cr=e.target.closest("[data-cruise]");if(cr){e.preventDefault();openCruise(cr.dataset.cruise)}
 });
 
 document.addEventListener("change",e=>{if(e.target.id==="solid-color"){S.settings.solidColor=e.target.value;save();rerender()}});
 // Re-draw after a setting change without losing the reader's place.
 function rerender(){const sh=$("#sheet");
-  if(SHEET&&!sh.hidden){if(SHEET.kind==="video")return;const y=sh.scrollTop;if(SHEET.kind==="cruise"){openCruise(SHEET.id);sh.scrollTop=y;return}if(SHEET.kind==="vehicle"){openVehicle(SHEET.spec);sh.scrollTop=y;return}if(SHEET.kind==="share")openShare(SHEET.id,SHEET.back);else openDrive(SHEET.id);sh.scrollTop=y}
+  if(SHEET&&!sh.hidden){if(SHEET.kind==="video")return;const y=sh.scrollTop;if(SHEET.kind==="cruise"){openCruise(SHEET.id);sh.scrollTop=y;return}if(SHEET.kind==="vehicle"){openVehicle(SHEET.spec);sh.scrollTop=y;return}if(SHEET.kind==="post"){openPost(SHEET.id);sh.scrollTop=y;return}if(SHEET.kind==="share")openShare(SHEET.id,SHEET.back);else openDrive(SHEET.id);sh.scrollTop=y}
   else{const y=window.scrollY;render();window.scrollTo(0,y)}}
 window.addEventListener("hashchange",()=>{if(!$("#sheet").hidden){if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET=null;$("#sheet").hidden=true;document.body.style.overflow=""}render();if(pendingOpen){const id=pendingOpen;pendingOpen=null;openDrive(id,true)}});
 let rz,lastW=window.innerWidth;window.addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(()=>{if(window.innerWidth===lastW)return;lastW=window.innerWidth;if($("#sheet").hidden)render()},200)});
