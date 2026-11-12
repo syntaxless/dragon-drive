@@ -1094,6 +1094,20 @@ function viewRoutes(){
 }
 
 /* ================= you ================= */
+const b64=blob=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(blob)});
+async function makeBackup(){
+  const ph={};const ids=S.drives.filter(d=>d.photo&&!d.sample).map(d=>d.id);if(S.settings.avatar)ids.push("avatar:me");
+  for(const id of ids){const b=await photos.get(id);if(b)ph[id]=await b64(b)}
+  return new Blob([JSON.stringify({app:"dragon-drive",v:1,saved:Date.now(),state:S,photos:ph})],{type:"application/json"});
+}
+async function restoreBackup(text){
+  const j=JSON.parse(text);if(!j||j.app!=="dragon-drive"||!j.state||!Array.isArray(j.state.drives))throw new Error("bad");
+  for(const [id,u] of Object.entries(j.photos||{})){const r=await fetch(u);await photos.put(id,await r.blob())}
+  // merge: keep drives already here, add any from the backup that are missing; backup wins for profile and garage
+  const have=new Set(S.drives.map(d=>d.id));const add=j.state.drives.filter(d=>!d.sample&&!have.has(d.id));
+  const veh=[...new Set([...(j.state.settings.vehicles||[]),...S.settings.vehicles])];
+  S={...S,...j.state,drives:[...S.drives,...add].sort((a,b)=>b.start-a.start),settings:{...S.settings,...j.state.settings,vehicles:veh}};save();
+}
 function viewYou(){
   const mine=S.drives.filter(d=>d.who==="me").sort((a,b)=>b.start-a.start);
   const tot=mine.reduce((a,d)=>({dist:a.dist+d.stats.dist,top:Math.max(a.top,d.stats.max),up:a.up+(d.stats.up||0),g:Math.max(a.g,d.stats.gTot||0)}),{dist:0,top:0,up:0,g:0});
@@ -1120,6 +1134,10 @@ function viewYou(){
       <form class="row" id="veh-form"><input type="text" id="veh-in" placeholder="Add a vehicle, e.g. 2018 Civic Si" style="flex:1;min-width:0" maxlength="60"><button class="btn" type="submit">Add</button></form>
     </div>
     <div class="panel"><h3>Your drives</h3>${mine.map(d=>`<button class="effort open-link" data-open="${d.id}" style="display:flex"><div style="flex:1;min-width:0"><div style="font-weight:600">${esc(d.title)}</div><div class="muted small">${ago(d.start)} · ${fDist(d.stats.dist).toFixed(1)} ${dLabel()} · top ${Math.round(fSpeed(d.stats.max))} ${sLabel()}</div></div>${headlineRun(d.stats)?`<span class="chip run">${headlineRun(d.stats).label} ${fSec(headlineRun(d.stats).v.t)}</span>`:""}</button>`).join("")||'<p class="muted" style="margin:0">Nothing recorded yet.</p>'}</div>
+    <div class="panel"><h3>Backup</h3><p class="muted" style="margin:0">Everything lives on this device, tied to this web address. Save a backup file to keep your profile, garage, drives and photos safe, or to move them to a new phone or address.</p>
+      <div class="row"><button class="btn" id="bk-save" type="button">Save backup</button><button class="btn ghost" id="bk-load" type="button">Restore from backup</button></div>
+      <input type="file" id="bk-in" accept="application/json,.json" class="sr" tabindex="-1" aria-hidden="true">
+    </div>
     <div class="panel"><h3>Example data</h3><p class="muted" style="margin:0">The other drivers and their drives are examples so you can see how things work. Your own recordings and photos stay on this device.</p>
       <div class="row"><button class="btn" id="clr-ex" type="button">Remove examples</button><button class="btn ghost" id="reset" type="button">Reset everything</button></div>
       <div id="reset-confirm" hidden class="row"><span style="flex:1">Erase all drives, photos and comments on this device?</span><button class="btn danger" id="reset-yes" type="button">Erase</button></div>
@@ -1132,6 +1150,8 @@ function viewYou(){
   document.querySelectorAll("[data-defveh]").forEach(b=>b.onclick=()=>{S.settings.vehicle=b.dataset.defveh;save();viewYou()});
   $("#veh-form").onsubmit=e=>{e.preventDefault();const v=$("#veh-in").value.trim();if(!v)return;if(!S.settings.vehicles.includes(v))S.settings.vehicles.push(v);S.settings.vehicle=v;save();viewYou();toast("Vehicle added")};
   $("#clr-ex").onclick=()=>{S.drives=S.drives.filter(d=>!d.sample);save();viewYou();toast("Examples removed")};
+  $("#bk-save").onclick=async()=>{try{const blob=await makeBackup();await saveFile(blob,`dragon-drive-backup-${new Date().toISOString().slice(0,10)}.json`)}catch(e){toast("Couldn't build the backup.")}};
+  $("#bk-load").onclick=()=>{const inp=$("#bk-in");inp.value="";inp.onchange=async()=>{const f=inp.files&&inp.files[0];if(!f)return;try{await restoreBackup(await f.text());render();await loadAvatar();render();toast("Backup restored")}catch(e){toast("That file isn't a Dragon Drive backup.")}};inp.click()};
   $("#reset").onclick=()=>{$("#reset-confirm").hidden=false};
   $("#reset-yes").onclick=()=>{S.drives.forEach(d=>d.photo&&photos.del(d.id));try{localStorage.removeItem(KEY)}catch(e){}mem=null;S=seed();save();render();toast("Reset to a fresh start")};
 }
@@ -1151,6 +1171,6 @@ function rerender(){const sh=$("#sheet");
   else{const y=window.scrollY;render();window.scrollTo(0,y)}}
 window.addEventListener("hashchange",()=>{if(!$("#sheet").hidden){if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET=null;$("#sheet").hidden=true;document.body.style.overflow=""}render();if(pendingOpen){const id=pendingOpen;pendingOpen=null;openDrive(id,true)}});
 let rz,lastW=window.innerWidth;window.addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(()=>{if(window.innerWidth===lastW)return;lastW=window.innerWidth;if($("#sheet").hidden)render()},200)});
-render();loadAvatar();
+render();loadAvatar();try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 })();
 </script>
