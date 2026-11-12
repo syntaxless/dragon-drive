@@ -33,7 +33,6 @@ It's a static, installable web app with no build tools.
 - **Locally:** `python3 -m http.server` in this folder, then open http://localhost:8000. Browsers only allow GPS and Bluetooth on `localhost` or HTTPS.
 - **On your phone:** open the live site and use "Add to Home Screen".
 
-No GPS handy? Tap **Drive**, then **Simulate a drive (demo)**.
 
 ## Files
 
