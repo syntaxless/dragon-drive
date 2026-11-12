@@ -133,3 +133,18 @@ create policy "own vehicles" on public.vehicles for all to authenticated using (
 -- Vehicle pages: specs/mods description and extra photos (same as vehicle-pages.sql).
 alter table public.vehicles add column if not exists about text not null default '' check (char_length(about) <= 2000);
 alter table public.vehicles add column if not exists photos jsonb not null default '[]'::jsonb;
+
+-- Everyone follows @burnout (same as follow-burnout.sql).
+create or replace function public.follow_burnout() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  insert into follows (follower, followee)
+  select new.id, b.id from profiles b where b.handle = 'burnout' and b.id <> new.id
+  on conflict do nothing;
+  return new;
+end $$;
+drop trigger if exists follow_burnout on public.profiles;
+create trigger follow_burnout after insert on public.profiles for each row execute function public.follow_burnout();
+
+insert into public.follows (follower, followee)
+select p.id, b.id from public.profiles p join public.profiles b on b.handle = 'burnout' where p.id <> b.id
+on conflict do nothing;
