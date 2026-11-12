@@ -1,0 +1,616 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b6e4f">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>Roadbook</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap">
+<style>
+/* Layout: one-column phone app, sticky header, fixed bottom tab bar; road-sign green accent, amber for routes and highlights */
+:root{
+  --bg:#eef1f0; --surface:#ffffff; --surface-2:#e3e8e6; --line:#d2d9d6;
+  --fg:#16201c; --muted:#5b6a64; --accent:#0b6e4f; --accent-fg:#ffffff;
+  --route:#d98a00; --route-2:#0b6e4f; --hl:#e04f1a; --good:#1d8a52; --warn:#b7791f; --bad:#c2410c;
+  --grid:rgba(22,32,28,.07);
+  --display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --tab-h:64px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1513; --surface:#18201d; --surface-2:#212b27; --line:#2c3833;
+  --fg:#e7eeeb; --muted:#94a39d; --accent:#3fbf8a; --accent-fg:#06110c;
+  --route:#f2a93b; --route-2:#3fbf8a; --hl:#ff7a45; --good:#4cc787; --warn:#e3a83f; --bad:#ff8a5c;
+  --grid:rgba(231,238,235,.07); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1513; --surface:#18201d; --surface-2:#212b27; --line:#2c3833;
+  --fg:#e7eeeb; --muted:#94a39d; --accent:#3fbf8a; --accent-fg:#06110c;
+  --route:#f2a93b; --route-2:#3fbf8a; --hl:#ff7a45; --good:#4cc787; --warn:#e3a83f; --bad:#ff8a5c;
+  --grid:rgba(231,238,235,.07); color-scheme:dark}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45}
+*{box-sizing:border-box}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+.wrap{max-width:640px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
+header.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:10px}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:700;font-size:24px;letter-spacing:.02em;text-transform:uppercase}
+.brand svg{flex:none}
+.unit-toggle{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.unit-toggle button{border:0;background:transparent;padding:4px 10px;font-family:var(--display);font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.unit-toggle button[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg)}
+main{padding-block:16px calc(var(--tab-h) + 24px + env(safe-area-inset-bottom,0px))}
+h1,h2,h3{font-family:var(--display);font-weight:700;letter-spacing:.01em;text-wrap:balance;margin:0}
+h1{font-size:30px;text-transform:uppercase}
+h2{font-size:22px}
+h3{font-size:18px}
+.eyebrow{font-family:var(--display);font-weight:600;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.muted{color:var(--muted)}
+.stack{display:flex;flex-direction:column;gap:12px}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.spacer{flex:1}
+.num{font-family:var(--display);font-variant-numeric:tabular-nums}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 14px;font-weight:600}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.btn.ghost{background:transparent}
+.btn.danger{color:var(--bad);border-color:currentColor;background:transparent}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:600;background:var(--surface-2);color:var(--muted)}
+.chip.example{border:1px dashed var(--muted);background:transparent}
+.chip.good{color:var(--good)} .chip.warn{color:var(--warn)} .chip.bad{color:var(--bad)}
+input[type=text],select,textarea{width:100%;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 12px}
+label.field{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+
+/* feed */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.card-head{display:flex;gap:10px;align-items:center;padding:14px 14px 8px}
+.avatar{width:38px;height:38px;border-radius:50%;flex:none;display:grid;place-items:center;font-family:var(--display);font-weight:700;color:#fff;font-size:16px}
+.card-title{padding:0 14px 8px;min-width:0}
+.card-title h3{font-size:20px;overflow-wrap:anywhere}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:4px 14px 12px}
+.stat .k{font-size:12px;color:var(--muted);letter-spacing:.04em}
+.stat .v{font-family:var(--display);font-weight:600;font-size:22px;font-variant-numeric:tabular-nums;line-height:1.1}
+.stat .v small{font-size:13px;color:var(--muted);font-weight:500;margin-left:2px}
+canvas.route{display:block;width:100%;aspect-ratio:16/9;max-width:100%;background:var(--surface-2)}
+.card-foot{display:flex;gap:8px;padding:8px 10px;border-top:1px solid var(--line);align-items:center}
+.kudos{display:inline-flex;align-items:center;gap:6px;border:0;background:transparent;padding:6px 8px;border-radius:8px;font-weight:600;color:var(--muted)}
+.kudos[aria-pressed="true"]{color:var(--route)}
+.kudos svg{width:20px;height:20px}
+.open-link{border:0;background:transparent;width:100%;text-align:left;padding:0;display:block}
+
+/* record */
+.rec-panel{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:16px}
+.dash{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.dash .big{grid-column:1/-1}
+.gauge .k{font-family:var(--display);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.gauge .v{font-family:var(--display);font-weight:700;font-size:44px;font-variant-numeric:tabular-nums;line-height:1}
+.gauge.big .v{font-size:84px}
+.gauge .v small{font-size:20px;color:var(--muted);font-weight:600;margin-left:4px}
+.rec-btn{width:100%;border:0;border-radius:16px;padding:22px;font-family:var(--display);font-weight:700;font-size:28px;letter-spacing:.06em;text-transform:uppercase;background:var(--accent);color:var(--accent-fg);position:relative;overflow:hidden;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+.rec-btn.stop{background:var(--bad);color:#fff}
+.rec-btn .fill{position:absolute;inset:0;background:rgba(0,0,0,.22);transform-origin:left;transform:scaleX(0)}
+.gps{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--muted)}
+.dot.ok{background:var(--good)} .dot.wait{background:var(--warn)} .dot.off{background:var(--bad)}
+.notice{border:1px solid var(--line);background:var(--surface-2);border-radius:12px;padding:12px 14px;font-size:14px}
+.notice strong{font-family:var(--display);letter-spacing:.04em;text-transform:uppercase;font-size:14px}
+.drive-mode{position:fixed;inset:0;z-index:30;background:var(--bg);display:flex;flex-direction:column;justify-content:space-between;padding:calc(24px + env(safe-area-inset-top,0px)) max(20px,env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) max(20px,env(safe-area-inset-left,0px))}
+.drive-mode .road{font-family:var(--display);font-weight:700;font-size:26px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:center}
+
+/* tabs */
+nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
+nav.tabs .in{max-width:640px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);height:var(--tab-h)}
+nav.tabs a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-decoration:none;color:var(--muted);font-family:var(--display);font-weight:600;font-size:13px;letter-spacing:.08em;text-transform:uppercase}
+nav.tabs a svg{width:24px;height:24px}
+nav.tabs a[aria-current="page"]{color:var(--accent)}
+nav.tabs a.rec-tab span.ring{width:40px;height:40px;border-radius:50%;background:var(--accent);color:var(--accent-fg);display:grid;place-items:center;margin-top:-6px}
+nav.tabs a.rec-tab[aria-current="page"] span.ring{box-shadow:0 0 0 3px var(--surface),0 0 0 5px var(--accent)}
+
+/* sheet */
+.sheet{position:fixed;inset:0;z-index:25;background:var(--bg);overflow-y:auto;padding-top:env(safe-area-inset-top,0px)}
+.sheet-bar{position:sticky;top:0;z-index:2;background:var(--surface);border-bottom:1px solid var(--line)}
+.sheet-bar .wrap{display:flex;align-items:center;gap:10px;padding-block:10px}
+.sheet .body{padding-block:16px 40px}
+.detail-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px 8px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px}
+canvas.chart{display:block;width:100%;height:160px;max-width:100%}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.effort{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.effort:first-of-type{border-top:0}
+.rank{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;font-family:var(--display);font-weight:700;background:var(--surface-2);flex:none}
+.rank.r1{background:var(--route);color:#1b1200}
+.comment{display:flex;gap:10px;align-items:flex-start}
+.comment .avatar{width:30px;height:30px;font-size:13px}
+.comment p{margin:0;overflow-wrap:anywhere}
+input[type=range]{width:100%;accent-color:var(--hl)}
+.seg-card{display:flex;flex-direction:column;gap:10px}
+.seg-card canvas.route{aspect-ratio:21/9}
+.bars{display:flex;align-items:flex-end;gap:6px;height:120px}
+.bars .b{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;height:100%}
+.bars .b i{display:block;width:100%;background:var(--accent);border-radius:4px 4px 0 0;min-height:2px}
+.bars .b span{font-size:11px;color:var(--muted)}
+.totals{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tab-h) + 16px + env(safe-area-inset-bottom,0px));z-index:40;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:600;max-width:calc(100% - 32px)}
+.empty{text-align:center;padding:30px 10px;color:var(--muted)}
+@media (max-width:380px){.gauge.big .v{font-size:64px}.gauge .v{font-size:36px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<header class="top"><div class="wrap">
+  <div class="brand">
+    <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="1" y="1" width="26" height="26" rx="6" fill="var(--accent)"/><path d="M11 23 L13 5 M17 23 L15 5" stroke="var(--accent-fg)" stroke-width="2.4" stroke-linecap="round" fill="none"/><path d="M14 9v2M14 14v2M14 19v2" stroke="var(--accent-fg)" stroke-width="1.6" stroke-linecap="round"/></svg>
+    Roadbook
+  </div>
+  <div class="unit-toggle" role="group" aria-label="Units">
+    <button id="u-mi" type="button" aria-pressed="true">mi</button>
+    <button id="u-km" type="button" aria-pressed="false">km</button>
+  </div>
+</div></header>
+
+<main><div class="wrap" id="view"></div></main>
+
+<nav class="tabs" aria-label="Sections"><div class="in">
+  <a href="#feed" data-tab="feed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Feed</a>
+  <a href="#record" data-tab="record" class="rec-tab"><span class="ring"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg></span>Drive</a>
+  <a href="#segments" data-tab="segments"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 18c4 0 4-10 9-10s5 6 9 6"/><circle cx="3" cy="18" r="1.5" fill="currentColor"/><circle cx="21" cy="14" r="1.5" fill="currentColor"/></svg>Segments</a>
+  <a href="#you" data-tab="you"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg>You</a>
+</div></nav>
+
+<div id="sheet" class="sheet" hidden></div>
+<div id="drivemode" class="drive-mode" hidden></div>
+<div id="toast" class="toast" hidden role="status"></div>
+
+<script>
+(function(){
+"use strict";
+/* ---------- storage ---------- */
+const KEY="roadbook.v1";
+let mem=null;
+function load(){try{const s=localStorage.getItem(KEY);if(s)return JSON.parse(s)}catch(e){}return mem}
+function save(){mem=S;try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+
+/* ---------- geo math ---------- */
+const R=6371000,rad=d=>d*Math.PI/180;
+function hav(a,b){const dLat=rad(b[0]-a[0]),dLon=rad(b[1]-a[1]);const x=Math.sin(dLat/2)**2+Math.cos(rad(a[0]))*Math.cos(rad(b[0]))*Math.sin(dLon/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
+function move(p,bearing,dist){const la=rad(p[0]),lo=rad(p[1]),br=rad(bearing),d=dist/R;const la2=Math.asin(Math.sin(la)*Math.cos(d)+Math.cos(la)*Math.sin(d)*Math.cos(br));const lo2=lo+Math.atan2(Math.sin(br)*Math.sin(d)*Math.cos(la),Math.cos(d)-Math.sin(la)*Math.sin(la2));return[la2*180/Math.PI,lo2*180/Math.PI]}
+
+/* Point: [lat, lon, tMs, speed m/s] */
+function analyze(pts){
+  // Speeds are smoothed over 3 GPS fixes so single noisy readings don't count as events.
+  let dist=0,moving=0,max=0,brakes=0,accels=0,jerk=0,n=0,inB=false,inA=false;
+  const sp=pts.map((p,i)=>{const a=pts[Math.max(0,i-1)],b=pts[Math.min(pts.length-1,i+1)];return (a[3]+p[3]+b[3])/3});
+  for(let i=1;i<pts.length;i++){
+    const d=hav(pts[i-1],pts[i]),dt=(pts[i][2]-pts[i-1][2])/1000;
+    dist+=d; if(dt>0&&d/dt>1)moving+=dt;
+    max=Math.max(max,sp[i]);
+    if(dt>0){const acc=(sp[i]-sp[i-1])/dt;
+      // a hard brake (about 0.25 g) or hard launch counts once per burst
+      if(acc<-2.5){if(!inB)brakes++;inB=true}else inB=false;
+      if(acc>2){if(!inA)accels++;inA=true}else inA=false;
+      jerk+=Math.abs(acc);n++}
+  }
+  const dur=pts.length>1?(pts[pts.length-1][2]-pts[0][2])/1000:0;
+  const perKm=Math.max(dist/1000,1);
+  const smooth=Math.round(Math.max(0,Math.min(100,100-(n?jerk/n:0)*120-(brakes*3+accels*2)/perKm*6)));
+  return {dist,dur,moving,avg:moving?dist/moving:0,max,brakes,accels,smooth};
+}
+
+/* ---------- formatting ---------- */
+const U=()=>S.settings.units;
+const fDist=m=>U()==="mi"?(m/1609.344):(m/1000);
+const dLabel=()=>U();
+const sLabel=()=>U()==="mi"?"mph":"km/h";
+const fSpeed=ms=>U()==="mi"?ms*2.23694:ms*3.6;
+function fDur(s){s=Math.round(s);const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return h?`${h}:${String(m).padStart(2,"0")}:${String(x).padStart(2,"0")}`:`${m}:${String(x).padStart(2,"0")}`}
+function ago(t){const s=(Date.now()-t)/1000;if(s<60)return"just now";if(s<3600)return Math.floor(s/60)+" min ago";if(s<86400)return Math.floor(s/3600)+" h ago";const d=Math.floor(s/86400);if(d<7)return d+(d===1?" day ago":" days ago");return new Date(t).toLocaleDateString(undefined,{month:"short",day:"numeric"})}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function smoothChip(v){const c=v>=80?"good":v>=60?"warn":"bad";return `<span class="chip ${c}">Smoothness ${v}</span>`}
+const uid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
+
+/* ---------- sample world (clearly marked examples) ---------- */
+function rng(seed){return()=>{seed=(seed*1664525+1013904223)%4294967296;return seed/4294967296}}
+function buildRoad(){
+  const r=rng(42);let p=[37.8199,-122.4783],b=200,turn=0;const out=[p];
+  for(let i=0;i<520;i++){turn+= (r()-.5)*6;turn*=.86;b+=turn;if(i===180)b+=70;if(i===340)b-=90;p=move(p,b,28);out.push(p)}
+  return out;
+}
+let ROAD=null;
+function driveFrom(road,from,to,seed,start,style){
+  const r=rng(seed);const pts=[];let v=8,t=start;
+  for(let i=from;i<=to;i++){
+    const target=style.base+Math.sin(i/23)*style.wave+(r()-.5)*style.noise;
+    v+= (target-v)*style.resp;
+    if(r()<style.brakeP)v*=0.55;
+    v=Math.max(2,v);
+    if(i>from)t+=hav(road[i-1],road[i])/v*1000;
+    const j=(r()-.5)*0.00004;
+    pts.push([road[i][0]+j,road[i][1]+j,Math.round(t),v]);
+  }
+  return pts;
+}
+function seed(){
+  ROAD=buildRoad();
+  const now=Date.now(),H=3600e3,D=24*H;
+  const people=[
+    {id:"p1",name:"Priya R.",color:"#7c4dcc"},
+    {id:"p2",name:"Marcus O.",color:"#c2410c"},
+    {id:"p3",name:"Lena V.",color:"#0e7490"},
+    {id:"p4",name:"Sam K.",color:"#4d7c0f"}];
+  const calm={base:15,wave:3,noise:2,resp:.2,brakeP:.004};
+  const jumpy={base:17,wave:5,noise:7,resp:.5,brakeP:.03};
+  const mid={base:16,wave:4,noise:4,resp:.3,brakeP:.012};
+  const drives=[
+    {who:"p1",title:"Sunday coast loop",vehicle:"2019 Mazda MX-5",from:0,to:420,style:calm,t:now-5*H,sd:7},
+    {who:"p2",title:"Late commute home",vehicle:"2016 Subaru WRX",from:60,to:360,style:jumpy,t:now-20*H,sd:8},
+    {who:"p3",title:"Morning run to the farm stand",vehicle:"2022 Ioniq 5",from:120,to:500,style:calm,t:now-1.6*D,sd:9},
+    {who:"p4",title:"Quick errand",vehicle:"2011 Honda Fit",from:200,to:330,style:mid,t:now-2.4*D,sd:10},
+    {who:"me",title:"Evening drive",vehicle:"My car",from:30,to:300,style:mid,t:now-3.2*D,sd:11},
+    {who:"p1",title:"Cliffside detour",vehicle:"2019 Mazda MX-5",from:150,to:480,style:calm,t:now-4.5*D,sd:12},
+    {who:"me",title:"Weekend fuel-saver attempt",vehicle:"My car",from:100,to:440,style:calm,t:now-9*D,sd:13},
+    {who:"p2",title:"Track day warm-up (on the way)",vehicle:"2016 Subaru WRX",from:0,to:260,style:jumpy,t:now-12*D,sd:14},
+  ].map(d=>{const pts=driveFrom(ROAD,d.from,d.to,d.sd,d.t,d.style);return{id:uid(),who:d.who,title:d.title,vehicle:d.vehicle,start:d.t,pts,sample:true,stats:analyze(pts)}});
+  const seg=(name,a,b)=>({id:uid(),name,start:ROAD[a],end:ROAD[b],dist:pathLen(ROAD.slice(a,b+1)),sample:true});
+  return {
+    v:1,people,drives,
+    segments:[seg("Headland bends",130,230),seg("Long straight to the bridge",250,330),seg("Lighthouse climb",380,470)],
+    kudos:{},kudosFrom:{},comments:{},
+    settings:{units:(navigator.language||"en-US").match(/^en-(US|GB|LR|MM)/)?"mi":"km",vehicle:"My car",vehicles:["My car"]}
+  };
+}
+function pathLen(p){let d=0;for(let i=1;i<p.length;i++)d+=hav(p[i-1],p[i]);return d}
+
+let S=load();
+if(!S||S.v!==1){S=seed();
+  // pre-seed some kudos and comments on examples
+  S.drives.forEach((d,i)=>{S.kudosFrom[d.id]=["p1","p2","p3","p4"].filter((p,j)=>p!==d.who&&(i+j)%2===0)});
+  const mine=S.drives.find(d=>d.who==="me");
+  if(mine)S.comments[mine.id]=[{who:"p3",text:"That smoothness score is creeping up. Nice.",t:Date.now()-3*86400e3}];
+  S.comments[S.drives[1].id]=[{who:"p1",text:"Easy on the brakes, Marcus.",t:Date.now()-18*3600e3}];
+  save();
+}
+const person=id=>id==="me"?{id:"me",name:"You",color:"var(--accent)"}:(S.people.find(p=>p.id===id)||{name:"Driver",color:"#666"});
+const initials=n=>n==="You"?"ME":n.split(/\s+/).map(x=>x[0]).join("").slice(0,2).toUpperCase();
+
+/* ---------- segment matching ---------- */
+function efforts(seg){
+  const out=[];
+  for(const d of S.drives){
+    const e=matchSeg(d.pts,seg);if(e)out.push({drive:d,...e});
+  }
+  out.sort((a,b)=>b.stats.smooth-a.stats.smooth||a.stats.dur-b.stats.dur);
+  return out;
+}
+function bestPerDriver(all){const seen=new Set();return all.filter(e=>!seen.has(e.drive.who)&&seen.add(e.drive.who))
+}
+function matchSeg(pts,seg){
+  const near=35;let si=-1;
+  for(let i=0;i<pts.length;i++){
+    if(si<0){if(hav(pts[i],seg.start)<near)si=i}
+    else if(hav(pts[i],seg.end)<near){
+      const slice=pts.slice(si,i+1);const L=pathLen(slice);
+      if(L>seg.dist*0.85&&L<seg.dist*1.3)return{from:si,to:i,stats:analyze(slice)};
+      si=-1;
+    }
+  }
+  return null;
+}
+
+/* ---------- canvas drawing ---------- */
+function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim()||"#888"}
+function sizeCanvas(c){const dpr=window.devicePixelRatio||1;const w=c.clientWidth||300,h=c.clientHeight||170;c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);const g=c.getContext("2d");g.setTransform(dpr,0,0,dpr,0,0);return{g,w,h}}
+function drawRoute(c,pts,opt={}){
+  const {g,w,h}=sizeCanvas(c);
+  g.clearRect(0,0,w,h);
+  // grid
+  g.strokeStyle=css("--grid");g.lineWidth=1;
+  for(let x=0;x<w;x+=24){g.beginPath();g.moveTo(x+.5,0);g.lineTo(x+.5,h);g.stroke()}
+  for(let y=0;y<h;y+=24){g.beginPath();g.moveTo(0,y+.5);g.lineTo(w,y+.5);g.stroke()}
+  const ctx=opt.context||pts; if(!ctx.length)return;
+  let mnLa=Infinity,mxLa=-Infinity,mnLo=Infinity,mxLo=-Infinity;
+  for(const p of ctx){mnLa=Math.min(mnLa,p[0]);mxLa=Math.max(mxLa,p[0]);mnLo=Math.min(mnLo,p[1]);mxLo=Math.max(mxLo,p[1])}
+  const k=Math.cos(rad((mnLa+mxLa)/2));const pad=18;
+  const sw=(mxLo-mnLo)*k||1e-5,sh=(mxLa-mnLa)||1e-5;const sc=Math.min((w-2*pad)/sw,(h-2*pad)/sh);
+  const ox=(w-sw*sc)/2,oy=(h-sh*sc)/2;
+  const P=p=>[ox+(p[1]-mnLo)*k*sc,h-oy-(p[0]-mnLa)*sc];
+  const line=(arr,col,wd)=>{if(arr.length<2)return;g.strokeStyle=col;g.lineWidth=wd;g.lineJoin="round";g.lineCap="round";g.beginPath();arr.forEach((p,i)=>{const[x,y]=P(p);i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke()};
+  if(opt.context)line(opt.context,css("--line"),4);
+  line(pts,css("--surface"),opt.thin?5:7);
+  line(pts,opt.color||css("--route"),opt.thin?3:4);
+  if(opt.hl)line(pts.slice(opt.hl[0],opt.hl[1]+1),css("--hl"),opt.thin?3.5:5);
+  if(!opt.noEnds&&pts.length){const dot=(p,col)=>{const[x,y]=P(p);g.fillStyle=css("--surface");g.beginPath();g.arc(x,y,6,0,7);g.fill();g.fillStyle=col;g.beginPath();g.arc(x,y,4,0,7);g.fill()};dot(pts[0],css("--good"));dot(pts[pts.length-1],css("--bad"))}
+  if(opt.live&&pts.length){const[x,y]=P(pts[pts.length-1]);g.fillStyle=css("--accent");g.beginPath();g.arc(x,y,7,0,7);g.fill()}
+}
+function drawSpeed(c,pts,hl){
+  const {g,w,h}=sizeCanvas(c);g.clearRect(0,0,w,h);
+  if(pts.length<2)return;
+  const xs=[0];for(let i=1;i<pts.length;i++)xs.push(xs[i-1]+hav(pts[i-1],pts[i]));
+  const total=xs[xs.length-1]||1;const vmax=Math.max(...pts.map(p=>fSpeed(p[3])));
+  const top=Math.ceil(vmax/10)*10||10;
+  const L=34,B=20,T=8,Rr=8;const pw=w-L-Rr,ph=h-T-B;
+  const X=d=>L+d/total*pw,Y=v=>T+ph-v/top*ph;
+  g.font=`12px ${css("--body")}`;g.fillStyle=css("--muted");g.strokeStyle=css("--grid");g.lineWidth=1;
+  for(let v=0;v<=top;v+=top/2){const y=Math.round(Y(v))+.5;g.beginPath();g.moveTo(L,y);g.lineTo(w-Rr,y);g.stroke();g.textAlign="right";g.textBaseline="middle";g.fillText(Math.round(v),L-6,y)}
+  g.textAlign="left";g.textBaseline="top";g.fillText("0",L,h-B+5);g.textAlign="right";g.fillText(fDist(total).toFixed(1)+" "+dLabel(),w-Rr,h-B+5);
+  if(hl){g.fillStyle=css("--hl");g.globalAlpha=.12;g.fillRect(X(xs[hl[0]]),T,X(xs[hl[1]])-X(xs[hl[0]]),ph);g.globalAlpha=1}
+  const acc=css("--accent");
+  g.beginPath();pts.forEach((p,i)=>{const x=X(xs[i]),y=Y(fSpeed(p[3]));i?g.lineTo(x,y):g.moveTo(x,y)});
+  g.strokeStyle=acc;g.lineWidth=2;g.stroke();
+  g.lineTo(X(total),Y(0));g.lineTo(X(0),Y(0));g.closePath();g.globalAlpha=.14;g.fillStyle=acc;g.fill();g.globalAlpha=1;
+}
+
+/* ---------- UI helpers ---------- */
+const $=s=>document.querySelector(s);
+function toast(msg){const t=$("#toast");t.textContent=msg;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,2200)}
+function avatar(p,size){return `<span class="avatar" style="background:${p.color}${size?`;width:${size}px;height:${size}px`:""}" aria-hidden="true">${esc(initials(p.name))}</span>`}
+function kudosCount(d){return (S.kudosFrom[d.id]||[]).length+(S.kudos[d.id]?1:0)}
+const heart=`<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 21V10l4-7c1.5 0 2.5 1 2.2 2.6L12.6 9H19a2 2 0 0 1 2 2.3l-1.3 7.6A2.5 2.5 0 0 1 17.2 21H7zM3 10h2.5v11H3z"/></svg>`;
+function statBlock(k,v,u){return `<div class="stat"><div class="k">${k}</div><div class="v">${v}${u?`<small>${u}</small>`:""}</div></div>`}
+
+/* ---------- views ---------- */
+let current="feed";
+function render(){
+  const tab=(location.hash||"#feed").slice(1);
+  current=["feed","record","segments","you"].includes(tab)?tab:"feed";
+  document.querySelectorAll("nav.tabs a").forEach(a=>a.setAttribute("aria-current",a.dataset.tab===current?"page":"false"));
+  $("#u-mi").setAttribute("aria-pressed",U()==="mi");$("#u-km").setAttribute("aria-pressed",U()==="km");
+  ({feed:viewFeed,record:viewRecord,segments:viewSegments,you:viewYou})[current]();
+  window.scrollTo(0,0);
+}
+function feedCard(d){
+  const p=person(d.who),s=d.stats;
+  return `<article class="card">
+    <button class="open-link" data-open="${d.id}" aria-label="Open ${esc(d.title)}">
+      <div class="card-head">${avatar(p)}<div style="min-width:0"><div style="font-weight:600">${esc(p.name)}</div><div class="muted" style="font-size:13px">${ago(d.start)} · ${esc(d.vehicle)}</div></div><span class="spacer"></span>${d.sample?'<span class="chip example">Example</span>':""}</div>
+      <div class="card-title"><h3>${esc(d.title)}</h3></div>
+      <div class="stats">${statBlock("Distance",fDist(s.dist).toFixed(1),dLabel())}${statBlock("Moving time",fDur(s.moving))}${statBlock("Smoothness",s.smooth,"/100")}</div>
+      <canvas class="route" data-route="${d.id}"></canvas>
+    </button>
+    <div class="card-foot">
+      <button class="kudos" data-kudos="${d.id}" aria-pressed="${!!S.kudos[d.id]}" ${d.who==="me"?"disabled title=\"You can't give kudos to your own drive\"":""}>${heart}<span>${kudosCount(d)}</span></button>
+      <button class="kudos" data-open="${d.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg><span>${(S.comments[d.id]||[]).length}</span></button>
+      <span class="spacer"></span>${smoothChip(s.smooth)}
+    </div></article>`;
+}
+function viewFeed(){
+  const drives=[...S.drives].sort((a,b)=>b.start-a.start);
+  $("#view").innerHTML=`<div class="stack">
+    <div class="row"><div><div class="eyebrow">Your road crew</div><h1>Feed</h1></div><span class="spacer"></span><a class="btn primary" href="#record" style="text-decoration:none">Start a drive</a></div>
+    ${drives.length?drives.map(feedCard).join(""):`<div class="empty">No drives yet. Tap <b>Drive</b> to record your first one.</div>`}
+  </div>`;
+  paintRoutes();
+}
+function paintRoutes(){document.querySelectorAll("canvas[data-route]").forEach(c=>{const d=S.drives.find(x=>x.id===c.dataset.route);if(d)drawRoute(c,d.pts,{thin:true})})}
+
+/* ---------- recording ---------- */
+const REC={on:false,pts:[],watch:null,sim:null,start:0,status:"idle",wake:null,tick:null};
+function viewRecord(){
+  const geoOK="geolocation" in navigator;
+  $("#view").innerHTML=`<div class="stack">
+    <div><div class="eyebrow">Record</div><h1>New drive</h1></div>
+    <div class="rec-panel">
+      <div class="gps" id="gps"><span class="dot ${REC.on?"ok":""}"></span><span id="gps-t">${REC.on?"Recording":"GPS ready when you are"}</span></div>
+      <div class="dash">
+        <div class="gauge big"><div class="k">Distance</div><div class="v num" id="g-dist">0.0<small>${dLabel()}</small></div></div>
+        <div class="gauge"><div class="k">Time</div><div class="v num" id="g-time">0:00</div></div>
+        <div class="gauge"><div class="k">Avg speed</div><div class="v num" id="g-avg">0<small>${sLabel()}</small></div></div>
+      </div>
+      <canvas class="route" id="live-route" style="border-radius:12px"></canvas>
+      <label class="field">Vehicle<select id="veh">${S.settings.vehicles.map(v=>`<option ${v===S.settings.vehicle?"selected":""}>${esc(v)}</option>`).join("")}</select></label>
+      <button class="rec-btn" id="rec-btn" type="button"><span class="fill"></span><span class="lbl">${REC.on?"Hold to finish":"Start drive"}</span></button>
+      <button class="btn ghost" id="sim-btn" type="button">${REC.sim?"Simulating…":"Simulate a drive (demo)"}</button>
+    </div>
+    <div class="notice"><strong>Drive first.</strong> Mount your phone and start recording before you pull away. Once you're moving, Roadbook switches to a minimal screen with one large control, and you finish a drive by holding the button so a stray tap can't end it. Segments rank smooth driving, not speed.</div>
+    ${geoOK?"":`<div class="notice">This browser doesn't offer location. Use the demo to see how recording works.</div>`}
+  </div>`;
+  $("#veh").onchange=e=>{S.settings.vehicle=e.target.value;save()};
+  bindHold($("#rec-btn"));
+  $("#sim-btn").onclick=()=>{if(!REC.on)startRec(true)};
+  updateLive();
+}
+function bindHold(btn){
+  let t0=0,raf=0;
+  const fill=btn.querySelector(".fill");
+  const stopAnim=()=>{cancelAnimationFrame(raf);fill.style.transform="scaleX(0)"};
+  btn.onpointerdown=e=>{
+    if(!REC.on){startRec(false);return}
+    t0=performance.now();btn.setPointerCapture?.(e.pointerId);
+    const step=()=>{const k=(performance.now()-t0)/1000;fill.style.transform=`scaleX(${Math.min(1,k)})`;if(k>=1){stopAnim();finishRec()}else raf=requestAnimationFrame(step)};
+    raf=requestAnimationFrame(step);
+  };
+  btn.onpointerup=btn.onpointercancel=btn.onpointerleave=stopAnim;
+  btn.onkeydown=e=>{if((e.key==="Enter"||e.key===" ")&&REC.on&&!e.repeat){e.preventDefault();t0=performance.now();const step=()=>{const k=(performance.now()-t0)/1000;fill.style.transform=`scaleX(${Math.min(1,k)})`;if(k>=1){stopAnim();finishRec()}else raf=requestAnimationFrame(step)};raf=requestAnimationFrame(step)}else if(e.key==="Enter"&&!REC.on){startRec(false)}};
+  btn.onkeyup=stopAnim;
+}
+function setGps(cls,txt){const d=document.querySelector("#gps .dot"),t=$("#gps-t");if(d)d.className="dot "+cls;if(t)t.textContent=txt}
+async function wakeLock(on){try{if(on&&navigator.wakeLock)REC.wake=await navigator.wakeLock.request("screen");else if(!on&&REC.wake){await REC.wake.release();REC.wake=null}}catch(e){}}
+function startRec(sim){
+  REC.on=true;REC.pts=[];REC.start=Date.now();wakeLock(true);
+  if(sim){simulate()}
+  else{
+    if(!("geolocation" in navigator)){REC.on=false;toast("Location isn't available here. Try the demo.");return}
+    setGps("wait","Finding GPS…");
+    REC.watch=navigator.geolocation.watchPosition(onPos,err=>{
+      setGps("off",err.code===1?"Location permission was refused":"GPS unavailable");
+      if(!REC.pts.length){stopSensors();REC.on=false;viewRecord();setGps("off",err.code===1?"Location is blocked here. Allow location for this site, or try the demo.":"No GPS signal. Try again outdoors, or use the demo.")}
+    },{enableHighAccuracy:true,maximumAge:0,timeout:20000});
+  }
+  REC.tick=setInterval(updateLive,1000);
+  viewRecord();
+}
+function onPos(pos){
+  const c=pos.coords;if(c.accuracy>40){setGps("wait",`Weak GPS (±${Math.round(c.accuracy)} m)`);return}
+  const last=REC.pts[REC.pts.length-1];const p=[c.latitude,c.longitude,pos.timestamp,0];
+  if(last){const d=hav(last,p),dt=(p[2]-last[2])/1000;if(dt<=0)return;if(d<3&&dt<10)return;const v=c.speed!=null&&c.speed>=0?c.speed:d/dt;if(v>90)return;p[3]=v}
+  else p[3]=c.speed||0;
+  REC.pts.push(p);setGps("ok",`Recording · GPS ±${Math.round(c.accuracy)} m`);updateLive();
+}
+function simulate(){
+  const from=40+Math.floor(Math.random()*60),to=from+260;
+  const pts=driveFrom(ROAD,from,to,Math.floor(Math.random()*1e6),Date.now(),{base:15,wave:4,noise:3,resp:.25,brakeP:.01});
+  // shift timestamps so the replay runs ~12x real time
+  let i=0;setGps("ok","Demo: replaying a drive at 12× speed");
+  const t0=Date.now(),base=pts[0][2];
+  REC.sim=setInterval(()=>{
+    const simT=base+(Date.now()-t0)*12;
+    while(i<pts.length&&pts[i][2]<=simT){REC.pts.push(pts[i]);i++}
+    updateLive();
+    if(i>=pts.length){clearInterval(REC.sim);REC.sim=null;setGps("ok","Demo route complete. Hold to finish.")}
+  },250);
+}
+function liveStats(){const st=analyze(REC.pts);const el=REC.pts.length>1?(REC.pts[REC.pts.length-1][2]-REC.pts[0][2])/1000:(REC.on?(Date.now()-REC.start)/1000:0);return{...st,el}}
+function updateLive(){
+  const st=liveStats();
+  const set=(id,h)=>{const e=document.getElementById(id);if(e)e.innerHTML=h};
+  set("g-dist",`${fDist(st.dist).toFixed(2)}<small>${dLabel()}</small>`);
+  set("g-time",fDur(st.el));set("g-avg",`${Math.round(fSpeed(st.avg))}<small>${sLabel()}</small>`);
+  const c=$("#live-route");if(c)drawRoute(c,REC.pts,{live:true,noEnds:REC.pts.length<2});
+  // drive mode: once moving, cover the app with a minimal screen
+  const moving=REC.on&&REC.pts.length>2&&REC.pts[REC.pts.length-1][3]>4;
+  const dm=$("#drivemode");
+  if(moving&&dm.hidden&&!REC.dismissed){dm.hidden=false;dm.innerHTML=`<div class="road">Eyes on the road</div>
+    <div class="stack" style="align-items:center;text-align:center"><div class="gauge big"><div class="k">Distance</div><div class="v num" id="dm-dist"></div></div><div class="gauge"><div class="k">Time</div><div class="v num" id="dm-time"></div></div></div>
+    <div class="stack"><button class="rec-btn stop" id="dm-btn" type="button"><span class="fill"></span><span class="lbl">Hold to finish</span></button><button class="btn ghost" id="dm-x" type="button">I'm a passenger, show full screen</button></div>`;
+    bindHold($("#dm-btn"));$("#dm-x").onclick=()=>{REC.dismissed=true;dm.hidden=true}}
+  set("dm-dist",`${fDist(st.dist).toFixed(1)}<small>${dLabel()}</small>`);set("dm-time",fDur(st.el));
+  const b=$("#rec-btn");if(b){b.classList.toggle("stop",REC.on);b.querySelector(".lbl").textContent=REC.on?"Hold to finish":"Start drive"}
+}
+function stopSensors(){if(REC.watch!=null)navigator.geolocation.clearWatch(REC.watch);REC.watch=null;if(REC.sim)clearInterval(REC.sim);REC.sim=null;clearInterval(REC.tick);wakeLock(false)}
+function finishRec(){
+  stopSensors();REC.on=false;REC.dismissed=false;$("#drivemode").hidden=true;
+  const pts=REC.pts;REC.pts=[];
+  if(pts.length<5||pathLen(pts)<100){toast("Drive was too short to save.");viewRecord();return}
+  const h=new Date(pts[0][2]).getHours();
+  const title=h<11?"Morning drive":h<14?"Midday drive":h<18?"Afternoon drive":"Evening drive";
+  const d={id:uid(),who:"me",title,vehicle:S.settings.vehicle,start:pts[0][2],pts,stats:analyze(pts)};
+  S.drives.push(d);save();
+  if(location.hash==="#feed"){render();openDrive(d.id,true)}else{pendingOpen=d.id;location.hash="#feed"}
+}
+
+/* ---------- drive detail ---------- */
+function openDrive(id,fresh){
+  const d=S.drives.find(x=>x.id===id);if(!d)return;
+  const p=person(d.who),s=d.stats,mine=d.who==="me";
+  const segs=S.segments.map(sg=>({sg,e:matchSeg(d.pts,sg)})).filter(x=>x.e);
+  const sh=$("#sheet");
+  sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span>${d.sample?'<span class="chip example">Example</span>':""}</div></div>
+  <div class="wrap body stack">
+    <div class="row">${avatar(p)}<div><div style="font-weight:600">${esc(p.name)}</div><div class="muted" style="font-size:13px">${new Date(d.start).toLocaleString(undefined,{weekday:"short",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})} · ${esc(d.vehicle)}</div></div></div>
+    ${mine?`<input type="text" id="title-in" value="${esc(d.title)}" aria-label="Drive title" style="font-family:var(--display);font-size:26px;font-weight:700">`:`<h1 style="text-transform:none">${esc(d.title)}</h1>`}
+    ${fresh?`<div class="notice">Drive saved. Give it a name, then tap Back to see it in your feed.</div>`:""}
+    <canvas class="route" id="d-route" style="border-radius:14px"></canvas>
+    <div class="detail-stats">
+      ${statBlock("Distance",fDist(s.dist).toFixed(2),dLabel())}${statBlock("Moving time",fDur(s.moving))}${statBlock("Elapsed",fDur(s.dur))}
+      ${statBlock("Avg speed",Math.round(fSpeed(s.avg)),sLabel())}${statBlock("Hard brakes",s.brakes)}${statBlock("Smoothness",s.smooth,"/100")}
+    </div>
+    <div class="panel"><div class="row"><h3>Speed</h3><span class="spacer"></span><span class="muted" style="font-size:13px">${sLabel()} over distance</span></div><canvas class="chart" id="d-speed"></canvas></div>
+    <div class="panel"><h3>Segments on this drive</h3>
+      ${segs.length?segs.map(({sg,e})=>{const all=efforts(sg);const rank=all.findIndex(x=>x.drive.id===d.id)+1;/* rank among all passes, including your own earlier ones */return `<div class="effort"><span class="rank ${rank===1?"r1":""}">${rank}</span><div style="flex:1;min-width:0"><div style="font-weight:600">${esc(sg.name)}</div><div class="muted" style="font-size:13px">${fDur(e.stats.dur)} · ${fDist(sg.dist).toFixed(2)} ${dLabel()}</div></div>${smoothChip(e.stats.smooth)}</div>`}).join(""):`<p class="muted" style="margin:0">No segments matched this route yet. Make one below.</p>`}
+    </div>
+    <div class="panel"><h3>Make a segment from this drive</h3>
+      <label class="field">Start <input type="range" id="sg-a" min="0" max="${d.pts.length-1}" value="${Math.floor(d.pts.length*.2)}"></label>
+      <label class="field">End <input type="range" id="sg-b" min="0" max="${d.pts.length-1}" value="${Math.floor(d.pts.length*.6)}"></label>
+      <div class="row"><input type="text" id="sg-name" placeholder="Segment name, e.g. Ridge Road bends" style="flex:1;min-width:0"><button class="btn primary" id="sg-make" type="button">Create</button></div>
+      <div class="muted" style="font-size:13px" id="sg-len"></div>
+    </div>
+    <div class="panel"><div class="row"><h3>Kudos & comments</h3><span class="spacer"></span><button class="kudos" id="d-kudos" aria-pressed="${!!S.kudos[d.id]}" ${mine?"disabled":""}>${heart}<span>${kudosCount(d)}</span></button></div>
+      <div class="stack" id="cmts">${(S.comments[d.id]||[]).map(c=>{const cp=person(c.who);return `<div class="comment">${avatar(cp)}<div><div style="font-weight:600;font-size:13px">${esc(cp.name)} <span class="muted" style="font-weight:400">${ago(c.t)}</span></div><p>${esc(c.text)}</p></div></div>`}).join("")||'<p class="muted" style="margin:0">No comments yet.</p>'}</div>
+      <form class="row" id="c-form"><input type="text" id="c-in" placeholder="Add a comment" style="flex:1;min-width:0" maxlength="280"><button class="btn" type="submit">Post</button></form>
+    </div>
+    <div class="row">${!window.claude?`<button class="btn" id="gpx" type="button">Export GPX</button>`:""}<span class="spacer"></span>${mine||d.sample?`<button class="btn danger" id="del" type="button">Delete drive</button>`:""}</div>
+    <div id="del-confirm" hidden class="notice row"><span style="flex:1">Delete “${esc(d.title)}” for good?</span><button class="btn ghost" id="del-no" type="button">Keep</button><button class="btn danger" id="del-yes" type="button">Delete</button></div>
+  </div>`;
+  sh.hidden=false;sh.scrollTop=0;document.body.style.overflow="hidden";
+  const a=$("#sg-a"),b=$("#sg-b");
+  const redraw=()=>{let i=+a.value,j=+b.value;if(i>j)[i,j]=[j,i];drawRoute($("#d-route"),d.pts,{hl:[i,j]});drawSpeed($("#d-speed"),d.pts,[i,j]);$("#sg-len").textContent=`Selected: ${fDist(pathLen(d.pts.slice(i,j+1))).toFixed(2)} ${dLabel()}`};
+  a.oninput=b.oninput=redraw;redraw();
+  $("#sh-x").onclick=closeSheet;
+  $("#sg-make").onclick=()=>{let i=+a.value,j=+b.value;if(i>j)[i,j]=[j,i];const L=pathLen(d.pts.slice(i,j+1));if(L<200){toast("Make the segment at least 200 m long.");return}
+    const name=$("#sg-name").value.trim()||"Untitled segment";S.segments.push({id:uid(),name,start:d.pts[i],end:d.pts[j],dist:L,mine:true});save();toast(`Segment “${name}” created`);openDrive(d.id)};
+  const k=$("#d-kudos");k.onclick=()=>{S.kudos[d.id]=!S.kudos[d.id];save();k.setAttribute("aria-pressed",!!S.kudos[d.id]);k.querySelector("span").textContent=kudosCount(d)};
+  $("#c-form").onsubmit=e=>{e.preventDefault();const v=$("#c-in").value.trim();if(!v)return;(S.comments[d.id]=S.comments[d.id]||[]).push({who:"me",text:v,t:Date.now()});save();openDrive(d.id);toast("Comment posted")};
+  if(mine){$("#title-in").onchange=e=>{d.title=e.target.value.trim()||d.title;save()}}
+  const g=$("#gpx");if(g)g.onclick=()=>exportGpx(d);
+  const del=$("#del");if(del){del.onclick=()=>{$("#del-confirm").hidden=false};$("#del-no").onclick=()=>{$("#del-confirm").hidden=true};$("#del-yes").onclick=()=>{S.drives=S.drives.filter(x=>x.id!==d.id);save();closeSheet();toast("Drive deleted")}}
+}
+function closeSheet(){$("#sheet").hidden=true;document.body.style.overflow="";render()}
+function exportGpx(d){
+  const pts=d.pts.map(p=>`<trkpt lat="${p[0].toFixed(6)}" lon="${p[1].toFixed(6)}"><time>${new Date(p[2]).toISOString()}</time></trkpt>`).join("");
+  const xml=`<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="Roadbook" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>${esc(d.title)}</name><trkseg>${pts}</trkseg></trk></gpx>`;
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([xml],{type:"application/gpx+xml"}));a.download=d.title.replace(/[^\w]+/g,"-")+".gpx";a.click();
+}
+
+/* ---------- segments ---------- */
+function viewSegments(){
+  $("#view").innerHTML=`<div class="stack">
+    <div><div class="eyebrow">Leaderboards</div><h1>Segments</h1></div>
+    <div class="notice"><strong>Ranked by smoothness.</strong> Every pass along a segment is scored on gentle braking and steady acceleration. Times are shown for reference but never ranked, so nobody wins by speeding on a public road.</div>
+    ${S.segments.map(sg=>{const all=efforts(sg);return `<section class="card seg-card"><div style="padding:14px 14px 0" class="row"><div style="min-width:0"><h2>${esc(sg.name)}</h2><div class="muted" style="font-size:13px">${fDist(sg.dist).toFixed(2)} ${dLabel()} · ${all.length} ${all.length===1?"pass":"passes"} · best per driver</div></div><span class="spacer"></span>${sg.sample?'<span class="chip example">Example</span>':""}</div>
+      <canvas class="route" data-seg="${sg.id}"></canvas>
+      <div style="padding:0 14px 10px">${bestPerDriver(all).slice(0,5).map((e,i)=>{const p=person(e.drive.who);return `<div class="effort"><span class="rank ${i===0?"r1":""}">${i+1}</span>${avatar(p,30)}<div style="flex:1;min-width:0"><div style="font-weight:600">${esc(p.name)}</div><div class="muted" style="font-size:13px">${esc(e.drive.vehicle)} · ${fDur(e.stats.dur)}</div></div><span class="num" style="font-size:24px;font-weight:700">${e.stats.smooth}</span></div>`}).join("")||'<p class="muted">No passes yet.</p>'}</div>
+      ${sg.mine?`<div style="padding:0 14px 14px"><button class="btn danger" data-delseg="${sg.id}" type="button">Remove segment</button></div>`:""}
+    </section>`}).join("")}
+    <p class="muted" style="font-size:13px">To add a segment, open any drive and pick a start and end point.</p>
+  </div>`;
+  document.querySelectorAll("canvas[data-seg]").forEach(c=>{const sg=S.segments.find(x=>x.id===c.dataset.seg);const all=efforts(sg);const best=all[0];
+    if(best){drawRoute(c,best.drive.pts,{hl:[best.from,best.to],context:best.drive.pts.slice(best.from,best.to+1),thin:true,noEnds:true})}else drawRoute(c,[sg.start,sg.end],{color:css("--hl")})});
+  document.querySelectorAll("[data-delseg]").forEach(b=>b.onclick=()=>{S.segments=S.segments.filter(x=>x.id!==b.dataset.delseg);save();viewSegments();toast("Segment removed")});
+}
+
+/* ---------- you ---------- */
+function viewYou(){
+  const mine=S.drives.filter(d=>d.who==="me").sort((a,b)=>b.start-a.start);
+  const tot=mine.reduce((a,d)=>({dist:a.dist+d.stats.dist,t:a.t+d.stats.moving,sm:a.sm+d.stats.smooth}),{dist:0,t:0,sm:0});
+  const weeks=[];const wk=7*864e5;const now=Date.now();
+  for(let i=7;i>=0;i--){const a=now-(i+1)*wk,b=now-i*wk;weeks.push({label:i===0?"Now":`-${i}w`,v:mine.filter(d=>d.start>a&&d.start<=b).reduce((s,d)=>s+fDist(d.stats.dist),0)})}
+  const mx=Math.max(1,...weeks.map(w=>w.v));
+  $("#view").innerHTML=`<div class="stack">
+    <div><div class="eyebrow">Your logbook</div><h1>You</h1></div>
+    <div class="totals detail-stats">${statBlock("Drives",mine.length)}${statBlock("Distance",fDist(tot.dist).toFixed(0),dLabel())}${statBlock("Avg smoothness",mine.length?Math.round(tot.sm/mine.length):"–")}</div>
+    <div class="panel"><div class="row"><h3>Distance per week</h3><span class="spacer"></span><span class="muted" style="font-size:13px">${dLabel()}, last 8 weeks</span></div>
+      <div class="bars" role="img" aria-label="Distance per week">${weeks.map(w=>`<div class="b"><span class="num">${w.v?w.v.toFixed(0):""}</span><i style="height:${w.v/mx*80}%"></i><span>${w.label}</span></div>`).join("")}</div></div>
+    <div class="panel"><h3>Garage</h3>
+      ${S.settings.vehicles.map(v=>`<div class="row"><span style="flex:1;font-weight:600">${esc(v)}</span>${v===S.settings.vehicle?'<span class="chip">Default</span>':`<button class="btn ghost" data-defveh="${esc(v)}" type="button">Make default</button>`}</div>`).join("")}
+      <form class="row" id="veh-form"><input type="text" id="veh-in" placeholder="Add a vehicle, e.g. 2018 Civic" style="flex:1;min-width:0" maxlength="60"><button class="btn" type="submit">Add</button></form>
+    </div>
+    <div class="panel"><h3>Your drives</h3>${mine.map(d=>`<button class="effort open-link" data-open="${d.id}" style="display:flex"><div style="flex:1;min-width:0"><div style="font-weight:600">${esc(d.title)}</div><div class="muted" style="font-size:13px">${ago(d.start)} · ${fDist(d.stats.dist).toFixed(1)} ${dLabel()} · ${fDur(d.stats.moving)}</div></div>${smoothChip(d.stats.smooth)}</button>`).join("")||'<p class="muted" style="margin:0">Nothing recorded yet.</p>'}</div>
+    <div class="panel"><h3>Example data</h3><p class="muted" style="margin:0">The other drivers, their drives and the starter segments are examples so you can see how things work. Your own recordings are kept on this device.</p>
+      <div class="row"><button class="btn" id="clr-ex" type="button">Remove examples</button><button class="btn ghost" id="reset" type="button">Reset everything</button></div>
+      <div id="reset-confirm" hidden class="row"><span style="flex:1">Erase all drives, segments and comments on this device?</span><button class="btn danger" id="reset-yes" type="button">Erase</button></div>
+    </div>
+  </div>`;
+  document.querySelectorAll("[data-defveh]").forEach(b=>b.onclick=()=>{S.settings.vehicle=b.dataset.defveh;save();viewYou()});
+  $("#veh-form").onsubmit=e=>{e.preventDefault();const v=$("#veh-in").value.trim();if(!v)return;if(!S.settings.vehicles.includes(v))S.settings.vehicles.push(v);S.settings.vehicle=v;save();viewYou();toast("Vehicle added")};
+  $("#clr-ex").onclick=()=>{S.drives=S.drives.filter(d=>!d.sample);S.segments=S.segments.filter(s=>!s.sample);save();viewYou();toast("Examples removed")};
+  $("#reset").onclick=()=>{$("#reset-confirm").hidden=false};
+  $("#reset-yes").onclick=()=>{try{localStorage.removeItem(KEY)}catch(e){}mem=null;S=seed();save();render();toast("Reset to a fresh start")};
+}
+
+/* ---------- global events ---------- */
+document.addEventListener("click",e=>{
+  const k=e.target.closest("[data-kudos]");if(k&&!k.disabled){e.preventDefault();const id=k.dataset.kudos;S.kudos[id]=!S.kudos[id];save();const d=S.drives.find(x=>x.id===id);k.setAttribute("aria-pressed",!!S.kudos[id]);k.querySelector("span").textContent=kudosCount(d);if(S.kudos[id])toast("Kudos given");return}
+  const o=e.target.closest("[data-open]");if(o){e.preventDefault();openDrive(o.dataset.open)}
+});
+$("#u-mi").onclick=()=>{S.settings.units="mi";save();render()};
+$("#u-km").onclick=()=>{S.settings.units="km";save();render()};
+let pendingOpen=null;
+window.addEventListener("hashchange",()=>{if(!$("#sheet").hidden){$("#sheet").hidden=true;document.body.style.overflow=""}render();if(pendingOpen){const id=pendingOpen;pendingOpen=null;openDrive(id,true)}});
+let rz;window.addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(()=>{if($("#sheet").hidden)render()},200)});
+if(!ROAD)ROAD=buildRoad();
+render();
+})();
+</script>
+
+<script>if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(function(){});</script>
+</body>
+</html>
