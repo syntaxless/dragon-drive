@@ -70,6 +70,13 @@ h3{font-size:18px}
 .btn.danger{color:var(--bad);border-color:currentColor;background:transparent}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:600;background:var(--surface-2);color:var(--muted);white-space:nowrap}
+.veh-row{display:flex;gap:12px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.veh-thumb{width:64px;height:48px;border-radius:10px;border:1px dashed var(--line);background:var(--surface-2);color:var(--muted);display:grid;place-items:center;overflow:hidden;flex:none;padding:0;cursor:pointer}
+.veh-thumb img{width:100%;height:100%;object-fit:cover}
+.garage-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+.garage-grid figure{margin:0;border-radius:12px;overflow:hidden;background:var(--surface-2)}
+.garage-grid img,.garage-grid .ph{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--surface-2)}
+.garage-grid figcaption{padding:6px 10px;font-weight:600;font-size:14px}
 .head-tags{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px;flex:none;max-width:45%}
 .chip.example{border:1px dashed var(--muted);background:transparent}
 .chip.run{color:var(--hl)}
@@ -391,15 +398,15 @@ function seed(){
     mk("p1","Sunday coast loop","2019 Mazda MX-5","Phone GPS",now-6*H,driveFrom(0,420,7,now-6*H,calm)),
     mk("p3","Airstrip roll race, 60 to 130","2022 BMW M3 Competition","Dragy",now-26*H,dragRun(5,now-26*H,{a0:7.5,vtop:62,roll:24,hold:4,target:{v:130*MPH+0.5}})),
     mk("p4","Quick errand","2011 Honda Fit","Phone GPS",now-1.6*D,driveFrom(200,330,10,now-1.6*D,mid)),
-    mk("me","Evening drive","My car","Phone GPS",now-2.2*D,driveFrom(30,300,11,now-2.2*D,mid)),
+    mk("me","Evening drive","My vehicle","Phone GPS",now-2.2*D,driveFrom(30,300,11,now-2.2*D,mid)),
     mk("p3","Strip night, best pass","2022 BMW M3 Competition","Dragy",now-3.4*D,dragRun(8,now-3.4*D,{a0:7.5,vtop:62,target:{d:1320*FT}})),
     mk("p1","Cliffside detour","2019 Mazda MX-5","Phone GPS",now-4.5*D,driveFrom(150,480,12,now-4.5*D,lively)),
-    mk("me","Strip night with the crew","My car","RaceBox Mini",now-3.4*D-H,dragRun(9,now-3.4*D-H,{a0:4.2,vtop:48,target:{d:1320*FT}})),
-    mk("me","Weekend coast run","My car","Phone GPS",now-9*D,driveFrom(100,440,13,now-9*D,calm)),
+    mk("me","Strip night with the crew","My vehicle","RaceBox Mini",now-3.4*D-H,dragRun(9,now-3.4*D-H,{a0:4.2,vtop:48,target:{d:1320*FT}})),
+    mk("me","Weekend coast run","My vehicle","Phone GPS",now-9*D,driveFrom(100,440,13,now-9*D,calm)),
   ];
   const S0={v:2,people,drives,
     kudos:{},kudosFrom:{},comments:{},
-    settings:{units:(navigator.language||"en-US").match(/^en-(US|GB|LR|MM)/)?"mi":"km",vehicle:"My car",vehicles:["My car"],source:"phone",motion:true}};
+    settings:{units:(navigator.language||"en-US").match(/^en-(US|GB|LR|MM)/)?"mi":"km",vehicle:"My vehicle",vehicles:["My vehicle"],source:"phone",motion:true}};
   S0.drives.forEach((d,i)=>{S0.kudosFrom[d.id]=["p1","p2","p3","p4"].filter((p,j)=>p!==d.who&&(i+j)%2===0)});
   S0.comments[S0.drives[0].id]=[{who:"p3",text:"Clean launch. What tires are you on?",t:now-2*H}];
   S0.comments[S0.drives[2].id]=[{who:"p2",text:"That 60–130 is unreal.",t:now-20*H}];
@@ -434,7 +441,7 @@ const Sync=(()=>{
       const rows=await r.json();const before=JSON.stringify(mineOnly(S));
       if(rows[0]&&rows[0].data){const m=merge(S,rows[0].data);if(JSON.stringify(mineOnly(m))!==before){S=m;dropExamples();mem=S;lastSJ=JSON.stringify(S.settings);try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}if(!(SHEET&&!$("#sheet").hidden))rerender();loadAvatar()}}
       const w=await api("/rest/v1/snapshots",{method:"POST",headers:{"Content-Type":"application/json",Prefer:"resolution=merge-duplicates,return=minimal"},body:JSON.stringify({user_id:ses.uid,data:mineOnly(S),updated_at:new Date().toISOString()})});
-      if(!w.ok)throw new Error("write "+w.status);status="Synced "+new Date().toLocaleTimeString([], {hour:"numeric",minute:"2-digit"});
+      if(!w.ok)throw new Error("write "+w.status);try{await Social.push()}catch(e){}status="Synced "+new Date().toLocaleTimeString([], {hour:"numeric",minute:"2-digit"});
     }catch(e){status=navigator.onLine===false?"Offline, will sync later":"Sync problem, will retry";clearTimeout(timer);timer=setTimeout(run,30000)}
     busy=false;paint();if(again){again=false;run()}
   }
@@ -442,20 +449,122 @@ const Sync=(()=>{
   function paint(){const el=document.getElementById("sync-status");if(el)el.textContent=status}
   window.addEventListener("online",()=>run());document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")run()});
   return{
-    on,get user(){return ses},get status(){return status},
+    on,api,get user(){return ses},get status(){return status},
     queue(){if(!on()||!ses)return;clearTimeout(timer);timer=setTimeout(run,1500)},
     run,
     async sendCode(email){const back=location.origin+location.pathname;const r=await fetch(CLOUD.url+"/auth/v1/otp?redirect_to="+encodeURIComponent(back),{method:"POST",headers:{apikey:CLOUD.anonKey,"Content-Type":"application/json"},body:JSON.stringify({email,create_user:true})});if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.msg||j.message||"Couldn't send the email")}},
     async fromLink(hash){const h=new URLSearchParams(hash.slice(1));if(!on()||!h.get("access_token"))return false;
       try{const j={access_token:h.get("access_token"),refresh_token:h.get("refresh_token"),expires_in:+h.get("expires_in")||3600};const r=await fetch(CLOUD.url+"/auth/v1/user",{headers:{apikey:CLOUD.anonKey,Authorization:"Bearer "+j.access_token}});j.user=await r.json();if(!r.ok||!j.user.id)throw 0;keep(fromAuth(j));await this.uploadAll();await run();toast("Signed in, syncing")}catch(e){toast("That sign-in link has expired. Request a new one.")}return true},
-    async verify(email,code){const j=await auth("verify",{type:"email",email,token:code});keep(fromAuth(j));await this.uploadAll();await run()},
-    signOut(){keep(null);status="";},
-    async uploadAll(){const ids=S.drives.filter(d=>d.who==="me"&&!d.sample&&d.photo).map(d=>d.id);if(S.settings.avatar)ids.push("avatar:me");for(const id of ids){const b=await photos.get(id);if(b)await this.putPhoto(id,b)}},
+    async verify(email,code){const j=await auth("verify",{type:"email",email,token:code});keep(fromAuth(j));await this.uploadAll();await run();await Social.refresh()},
+    signOut(){keep(null);status="";Social.reset()},
+    async uploadAll(){const ids=S.drives.filter(d=>d.who==="me"&&!d.sample&&d.photo).map(d=>d.id);if(S.settings.avatar)ids.push("avatar:me");for(const [n,i] of Object.entries(S.settings.garage||{}))if(i.photoAt)ids.push("veh:"+n);for(const id of ids){const b=await photos.get(id);if(b)await this.putPhoto(id,b)}},
     async putPhoto(id,blob){if(!on()||!ses)return;try{await api(objPath(id),{method:"POST",headers:{"Content-Type":blob.type||"image/jpeg","x-upsert":"true"},body:blob})}catch(e){}},
     async delPhoto(id){if(!on()||!ses)return;try{await api("/storage/v1/object/photos",{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({prefixes:[ses.uid+"/"+id]})})}catch(e){}},
     async getPhoto(id){if(!on()||!ses||String(id).startsWith("video:"))return null;try{const r=await api("/storage/v1/object/authenticated/photos/"+ses.uid+"/"+encodeURIComponent(id));return r.ok?await r.blob():null}catch(e){return null}}
   };
 })();
+
+/* ================= social ================= */
+// Profiles, following, shared drives, kudos and comments on top of the account backend.
+// The database decides who can see what (supabase/social.sql); the app only asks.
+const Social=(()=>{
+  const SOC={me:undefined,profiles:new Map(),following:new Set(),drives:[],kudos:new Map(),comments:new Map(),loaded:false,photoUrls:new Map()};
+  const ok=()=>Sync.on()&&!!Sync.user;
+  const ready=()=>ok()&&!!SOC.me;
+  const J=async(path,opt={})=>{const r=await Sync.api(path,{...opt,headers:{"Content-Type":"application/json",...(opt.headers||{})}});if(!r.ok){const j=await r.json().catch(()=>({}));const e=new Error(j.message||("HTTP "+r.status));e.code=j.code;e.status=r.status;throw e}return r.status===204||r.headers.get("content-length")==="0"?null:r.json().catch(()=>null)};
+  const inList=ids=>"in.("+ids.map(x=>encodeURIComponent('"'+x+'"')).join(",")+")";
+  const hue=id=>{let h=0;for(const c of id)h=(h*31+c.charCodeAt(0))>>>0;return `hsl(${h%360} 55% 42%)`};
+  function addProfiles(list){for(const p of list||[])SOC.profiles.set(p.id,p)}
+  // Trim the start and end of a route so it doesn't point at anyone's front door.
+  function trimEnds(pts,m){if(!m||pts.length<3)return pts;const cd=[0];for(let i=1;i<pts.length;i++)cd.push(cd[i-1]+hav(pts[i-1],pts[i]));const tot=cd[cd.length-1];const a=tot>2*m+50?m:tot*.3,b=tot>2*m+50?tot-m:tot*.7;const out=pts.filter((_,i)=>cd[i]>=a&&cd[i]<=b);if(out.length>=2)return out;const mid=Math.max(1,Math.floor(pts.length/2));return [pts[mid-1],pts[mid]]}
+  const r5=x=>x==null?null:Math.round(x*1e5)/1e5,r2=x=>x==null?null:Math.round(x*100)/100;
+  function row(d){const pts=trimEnds(d.pts,S.settings.hideEnds===false?0:300).map(p=>[r5(p[0]),r5(p[1]),p[2],r2(p[3]),p[4]==null?null:Math.round(p[4]),r2(p[5]),r2(p[6]),r2(p[7])]);
+    return{id:d.id,visibility:d.vis||S.settings.defaultVis||"followers",title:d.title,vehicle:vehPriv(d.vehicle)?"":(d.vehicle||""),source:d.source||"",start:new Date(d.start).toISOString(),stats:d.stats,pts,photo:!!d.photo}}
+  function toLocal(r){const p=SOC.profiles.get(r.user_id);return{id:r.id,who:"u:"+r.user_id,remote:true,title:r.title,vehicle:r.vehicle,source:r.source,start:Date.parse(r.start),stats:r.stats,pts:r.pts,photo:r.photo,vis:r.visibility}}
+  const vehPriv=n=>!!(S.settings.garage&&S.settings.garage[n]&&S.settings.garage[n].priv);
+  const sig=d=>JSON.stringify([d.title,d.vehicle,vehPriv(d.vehicle),d.vis||S.settings.defaultVis||"followers",!!d.photo,d.pts.length,S.settings.hideEnds!==false]);
+  async function loadMe(){const u=Sync.user;const r=await J("/rest/v1/profiles?select=*&id=eq."+u.uid);SOC.me=r&&r[0]||null;if(SOC.me)addProfiles([SOC.me]);return SOC.me}
+  async function refresh(){
+    if(!ok())return;const u=Sync.user;
+    try{
+      if(SOC.me===undefined)await loadMe();if(!SOC.me){SOC.loaded=true;return}
+      const f=await J("/rest/v1/follows?select=followee&follower=eq."+u.uid);SOC.following=new Set(f.map(x=>x.followee));
+      const ids=[...SOC.following];
+      if(ids.length){addProfiles(await J("/rest/v1/profiles?select=*&id="+inList(ids)));SOC.drives=(await J("/rest/v1/drives?select=*&user_id="+inList(ids)+"&order=start.desc&limit=60")).map(toLocal)}else SOC.drives=[];
+      await loadReactions([...SOC.drives.map(d=>d.id),...Object.keys(S.pub||{})]);
+      SOC.loaded=true;
+      if(current==="feed"&&!(SHEET&&!$("#sheet").hidden))rerender();
+    }catch(e){}
+  }
+  async function loadReactions(ids){
+    ids=[...new Set(ids)].slice(0,150);if(!ids.length)return;
+    const k=await J("/rest/v1/kudos?select=drive_id,user_id&drive_id="+inList(ids));const c=await J("/rest/v1/comments?select=*&drive_id="+inList(ids)+"&order=created_at.asc");
+    const me=Sync.user.uid;for(const id of ids){SOC.kudos.set(id,{n:0,mine:false});SOC.comments.set(id,[])}
+    for(const x of k){const e=SOC.kudos.get(x.drive_id);e.n++;if(x.user_id===me)e.mine=true}
+    for(const x of c)SOC.comments.get(x.drive_id).push({id:x.id,who:x.user_id===me?"me":"u:"+x.user_id,text:x.body,t:Date.parse(x.created_at)});
+    const need=[...new Set(c.map(x=>x.user_id))].filter(id=>!SOC.profiles.has(id)&&id!==me);if(need.length)addProfiles(await J("/rest/v1/profiles?select=*&id="+inList(need)));
+  }
+  // Publish changes to my real drives (called after each sync).
+  async function push(){
+    if(!ok())return;if(SOC.me===undefined)await loadMe();if(!SOC.me)return;
+    const u=Sync.user;S.pub=S.pub||{};let changed=false;
+    // profile name and avatar
+    const nm=(S.settings.name||"").slice(0,40);if(nm!==SOC.me.name){await J("/rest/v1/profiles?id=eq."+u.uid,{method:"PATCH",body:JSON.stringify({name:nm})});SOC.me.name=nm}
+    const avSig=S.settings.avatar?String(S.settings.avatarAt||1):"";if(avSig!==(S.pubAvatar||"")){let url=null;
+      if(S.settings.avatar){const b=await photos.get("avatar:me");if(b){const path=`avatars/${u.uid}/avatar.jpg`;const r=await Sync.api("/storage/v1/object/"+path,{method:"POST",headers:{"Content-Type":b.type||"image/jpeg","x-upsert":"true"},body:b});if(r.ok)url=CLOUD.url+"/storage/v1/object/public/"+path+"?v="+Date.now()}}
+      await J("/rest/v1/profiles?id=eq."+u.uid,{method:"PATCH",body:JSON.stringify({avatar_url:url})});SOC.me.avatar_url=url;S.pubAvatar=avSig;changed=true}
+    // garage: public vehicles with photos in the public bucket under an unguessable name
+    const G=S.settings.garage||{};const gsig=JSON.stringify(S.settings.vehicles.map(n=>[n,G[n]||{}]));
+    if(gsig!==S.pubGarage){
+      const rows=[];let pos=0;
+      for(const n of S.settings.vehicles){const info=G[n]||(G[n]={});if(!info.key)info.key=uid();const path=`avatars/${u.uid}/veh-${info.key}.jpg`;
+        if(info.priv){if(info.pubPhoto){await Sync.api("/storage/v1/object/avatars",{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({prefixes:[`${u.uid}/veh-${info.key}.jpg`]})}).catch(()=>{});info.pubPhoto=0}continue}
+        let url=null;if(info.photoAt){if(info.pubPhoto!==info.photoAt){const b=await photos.get("veh:"+n);if(b){const r=await Sync.api("/storage/v1/object/"+path,{method:"POST",headers:{"Content-Type":b.type||"image/jpeg","x-upsert":"true"},body:b});if(r.ok)info.pubPhoto=info.photoAt}}
+          if(info.pubPhoto)url=CLOUD.url+"/storage/v1/object/public/"+path+"?v="+info.photoAt}
+        rows.push({user_id:u.uid,name:n,photo_url:url,pos:pos++})}
+      S.settings.garage=G;
+      await J("/rest/v1/vehicles?user_id=eq."+u.uid,{method:"DELETE"});if(rows.length)await J("/rest/v1/vehicles",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify(rows)});
+      S.pubGarage=JSON.stringify(S.settings.vehicles.map(n=>[n,G[n]||{}]));changed=true}
+    for(const d of S.drives.filter(isReal)){
+      const want=(d.vis||S.settings.defaultVis||"followers")!=="private",was=S.pub[d.id];
+      if(!want){if(was){await J("/rest/v1/drives?id=eq."+encodeURIComponent(d.id),{method:"DELETE"});delete S.pub[d.id];changed=true}continue}
+      const g=sig(d);if(was===g)continue;
+      await J("/rest/v1/drives",{method:"POST",headers:{Prefer:"resolution=merge-duplicates,return=minimal"},body:JSON.stringify({...row(d),user_id:u.uid,updated_at:new Date().toISOString()})});
+      const path=`drive-photos/${u.uid}/${d.id}`;
+      if(d.photo){const b=await photos.get(d.id);if(b)await Sync.api("/storage/v1/object/"+path,{method:"POST",headers:{"Content-Type":b.type||"image/jpeg","x-upsert":"true"},body:b})}
+      else if(was)await Sync.api("/storage/v1/object/drive-photos",{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({prefixes:[u.uid+"/"+d.id]})}).catch(()=>{});
+      S.pub[d.id]=g;changed=true}
+    for(const id of Object.keys(S.pub))if(!S.drives.some(d=>d.id===id)){await J("/rest/v1/drives?id=eq."+encodeURIComponent(id),{method:"DELETE"});delete S.pub[id];changed=true}
+    if(changed){mem=S;try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+  }
+  return{
+    SOC,ok,ready,hue,trimEnds,refresh,push,loadMe,
+    get me(){return SOC.me},
+    person(id){const p=SOC.profiles.get(id.slice(2));return p?{id,name:p.name||"@"+p.handle,handle:p.handle,color:hue(p.id),avatarUrl:p.avatar_url}:{id,name:"Driver",color:"#666"}},
+    published:d=>!!(d.remote||(S.pub&&S.pub[d.id])),
+    kudos:id=>SOC.kudos.get(id),comments:id=>SOC.comments.get(id),
+    async claim(handle){handle=handle.toLowerCase();const u=Sync.user;
+      await J("/rest/v1/profiles",{method:"POST",headers:{Prefer:"return=representation"},body:JSON.stringify({id:u.uid,handle,name:(S.settings.name||"").slice(0,40)})}).then(r=>{SOC.me=r[0]}).catch(e=>{if(e.code==="23505"||e.status===409)throw new Error("That handle is taken. Try another.");throw e});
+      addProfiles([SOC.me]);S.pubAvatar="";await push();await refresh()},
+    async toggleKudos(id){const e=SOC.kudos.get(id)||{n:0,mine:false};const u=Sync.user;
+      if(e.mine){await J("/rest/v1/kudos?drive_id=eq."+encodeURIComponent(id)+"&user_id=eq."+u.uid,{method:"DELETE"});e.n--;e.mine=false}
+      else{await J("/rest/v1/kudos",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify({drive_id:id,user_id:u.uid})});e.n++;e.mine=true}
+      SOC.kudos.set(id,e);return e},
+    async comment(id,text){const r=await J("/rest/v1/comments",{method:"POST",headers:{Prefer:"return=representation"},body:JSON.stringify({drive_id:id,user_id:Sync.user.uid,body:text})});
+      const l=SOC.comments.get(id)||[];l.push({id:r[0].id,who:"me",text,t:Date.now()});SOC.comments.set(id,l)},
+    async byHandle(h){const r=await J("/rest/v1/profiles?select=*&handle=eq."+encodeURIComponent(h.toLowerCase()));if(r[0])addProfiles(r);return r[0]||null},
+    async search(q){q=q.replace(/[^a-z0-9_]/gi,"").toLowerCase();if(!q)return[];const r=await J("/rest/v1/profiles?select=*&handle=ilike."+encodeURIComponent("*"+q+"*")+"&limit=10");addProfiles(r);return r.filter(p=>p.id!==Sync.user.uid)},
+    async profileData(p){const [drv,fol,fing,veh]=await Promise.all([J("/rest/v1/drives?select=*&user_id=eq."+p.id+"&order=start.desc&limit=50"),J("/rest/v1/follows?select=follower&followee=eq."+p.id),J("/rest/v1/follows?select=followee&follower=eq."+p.id),J("/rest/v1/vehicles?select=*&user_id=eq."+p.id+"&order=pos.asc")]);
+      const ds=drv.map(toLocal);for(const d of ds)if(!SOC.drives.some(x=>x.id===d.id))SOC.drives.push(d);await loadReactions(ds.map(d=>d.id));return{drives:ds,followers:fol.length,following:fing.length,vehicles:veh}},
+    async follow(id,on){const u=Sync.user;if(on){await J("/rest/v1/follows",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify({follower:u.uid,followee:id})});SOC.following.add(id)}
+      else{await J("/rest/v1/follows?follower=eq."+u.uid+"&followee=eq."+id,{method:"DELETE"});SOC.following.delete(id);SOC.drives=SOC.drives.filter(d=>d.who!=="u:"+id)}refresh()},
+    async photoUrl(d){if(SOC.photoUrls.has(d.id))return SOC.photoUrls.get(d.id);const uid=d.who.slice(2);const r=await Sync.api("/storage/v1/object/authenticated/drive-photos/"+uid+"/"+encodeURIComponent(d.id)).catch(()=>null);
+      const u=r&&r.ok?URL.createObjectURL(await r.blob()):null;SOC.photoUrls.set(d.id,u);return u},
+    reset(){SOC.me=undefined;SOC.profiles.clear();SOC.following.clear();SOC.drives=[];SOC.kudos.clear();SOC.comments.clear();SOC.loaded=false}
+  };
+})();
+function allDrives(){return Social.ok()?[...S.drives,...Social.SOC.drives.filter(r=>!S.drives.some(d=>d.id===r.id))]:S.drives}
+function findDrive(id){return S.drives.find(x=>x.id===id)||Social.SOC.drives.find(x=>x.id===id)}
 
 let S=load();
 if(!S||S.v!==2){S=seed();save()}
@@ -466,7 +575,7 @@ function dropExamples(){if(!S.drives.some(d=>d.sample)||!S.drives.some(isReal))r
   const gone=new Set(S.drives.filter(d=>d.sample).map(d=>d.id));S.drives=S.drives.filter(d=>!d.sample);
   for(const id of gone){delete S.kudos[id];delete S.comments[id];if(S.kudosFrom)delete S.kudosFrom[id]}return true}
 if(dropExamples())save();
-const person=id=>id==="me"?{id:"me",name:"You",color:"var(--accent)"}:(S.people.find(p=>p.id===id)||{name:"Driver",color:"#666"});
+const person=id=>typeof id==="string"&&id.startsWith("u:")?Social.person(id):id==="me"?{id:"me",name:"You",color:"var(--accent)"}:(S.people.find(p=>p.id===id)||{name:"Driver",color:"#666"});
 const initials=n=>n==="You"?"ME":n.split(/\s+/).map(x=>x[0]).join("").slice(0,2).toUpperCase();
 
 
@@ -648,17 +757,21 @@ function toast(msg){const t=$("#toast");t.textContent=msg;t.hidden=false;clearTi
 const AV={url:null};
 async function loadAvatar(){AV.url=S.settings.avatar?await photos.url("avatar:me"):null;document.querySelectorAll("img[data-avatar]").forEach(i=>{if(AV.url)i.src=AV.url})}
 function avatar(p,size,extra=""){
+  if(p.avatarUrl)return `<img class="avatar" alt="" src="${esc(p.avatarUrl)}" style="${size?`width:${size}px;height:${size}px;`:""}${extra}">`;
   if(p.id==="me"&&S.settings.avatar)return `<img class="avatar" data-avatar alt="" ${AV.url?`src="${AV.url}"`:""} style="${size?`width:${size}px;height:${size}px;`:""}${extra}">`;
   return `<span class="avatar" style="background:${p.color}${p.id==="me"?";color:var(--accent-fg)":""}${size?`;width:${size}px;height:${size}px`:""};${extra}" aria-hidden="true">${esc(initials(p.name))}</span>`}
-function kudosCount(d){return (S.kudosFrom[d.id]||[]).length+(S.kudos[d.id]?1:0)}
+function kudosCount(d){const k=Social.ok()&&Social.published(d)&&Social.kudos(d.id);return k?k.n:(S.kudosFrom[d.id]||[]).length+(S.kudos[d.id]?1:0)}
+function kudosMine(d){const k=Social.ok()&&Social.published(d)&&Social.kudos(d.id);return k?k.mine:!!S.kudos[d.id]}
+function commentsOf(d){const c=Social.ok()&&Social.published(d)&&Social.comments(d.id);return c||S.comments[d.id]||[]}
 const heart=`<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 21V10l4-7c1.5 0 2.5 1 2.2 2.6L12.6 9H19a2 2 0 0 1 2 2.3l-1.3 7.6A2.5 2.5 0 0 1 17.2 21H7zM3 10h2.5v11H3z"/></svg>`;
 function statBlock(k,v,u){return `<div class="stat"><div class="k">${k}</div><div class="v">${v}${u?`<small>${u}</small>`:""}</div></div>`}
-function fillPhotos(root){(root||document).querySelectorAll("img[data-photo]").forEach(async img=>{const u=await photos.url(img.dataset.photo);if(u)img.src=u;else img.hidden=true})}
+function fillPhotos(root){(root||document).querySelectorAll("img[data-photo]").forEach(async img=>{const rd=findDrive(img.dataset.photo);const u=rd&&rd.remote?await Social.photoUrl(rd):await photos.url(img.dataset.photo);if(u)img.src=u;else img.hidden=true})}
 
 /* ================= views ================= */
 let current="feed";
 function render(){
   const tab=(location.hash||"#feed").slice(1);
+  if(tab.startsWith("u/")){current="profile";document.querySelectorAll("nav.tabs a").forEach(a=>a.setAttribute("aria-current","false"));$("#me-btn").innerHTML=avatar(person("me"),36,"color:var(--accent-fg);font-size:14px");viewProfile(decodeURIComponent(tab.slice(2)));window.scrollTo(0,0);return}
   current=["feed","record","routes","you"].includes(tab)?tab:"feed";
   document.querySelectorAll("nav.tabs a").forEach(a=>a.setAttribute("aria-current",a.dataset.tab===current?"page":"false"));
   $("#me-btn").setAttribute("aria-current",current==="you"?"page":"false");$("#me-btn").innerHTML=avatar(person("me"),36,"color:var(--accent-fg);font-size:14px");
@@ -676,26 +789,28 @@ function feedCard(d){
   const p=person(d.who),s=d.stats;
   return `<article class="card">
     <button class="open-link" data-open="${d.id}" aria-label="Open ${esc(d.title)}">
-      <div class="card-head">${avatar(p)}<div style="min-width:0"><div style="font-weight:600">${esc(p.name)}</div><div class="muted small">${ago(d.start)} · ${esc(d.vehicle)}</div></div><span class="spacer"></span><span class="head-tags">${d.sample?'<span class="chip example">Example</span>':""}<span class="chip">${esc(d.source||"Phone GPS")}</span></span></div>
+      <div class="card-head">${avatar(p)}<div style="min-width:0"><div style="font-weight:600">${p.handle?`<span data-user="${esc(p.handle)}">${esc(p.name)}</span>`:esc(p.name)}</div><div class="muted small">${ago(d.start)}${d.vehicle?" · "+esc(d.vehicle):""}</div></div><span class="spacer"></span><span class="head-tags">${d.sample?'<span class="chip example">Example</span>':""}<span class="chip">${esc(d.source||"Phone GPS")}</span></span></div>
       <div class="card-title"><h3>${esc(d.title)}</h3></div>
       <div class="stats">${statBlock("Distance",fDist(s.dist).toFixed(fDist(s.dist)<10?2:1),dLabel())}${statBlock("Moving time",fDur(s.moving))}${statBlock("Top speed",Math.round(fSpeed(s.max)),sLabel())}</div>
       <div class="chips">${driveChips(d)}</div>
       <div class="media ${d.photo?"two":""}">${d.photo?`<img class="photo" data-photo="${d.id}" alt="Photo from ${esc(d.title)}">`:""}<canvas class="route" data-route="${d.id}"></canvas></div>
     </button>
     <div class="card-foot">
-      <button class="kudos" data-kudos="${d.id}" aria-pressed="${!!S.kudos[d.id]}" aria-label="Kudos" ${d.who==="me"?"disabled title=\"You can't give kudos to your own drive\"":""}>${heart}<span>${kudosCount(d)}</span></button>
-      <button class="kudos" data-open="${d.id}" aria-label="Comments"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg><span>${(S.comments[d.id]||[]).length}</span></button>
+      <button class="kudos" data-kudos="${d.id}" aria-pressed="${kudosMine(d)}" aria-label="Kudos" ${d.who==="me"?"disabled title=\"You can't give kudos to your own drive\"":""}>${heart}<span>${kudosCount(d)}</span></button>
+      <button class="kudos" data-open="${d.id}" aria-label="Comments"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg><span>${commentsOf(d).length}</span></button>
       <span class="spacer"></span>
       <button class="kudos" data-share="${d.id}" aria-label="Share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M5 13v7h14v-7"/></svg><span>Share</span></button>
     </div></article>`;
 }
 function viewFeed(){
-  const drives=[...S.drives].sort((a,b)=>b.start-a.start);
+  const drives=allDrives().slice().sort((a,b)=>b.start-a.start);
+  const nudge=Social.ok()&&Social.SOC.loaded&&!Social.me?`<a class="notice" href="#you" style="display:block;text-decoration:none;color:inherit"><b>Pick your @handle</b> so friends can find and follow you.</a>`:Social.ready()&&!Social.SOC.following.size?`<a class="notice" href="#you" style="display:block;text-decoration:none;color:inherit"><b>Follow your friends</b> to see their drives here. Find them by @handle or send your invite link.</a>`:"";
   $("#view").innerHTML=`<div class="stack">
     <div class="row"><div><div class="eyebrow">Your road crew</div><h1>Feed</h1></div><span class="spacer"></span><a class="btn primary" href="#record">Start a drive</a></div>
+    ${nudge}
     ${drives.length?drives.map(feedCard).join(""):`<div class="empty">No drives yet. Tap <b>Drive</b> to record your first one.</div>`}
   </div>`;
-  document.querySelectorAll("canvas[data-route]").forEach(c=>{const d=S.drives.find(x=>x.id===c.dataset.route);if(d)paintRoute(c,d.pts,{thin:true,key:d.id})});
+  document.querySelectorAll("canvas[data-route]").forEach(c=>{const d=findDrive(c.dataset.route);if(d)paintRoute(c,d.pts,{thin:true,key:d.id})});
   fillPhotos();
 }
 
@@ -985,14 +1100,15 @@ function runsTable(st){
 }
 let SHEET=null;
 function openDrive(id,fresh){
-  const d=S.drives.find(x=>x.id===id);if(!d)return;SHEET={kind:"drive",id};if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}
+  const d=findDrive(id);if(!d)return;SHEET={kind:"drive",id};if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}
   const p=person(d.who),s=d.stats,mine=d.who==="me";
   const hasAlt=d.pts.some(q=>q[4]!=null);const hasGG=d.pts.some(q=>q[5]!=null);
   const sh=$("#sheet");
-  sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span>${d.sample?'<span class="chip example">Example</span>':""}<button class="btn" id="d-video" type="button">Video</button><button class="btn primary" id="d-share" type="button">Share</button></div></div>
+  sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span>${d.sample?'<span class="chip example">Example</span>':""}${d.remote?"":'<button class="btn" id="d-video" type="button">Video</button>'}<button class="btn primary" id="d-share" type="button">Share</button></div></div>
   <div class="wrap body stack">
-    <div class="row">${avatar(p)}<div><div style="font-weight:600">${esc(p.name)}</div><div class="muted small">${new Date(d.start).toLocaleString(undefined,{weekday:"short",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})} · ${esc(d.vehicle)} · ${esc(d.source||"Phone GPS")}</div></div></div>
+    <div class="row">${avatar(p)}<div><div style="font-weight:600">${p.handle?`<a href="#u/${esc(p.handle)}" style="color:inherit">${esc(p.name)}</a> <span class="muted small">@${esc(p.handle)}</span>`:esc(p.name)}</div><div class="muted small">${new Date(d.start).toLocaleString(undefined,{weekday:"short",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})} · ${esc(d.vehicle)} · ${esc(d.source||"Phone GPS")}</div></div></div>
     ${mine?`<input type="text" id="title-in" value="${esc(d.title)}" aria-label="Drive title" style="font-family:var(--display);font-size:26px;font-weight:700">`:`<h1 style="text-transform:none">${esc(d.title)}</h1>`}
+    ${mine&&Social.ready()&&isReal(d)?`<label class="row muted small" style="gap:8px">Who can see this<select id="d-vis" style="flex:none"><option value="followers" ${(d.vis||S.settings.defaultVis||"followers")==="followers"?"selected":""}>Followers</option><option value="public" ${(d.vis||S.settings.defaultVis)==="public"?"selected":""}>Everyone</option><option value="private" ${(d.vis||S.settings.defaultVis)==="private"?"selected":""}>Only me</option></select></label>`:""}
     ${fresh?`<div class="notice">Drive saved. Give it a name, add a photo, then share it.</div>`:""}
     <div class="photo-edit">${d.photo?`<img class="photo" data-photo="${d.id}" alt="Photo from ${esc(d.title)}">`:""}
       ${mine?`<div class="row" style="margin-top:${d.photo?"8px":"0"}"><button class="btn" id="add-photo" type="button"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>${d.photo?"Change photo":"Add a photo"}</button>${d.photo?`<button class="btn ghost" id="rm-photo" type="button">Remove photo</button>`:""}</div>`:""}</div>
@@ -1008,11 +1124,11 @@ function openDrive(id,fresh){
     <div class="panel"><div class="row"><h3>Speed</h3><span class="spacer"></span><span class="muted small">${sLabel()} over distance</span></div><canvas class="chart" id="d-speed"></canvas></div>
     ${hasAlt?`<div class="panel"><div class="row"><h3>Elevation</h3><span class="spacer"></span><span class="muted small">${aLabel()} over distance</span></div><canvas class="chart" id="d-alt"></canvas></div>`:""}
     ${hasGG?`<div class="panel"><div class="row"><h3>G-force</h3><span class="spacer"></span><span class="muted small">Acceleration vs cornering</span></div><canvas class="gg" id="d-gg"></canvas></div>`:""}
-    <div class="panel"><div class="row"><h3>Kudos & comments</h3><span class="spacer"></span><button class="kudos" id="d-kudos" aria-pressed="${!!S.kudos[d.id]}" aria-label="Kudos" ${mine?"disabled":""}>${heart}<span>${kudosCount(d)}</span></button></div>
-      <div class="stack">${(S.comments[d.id]||[]).map(c=>{const cp=person(c.who);return `<div class="comment">${avatar(cp)}<div><div style="font-weight:600;font-size:13px">${esc(cp.name)} <span class="muted" style="font-weight:400">${ago(c.t)}</span></div><p>${esc(c.text)}</p></div></div>`}).join("")||'<p class="muted" style="margin:0">No comments yet.</p>'}</div>
+    <div class="panel"><div class="row"><h3>Kudos & comments</h3><span class="spacer"></span><button class="kudos" id="d-kudos" aria-pressed="${kudosMine(d)}" aria-label="Kudos" ${mine?"disabled":""}>${heart}<span>${kudosCount(d)}</span></button></div>
+      <div class="stack">${commentsOf(d).map(c=>{const cp=person(c.who);return `<div class="comment">${avatar(cp)}<div><div style="font-weight:600;font-size:13px">${esc(cp.name)} <span class="muted" style="font-weight:400">${ago(c.t)}</span></div><p>${esc(c.text)}</p></div></div>`}).join("")||'<p class="muted" style="margin:0">No comments yet.</p>'}</div>
       <form class="row" id="c-form"><input type="text" id="c-in" placeholder="Add a comment" style="flex:1;min-width:0" maxlength="280"><button class="btn" type="submit">Post</button></form>
     </div>
-    <div class="row">${!window.claude?`<button class="btn" id="gpx" type="button">Export GPX</button>`:""}<span class="spacer"></span><button class="btn danger" id="del" type="button">Delete drive</button></div>
+    ${d.remote?"":`<div class="row">${!window.claude?`<button class="btn" id="gpx" type="button">Export GPX</button>`:""}<span class="spacer"></span><button class="btn danger" id="del" type="button">Delete drive</button></div>`}
     <div id="del-confirm" hidden class="notice row"><span style="flex:1">Delete “${esc(d.title)}” for good?</span><button class="btn ghost" id="del-no" type="button">Keep</button><button class="btn danger" id="del-yes" type="button">Delete</button></div>
   </div>`;
   sh.hidden=false;sh.scrollTop=0;document.body.style.overflow="hidden";
@@ -1023,13 +1139,16 @@ function openDrive(id,fresh){
   if(hasGG)drawGG($("#d-gg"),d.pts);
   $("#sh-x").onclick=closeSheet;
   $("#d-share").onclick=()=>openShare(d.id);
-  $("#d-video").onclick=()=>openVideo(d.id);
-  const k=$("#d-kudos");k.onclick=()=>{S.kudos[d.id]=!S.kudos[d.id];save();k.setAttribute("aria-pressed",!!S.kudos[d.id]);k.querySelector("span").textContent=kudosCount(d)};
-  $("#c-form").onsubmit=e=>{e.preventDefault();const v=$("#c-in").value.trim();if(!v)return;(S.comments[d.id]=S.comments[d.id]||[]).push({who:"me",text:v,t:Date.now()});save();openDrive(d.id);toast("Comment posted")};
+  const dv=$("#d-video");if(dv)dv.onclick=()=>openVideo(d.id);
+  const k=$("#d-kudos");k.onclick=async()=>{if(Social.ok()&&Social.published(d)){try{await Social.toggleKudos(d.id)}catch(e){toast("Couldn't reach the server");return}}else{S.kudos[d.id]=!S.kudos[d.id];save()}k.setAttribute("aria-pressed",kudosMine(d));k.querySelector("span").textContent=kudosCount(d)};
+  $("#c-form").onsubmit=async e=>{e.preventDefault();const v=$("#c-in").value.trim();if(!v)return;
+    if(Social.ok()&&Social.published(d)){try{await Social.comment(d.id,v)}catch(err){toast("Couldn't post the comment");return}}else{(S.comments[d.id]=S.comments[d.id]||[]).push({who:"me",text:v,t:Date.now()});save()}openDrive(d.id);toast("Comment posted")};
+  const dvs=$("#d-vis");if(dvs)dvs.onchange=e=>{d.vis=e.target.value;save();toast(d.vis==="private"?"Only you can see this drive":d.vis==="public"?"Anyone on Dragon Drive can see this drive":"Your followers can see this drive")};
   if(mine){$("#title-in").onchange=e=>{d.title=e.target.value.trim()||d.title;save()};
     $("#add-photo").onclick=()=>pickPhoto(d);
     const rm=$("#rm-photo");if(rm)rm.onclick=async()=>{await photos.del(d.id);d.photo=false;save();openDrive(d.id);toast("Photo removed")}}
   const g=$("#gpx");if(g)g.onclick=()=>exportGpx(d);
+  if(!$("#del"))return;
   $("#del").onclick=()=>{$("#del-confirm").hidden=false};$("#del-no").onclick=()=>{$("#del-confirm").hidden=true};
   $("#del-yes").onclick=()=>{if(d.video)delDriveVideo(d.video);S.drives=S.drives.filter(x=>x.id!==d.id);(S.deleted=S.deleted||[]).push(d.id);photos.del(d.id);save();closeSheet();toast("Drive deleted")};
 }
@@ -1132,7 +1251,7 @@ async function saveFile(blob,name){
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);
 }
 async function openShare(id,back){
-  const d=S.drives.find(x=>x.id===id);if(!d)return;
+  const d=findDrive(id);if(!d)return;
   const sh=$("#sheet");const wasOpen=back!=null?back:(!sh.hidden&&SHEET&&SHEET.kind==="drive");
   if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET={kind:"share",id,back:wasOpen};
   sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span><h3>Share card</h3></div></div>
@@ -1201,7 +1320,7 @@ function drawOverlay(g,W,H,tl,t,box){
   g.restore();
 }
 async function openVideo(id){
-  const d=S.drives.find(x=>x.id===id);if(!d)return;if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET={kind:"video",id};
+  const d=findDrive(id);if(!d)return;if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET={kind:"video",id};
   const sh=$("#sheet");const tl=telemetry(d);
   sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span><h3>Drive video</h3></div></div>
     <div class="wrap body stack">
@@ -1212,7 +1331,7 @@ async function openVideo(id){
         <canvas id="v-cv" class="share-preview" style="max-width:100%;background:#000"></canvas>
         <label class="field">Preview position<input type="range" id="v-pos" min="0" max="1000" value="0"></label>
         <div class="panel stack" style="gap:8px"><h3>Line it up</h3>
-          <p class="muted small" style="margin:0">Slide until the speed matches the video. Tip: find the moment the car starts moving.</p>
+          <p class="muted small" style="margin:0">Slide until the speed matches the video. Tip: find the moment you start moving.</p>
           <input type="range" id="v-off" step="0.1" aria-label="Video start within the drive">
           <div class="row"><button class="btn ghost" data-nudge="-1" type="button">−1 s</button><button class="btn ghost" data-nudge="-0.1" type="button">−0.1</button><span class="spacer" style="text-align:center" id="v-offlab"></span><button class="btn ghost" data-nudge="0.1" type="button">+0.1</button><button class="btn ghost" data-nudge="1" type="button">+1 s</button></div>
         </div>
@@ -1273,6 +1392,30 @@ async function openVideo(id){
   };
 }
 
+/* ================= profiles ================= */
+async function viewProfile(handle){
+  const v=$("#view");
+  if(!Social.ok()){v.innerHTML=`<div class="stack"><div><div class="eyebrow">Driver</div><h1 style="text-transform:none">@${esc(handle)}</h1></div><div class="notice">Sign in on your <a href="#you">profile page</a> to see @${esc(handle)}'s drives and follow them.</div></div>`;return}
+  v.innerHTML=`<div class="empty">Loading @${esc(handle)}…</div>`;
+  let p,data;try{p=await Social.byHandle(handle);if(p)data=await Social.profileData(p)}catch(e){v.innerHTML=`<div class="empty">Couldn't load this profile. Check your connection.</div>`;return}
+  if(!location.hash.startsWith("#u/"))return;
+  if(!p){v.innerHTML=`<div class="empty">Nobody on Dragon Drive is called @${esc(handle)}.</div>`;return}
+  const pp=Social.person("u:"+p.id),me=Sync.user&&p.id===Sync.user.uid,fol=Social.SOC.following.has(p.id);
+  const ds=data.drives,dist=ds.reduce((a,d)=>a+d.stats.dist,0),top=ds.reduce((a,d)=>Math.max(a,d.stats.max),0);
+  v.innerHTML=`<div class="stack">
+    <div class="panel"><div class="profile">${avatar(pp,84)}<div class="stack" style="flex:1;min-width:180px;gap:6px">
+      <div><h1 style="text-transform:none;margin:0">${esc(pp.name)}</h1><div class="muted">@${esc(p.handle)}</div></div>
+      <div class="muted small">${data.followers} follower${data.followers===1?"":"s"} · ${data.following} following</div>
+      ${me?`<div class="row"><a class="btn" href="#you">Edit profile</a></div>`:Social.ready()?`<div class="row"><button class="btn ${fol?"":"primary"}" id="fol" type="button">${fol?"Following":"Follow"}</button></div>`:`<div class="notice">Pick your own @handle on your <a href="#you">profile page</a> to follow people.</div>`}
+    </div></div></div>
+    <div class="detail-stats">${statBlock("Drives",ds.length)}${statBlock("Distance",fDist(dist).toFixed(fDist(dist)<10?1:0),dLabel())}${statBlock("Top speed",Math.round(fSpeed(top)),sLabel())}</div>
+    ${data.vehicles.length?`<div class="panel"><h3>Garage</h3><div class="garage-grid">${data.vehicles.map(x=>`<figure>${x.photo_url?`<img src="${esc(x.photo_url)}" alt="${esc(x.name)}" loading="lazy">`:`<div class="ph"></div>`}<figcaption>${esc(x.name)}</figcaption></figure>`).join("")}</div></div>`:""}
+    ${ds.length?ds.map(feedCard).join(""):`<div class="empty">${fol||me?"No shared drives yet.":"Follow @"+esc(p.handle)+" to see their drives."}</div>`}
+  </div>`;
+  document.querySelectorAll("canvas[data-route]").forEach(c=>{const d=findDrive(c.dataset.route);if(d)paintRoute(c,d.pts,{thin:true,key:d.id})});fillPhotos();
+  const fb=$("#fol");if(fb)fb.onclick=async()=>{fb.disabled=true;try{await Social.follow(p.id,!fol);toast(fol?`Unfollowed @${p.handle}`:`Following @${p.handle}`);viewProfile(handle)}catch(e){toast("Couldn't reach the server");fb.disabled=false}};
+}
+
 /* ================= routes view ================= */
 // Group drives by area so a trip across the state doesn't shrink local roads to a dot.
 function areas(drives){
@@ -1301,7 +1444,7 @@ function drawHeat(c,drives){
 }
 let routeWho="me";
 function viewRoutes(){
-  const drives=S.drives.filter(d=>routeWho==="all"||d.who==="me");
+  const drives=allDrives().filter(d=>routeWho==="all"||d.who==="me");
   const ar=areas(drives);
   const total=drives.reduce((a,d)=>a+d.stats.dist,0);
   $("#view").innerHTML=`<div class="stack">
@@ -1353,9 +1496,10 @@ function viewYou(){
     <div class="panel"><h3>Map style</h3><p class="muted small" style="margin:0">Used behind routes everywhere, including share cards.</p>${stylePicker()}</div>
     <div class="panel"><div class="row"><h3>Units</h3><span class="spacer"></span>
       <div class="unit-toggle" role="group" aria-label="Units"><button id="u-mi" type="button" aria-pressed="${U()==="mi"}">Miles</button><button id="u-km" type="button" aria-pressed="${U()==="km"}">Kilometers</button></div></div></div>
-    <div class="panel"><h3>Garage</h3>
-      ${S.settings.vehicles.map(v=>`<div class="row"><span style="flex:1;font-weight:600">${esc(v)}</span>${v===S.settings.vehicle?'<span class="chip">Default</span>':`<button class="btn ghost" data-defveh="${esc(v)}" type="button">Make default</button>`}</div>`).join("")}
-      <form class="row" id="veh-form"><input type="text" id="veh-in" placeholder="Add a vehicle, e.g. 2018 Civic Si" style="flex:1;min-width:0" maxlength="60"><button class="btn" type="submit">Add</button></form>
+    <div class="panel"><h3>Garage</h3><p class="muted small" style="margin:0">Cars, bikes, boats, anything you drive. ${Social.ready()?"Vehicles show on your profile unless you lock them.":"Add a photo for each one."}</p>
+      ${S.settings.vehicles.map((v,i)=>{const gi=(S.settings.garage||{})[v]||{};return `<div class="veh-row"><button class="veh-thumb" data-vehphoto="${i}" type="button" aria-label="${gi.photoAt?"Change":"Add"} photo of ${esc(v)}">${gi.photoAt?`<img data-vehimg="${esc(v)}" alt="">`:`<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>`}</button>
+        <div style="flex:1;min-width:0"><div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(v)}</div><div class="row" style="gap:6px;margin-top:4px">${v===S.settings.vehicle?'<span class="chip">Default</span>':`<button class="chip pick" data-defveh="${i}" type="button">Make default</button>`}<button class="chip pick" data-vehpriv="${i}" type="button" aria-pressed="${!!gi.priv}">${gi.priv?"🔒 Private":"Visible"}</button>${S.settings.vehicles.length>1?`<button class="chip pick" data-vehrm="${i}" type="button" aria-label="Remove ${esc(v)}">Remove</button>`:""}</div></div></div>`}).join("")}
+      <form class="row" id="veh-form"><input type="text" id="veh-in" placeholder="Add a vehicle, e.g. 2018 Civic Si or Ducati Monster" style="flex:1;min-width:0" maxlength="60"><button class="btn" type="submit">Add</button></form>
     </div>
     <div class="panel"><h3>Your drives</h3>${mine.map(d=>`<button class="effort open-link" data-open="${d.id}" style="display:flex"><div style="flex:1;min-width:0"><div style="font-weight:600">${esc(d.title)}</div><div class="muted small">${ago(d.start)} · ${fDist(d.stats.dist).toFixed(1)} ${dLabel()} · top ${Math.round(fSpeed(d.stats.max))} ${sLabel()}</div></div>${headlineRun(d.stats)?`<span class="chip run">${headlineRun(d.stats).label} ${fSec(headlineRun(d.stats).v.t)}</span>`:""}</button>`).join("")||'<p class="muted" style="margin:0">Nothing recorded yet.</p>'}</div>
     ${Sync.on()?`<div class="panel"><h3>Account sync</h3>${Sync.user?`<p style="margin:0">Signed in as <b>${esc(Sync.user.email||"")}</b>. Your profile, garage, drives and photos sync to every device you sign in on.</p>
@@ -1364,6 +1508,15 @@ function viewYou(){
       <form class="row" id="sync-form"><input type="email" id="sync-email" placeholder="you@example.com" autocomplete="email" style="flex:1;min-width:0" required><button class="btn primary" type="submit">Email me a link</button></form>
       <p class="muted small" id="sync-sent" hidden style="margin:0">Check your email and tap the link. Using the Home Screen app on iPhone? Type the 6-digit code from the same email here instead.</p>
       <form class="row" id="sync-code-form" hidden><input type="text" id="sync-code" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code" maxlength="10" style="flex:1;min-width:0" required><button class="btn primary" type="submit">Sign in</button></form>`}</div>`:""}
+    ${Social.ok()&&Social.SOC.loaded&&!Social.me?`<div class="panel"><h3>Pick your @handle</h3><p class="muted small" style="margin:0">This is how friends find and follow you. Lowercase letters, numbers and _ only.</p>
+      <form class="row" id="h-form"><span style="font-weight:700">@</span><input type="text" id="h-in" placeholder="burnout" pattern="[a-z0-9_]{3,20}" maxlength="20" autocapitalize="none" autocomplete="username" style="flex:1;min-width:0" required><button class="btn primary" type="submit">Claim it</button></form></div>`:""}
+    ${Social.ready()?`<div class="panel"><div class="row"><h3>Friends</h3><span class="spacer"></span><a class="muted small" href="#u/${esc(Social.me.handle)}">@${esc(Social.me.handle)}</a></div>
+      <p class="muted small" style="margin:0">Following ${Social.SOC.following.size}. Your drives go to your followers unless you choose otherwise.</p>
+      <div class="row"><button class="btn primary" id="inv" type="button">Invite friends</button></div>
+      <form class="row" id="f-form"><input type="search" id="f-in" placeholder="Find people by @handle" autocapitalize="none" style="flex:1;min-width:0"><button class="btn" type="submit">Search</button></form>
+      <div id="f-res" class="stack" style="gap:0"></div>
+      <label class="field">New drives are visible to<select id="def-vis"><option value="followers" ${(S.settings.defaultVis||"followers")==="followers"?"selected":""}>Followers</option><option value="public" ${S.settings.defaultVis==="public"?"selected":""}>Everyone</option><option value="private" ${S.settings.defaultVis==="private"?"selected":""}>Only me</option></select></label>
+      <label class="check"><input type="checkbox" id="hide-ends" ${S.settings.hideEnds!==false?"checked":""}> Hide the first and last 300 m of shared routes, so they don't show where you live</label></div>`:""}
     <div class="panel"><h3>Backup</h3><p class="muted" style="margin:0">Everything lives on this device, tied to this web address. Save a backup file to keep your profile, garage, drives and photos safe, or to move them to a new phone or address.</p>
       <div class="row"><button class="btn" id="bk-save" type="button">Save backup</button><button class="btn ghost" id="bk-load" type="button">Restore from backup</button></div>
       <input type="file" id="bk-in" accept="application/json,.json" class="sr" tabindex="-1" aria-hidden="true">
@@ -1374,10 +1527,15 @@ function viewYou(){
     </div>
   </div>`;
   $("#me-name").onchange=e=>{S.settings.name=e.target.value.trim();save();toast("Name saved")};
-  $("#av-pick").onclick=()=>pickImage(async f=>{await photos.put("avatar:me",await squareCrop(f,400));S.settings.avatar=true;save();await loadAvatar();render();toast("Profile photo updated")});
+  $("#av-pick").onclick=()=>pickImage(async f=>{await photos.put("avatar:me",await squareCrop(f,400));S.settings.avatar=true;S.settings.avatarAt=Date.now();save();await loadAvatar();render();toast("Profile photo updated")});
   const rmav=$("#av-rm");if(rmav)rmav.onclick=async()=>{await photos.del("avatar:me");S.settings.avatar=false;AV.url=null;save();render();toast("Profile photo removed")};
   $("#u-mi").onclick=()=>{S.settings.units="mi";save();viewYou()};$("#u-km").onclick=()=>{S.settings.units="km";save();viewYou()};
-  document.querySelectorAll("[data-defveh]").forEach(b=>b.onclick=()=>{S.settings.vehicle=b.dataset.defveh;save();viewYou()});
+  const VN=i=>S.settings.vehicles[+i];const GI=n=>{S.settings.garage=S.settings.garage||{};return S.settings.garage[n]=S.settings.garage[n]||{}};
+  document.querySelectorAll("[data-defveh]").forEach(b=>b.onclick=()=>{S.settings.vehicle=VN(b.dataset.defveh);save();viewYou()});
+  document.querySelectorAll("[data-vehpriv]").forEach(b=>b.onclick=()=>{const n=VN(b.dataset.vehpriv),g=GI(n);g.priv=!g.priv;save();viewYou();toast(g.priv?`${n} is private. Its name is hidden on your shared drives too.`:`${n} shows on your profile`)});
+  document.querySelectorAll("[data-vehrm]").forEach(b=>b.onclick=async()=>{const n=VN(b.dataset.vehrm);S.settings.vehicles=S.settings.vehicles.filter(x=>x!==n);if(S.settings.vehicle===n)S.settings.vehicle=S.settings.vehicles[0];if(S.settings.garage)delete S.settings.garage[n];await photos.del("veh:"+n);save();viewYou();toast("Vehicle removed")});
+  document.querySelectorAll("[data-vehphoto]").forEach(b=>b.onclick=()=>{const n=VN(b.dataset.vehphoto);pickImage(async f=>{try{await photos.put("veh:"+n,await downscale(f,1200));GI(n).photoAt=Date.now();save();viewYou();toast("Photo added")}catch(e){toast("That file couldn't be read as a photo.")}})});
+  document.querySelectorAll("img[data-vehimg]").forEach(async im=>{const u=await photos.url("veh:"+im.dataset.vehimg);if(u)im.src=u});
   $("#veh-form").onsubmit=e=>{e.preventDefault();const v=$("#veh-in").value.trim();if(!v)return;if(!S.settings.vehicles.includes(v))S.settings.vehicles.push(v);S.settings.vehicle=v;save();viewYou();toast("Vehicle added")};
   $("#clr-ex").onclick=()=>{S.drives=S.drives.filter(d=>!d.sample);save();viewYou();toast("Examples removed")};
   if(Sync.on()){
@@ -1386,6 +1544,13 @@ function viewYou(){
     const sn=$("#sync-now");if(sn)sn.onclick=()=>Sync.run();
     const so=$("#sync-out");if(so)so.onclick=()=>{Sync.signOut();viewYou();toast("Signed out. Your data stays on this device.")};
   }
+  const hf=$("#h-form");if(hf)hf.onsubmit=async e=>{e.preventDefault();const h=$("#h-in").value.trim().toLowerCase();if(!/^[a-z0-9_]{3,20}$/.test(h)){toast("Use 3–20 lowercase letters, numbers or _");return}const b=hf.querySelector("button");b.disabled=true;try{await Social.claim(h);toast("You're @"+h);viewYou()}catch(err){toast(err.message)}b.disabled=false};
+  const inv=$("#inv");if(inv)inv.onclick=async()=>{const url=location.origin+location.pathname+"#u/"+Social.me.handle,text=`Follow me on Dragon Drive: ${url}`;
+    try{if(navigator.share){await navigator.share({title:"Dragon Drive",text,url});return}await navigator.clipboard.writeText(url);toast("Invite link copied")}catch(e){}};
+  const ff=$("#f-form");if(ff)ff.onsubmit=async e=>{e.preventDefault();const box=$("#f-res");box.innerHTML='<p class="muted small" style="margin:0">Searching…</p>';
+    try{const r=await Social.search($("#f-in").value);box.innerHTML=r.length?r.map(p=>{const pp=Social.person("u:"+p.id);return `<a class="effort" href="#u/${esc(p.handle)}" style="display:flex;text-decoration:none;color:inherit">${avatar(pp,32)}<div style="flex:1;min-width:0"><div style="font-weight:600">${esc(pp.name)}</div><div class="muted small">@${esc(p.handle)}${Social.SOC.following.has(p.id)?" · Following":""}</div></div></a>`}).join(""):'<p class="muted small" style="margin:0">Nobody by that handle yet.</p>'}catch(err){box.innerHTML='<p class="muted small" style="margin:0">Search failed. Check your connection.</p>'}};
+  const dvs=$("#def-vis");if(dvs)dvs.onchange=e=>{S.settings.defaultVis=e.target.value;save();toast("Saved")};
+  const he=$("#hide-ends");if(he)he.onchange=e=>{S.settings.hideEnds=e.target.checked;save()};
   $("#bk-save").onclick=async()=>{try{const blob=await makeBackup();await saveFile(blob,`dragon-drive-backup-${new Date().toISOString().slice(0,10)}.json`)}catch(e){toast("Couldn't build the backup.")}};
   $("#bk-load").onclick=()=>{const inp=$("#bk-in");inp.value="";inp.onchange=async()=>{const f=inp.files&&inp.files[0];if(!f)return;try{await restoreBackup(await f.text());render();await loadAvatar();render();toast("Backup restored")}catch(e){toast("That file isn't a Dragon Drive backup.")}};inp.click()};
   $("#reset").onclick=()=>{$("#reset-confirm").hidden=false};
@@ -1394,7 +1559,10 @@ function viewYou(){
 
 /* ================= global events ================= */
 document.addEventListener("click",e=>{
-  const k=e.target.closest("[data-kudos]");if(k&&!k.disabled){e.preventDefault();const id=k.dataset.kudos;S.kudos[id]=!S.kudos[id];save();const d=S.drives.find(x=>x.id===id);k.setAttribute("aria-pressed",!!S.kudos[id]);k.querySelector("span").textContent=kudosCount(d);if(S.kudos[id])toast("Kudos given");return}
+  const us=e.target.closest("[data-user]");if(us){e.preventDefault();e.stopPropagation();location.hash="#u/"+us.dataset.user;return}
+  const k=e.target.closest("[data-kudos]");if(k&&!k.disabled){e.preventDefault();const id=k.dataset.kudos;const d=findDrive(id);
+    (async()=>{if(Social.ok()&&Social.published(d)){try{await Social.toggleKudos(id)}catch(err){toast("Couldn't reach the server");return}}else{S.kudos[id]=!S.kudos[id];save()}
+      k.setAttribute("aria-pressed",kudosMine(d));k.querySelector("span").textContent=kudosCount(d);if(kudosMine(d))toast("Kudos given")})();return}
   const ms=e.target.closest("[data-mapstyle]");if(ms){S.settings.mapStyle=ms.dataset.mapstyle;save();rerender();return}
   const sh=e.target.closest("[data-share]");if(sh){e.preventDefault();openShare(sh.dataset.share);return}
   const o=e.target.closest("[data-open]");if(o){e.preventDefault();openDrive(o.dataset.open)}
@@ -1410,7 +1578,7 @@ let rz,lastW=window.innerWidth;window.addEventListener("resize",()=>{clearTimeou
 const authHash=/access_token=|error_description=/.test(location.hash)?location.hash:null;if(authHash)history.replaceState(null,"",location.pathname+"#you");
 render();loadAvatar();
 if(authHash&&/error_description=/.test(authHash))toast("That sign-in link has expired. Request a new one.");
-if(authHash&&/access_token=/.test(authHash))Sync.fromLink(authHash).then(()=>rerender());else Sync.run();try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
+if(authHash&&/access_token=/.test(authHash))Sync.fromLink(authHash).then(()=>Social.refresh()).then(()=>rerender());else Sync.run().then(()=>Social.refresh());try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 })();
 </script>
 

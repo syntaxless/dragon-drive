@@ -62,4 +62,6 @@ Sync uses a free [Supabase](https://supabase.com) project with email sign-in lin
 3. Authentication → Email Templates → Magic Link: paste `supabase/magic-link-email.html` (subject "Your keys, from Burnout 🔥"). It includes the `{{ .Token }}` code so people using the iPhone Home Screen app can type it (links open in Safari, which keeps separate storage).
 4. Copy the Project URL and the anon public key into `CLOUD` near the top of the script in `app.html`, then run `sh build.sh`.
 
+**Social features** (profiles, following, shared drives, kudos, comments, public garage): run `supabase/social.sql` in the SQL editor after `setup.sql`. Visibility rules live in the database, so the app can't show a drive to someone who isn't allowed to see it.
+
 Supabase's built-in email sender is rate-limited to a few emails an hour and can't change the From name. To send as Burnout, add custom SMTP under Authentication → Emails (e.g. Resend, free tier) with sender name `Burnout from Dragon Drive` and an address like `burnout@turboloser.co`; the email provider will ask you to add a couple of DNS records for turboloser.co.
