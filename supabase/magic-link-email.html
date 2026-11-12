@@ -1,0 +1,12 @@
+<!-- Supabase → Authentication → Email Templates → Magic Link. Subject: "Your keys, from Burnout 🔥" -->
+<div style="background:#fff4d6;padding:32px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#1e2a1c">
+  <div style="max-width:440px;margin:0 auto;background:#ffffff;border-radius:18px;padding:28px 24px;text-align:center">
+    <img src="https://dragondrive.turboloser.co/icon-256.png" width="88" height="88" alt="Burnout the dragon" style="border-radius:20px">
+    <h1 style="font-size:22px;margin:16px 0 8px">RAWR. It's me, Burnout.</h1>
+    <p style="font-size:16px;line-height:1.5;margin:0 0 22px">Someone (hopefully you) asked to sign in to Dragon Drive. I guard the garage, so here are your keys. Try not to lose them, I'm bad at finding things. No thumbs.</p>
+    <a href="{{ .ConfirmationURL }}" style="display:inline-block;background:#0a84ff;color:#ffffff;text-decoration:none;font-weight:700;font-size:17px;padding:14px 28px;border-radius:12px">Start your engine</a>
+    <p style="font-size:14px;color:#5b6b63;margin:24px 0 6px">Using the Home Screen app on iPhone? Type this code in instead:</p>
+    <p style="font-size:30px;font-weight:800;letter-spacing:6px;margin:0 0 22px">{{ .Token }}</p>
+    <p style="font-size:13px;color:#8a978f;line-height:1.5;margin:0">The link and code expire in an hour. If you didn't ask for this, ignore it and I'll go back to my nap.<br>— Burnout 🔥, chief dragon at Dragon Drive</p>
+  </div>
+</div>

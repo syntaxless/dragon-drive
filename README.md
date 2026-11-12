@@ -55,7 +55,7 @@ Sync uses a free [Supabase](https://supabase.com) project with email sign-in lin
 
 1. Create a Supabase project and run `supabase/setup.sql` in its SQL editor.
 2. Authentication → URL Configuration: set Site URL to `https://dragondrive.turboloser.co` and add it to Redirect URLs.
-3. Authentication → Email Templates → Magic Link: add `Or enter this code: {{ .Token }}` so people using the iPhone Home Screen app can type the code (links open in Safari, which keeps separate storage).
+3. Authentication → Email Templates → Magic Link: paste `supabase/magic-link-email.html` (subject "Your keys, from Burnout 🔥"). It includes the `{{ .Token }}` code so people using the iPhone Home Screen app can type it (links open in Safari, which keeps separate storage).
 4. Copy the Project URL and the anon public key into `CLOUD` near the top of the script in `app.html`, then run `sh build.sh`.
 
-Supabase's built-in email sender is rate-limited to a few emails an hour; add your own SMTP under Authentication → Emails before inviting friends.
+Supabase's built-in email sender is rate-limited to a few emails an hour and can't change the From name. To send as Burnout, add custom SMTP under Authentication → Emails (e.g. Resend, free tier) with sender name `Burnout from Dragon Drive` and an address like `burnout@turboloser.co`; the email provider will ask you to add a couple of DNS records for turboloser.co.
