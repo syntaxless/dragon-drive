@@ -21,6 +21,7 @@ Live at https://dragondrive.turboloser.co
 | Phone GPS | Browser geolocation | About 1 Hz. Works everywhere, including iPhone. |
 | Phone motion sensors | `devicemotion`, gravity removed | Peak horizontal g between GPS fixes. Mount the phone firmly. |
 | RaceBox Mini / Mini S / Micro | Web Bluetooth, RaceBox BLE protocol (UBX-framed data message, class 0xFF id 0x01) | Position, speed, altitude and the device's own accelerometer at up to 25 Hz. |
+| GoPro (HERO5 and later with GPS) | Import the MP4. The app reads the GPMF telemetry track (GPS5, or GPS9 on HERO11+) straight from the file | Route, speed and altitude at up to 18 Hz, plus the GoPro clock to line the video up exactly for the overlay. Nothing is uploaded. |
 | Dragy | Web Bluetooth, NMEA | Experimental. Dragy doesn't publish its protocol; we try standard NMEA sentences. Needs testing with a real unit. |
 | Other Bluetooth GPS | Web Bluetooth, NMEA (RMC + GGA) | Any receiver that streams NMEA over a BLE serial service. |
 

@@ -1001,6 +1001,7 @@ function viewRecord(){
          ${hasBLE?"":`<div class="notice">Bluetooth devices need Chrome or Edge on Android, Windows, macOS or ChromeOS. iPhone browsers don't support Web Bluetooth yet, so on iPhone use Phone GPS.</div>`}
          ${src==="dragy"?`<p class="muted small" style="margin:0">Dragy doesn't publish its Bluetooth format. Dragon Drive tries the standard NMEA GPS format; if your Dragy connects but shows no data, let us know.</p>`:""}`}
     </div>
+    <div class="panel"><div class="row"><div style="flex:1;min-width:200px"><h3 style="margin:0 0 4px">Drove with a GoPro?</h3><p class="muted small" style="margin:0">Import the video and Dragon Drive reads the GoPro's own GPS to log the drive, then lines the video up with it for the overlay. Pick every file from one recording if the GoPro split it.</p></div><button class="btn" id="gp-import" type="button" ${REC.on?"disabled":""}>Import GoPro video</button></div></div>
     <div class="panel"><label class="check"><input type="checkbox" id="film" ${S.settings.film?"checked":""} ${REC.on?"disabled":""}> Film the road while driving. Mount the phone facing forward; the video lines up with your data automatically. Uses about 20 MB per minute.</label>
       ${CAM.stream?`<video id="cam-prev" class="cam-prev" muted playsinline autoplay></video>`:""}</div>
     <div class="rec-panel">
@@ -1022,6 +1023,7 @@ function viewRecord(){
   $("#film").onchange=e=>{S.settings.film=e.target.checked;save()};
   const cp=$("#cam-prev");if(cp){cp.srcObject=CAM.stream;cp.play().catch(()=>{})}
   const c=$("#connect");if(c)c.onclick=()=>connectDevice(src);
+  $("#gp-import").onclick=()=>pickVideos(fs=>{const b=$("#gp-import");if(b){b.disabled=true;b.textContent="Reading…"}importGoPro(fs).finally(()=>{const b2=$("#gp-import");if(b2){b2.disabled=false;b2.textContent="Import GoPro video"}})});
   $("#veh").onchange=e=>{S.settings.vehicle=e.target.value;save()};
   bindHold($("#rec-btn"));
   updateDevice();updateLive();
@@ -1128,6 +1130,102 @@ function finishRec(){
   if(CAM.rec||CAM.stream)stopCam().then(v=>{if(v){d.video=v;save();if(SHEET&&SHEET.kind==="drive"&&SHEET.id===d.id)openDrive(d.id,true)}});
   if(location.hash==="#feed"){render();openDrive(d.id,true)}else{pendingOpen=d.id;location.hash="#feed"}
 }
+
+/* ================= GoPro ================= */
+// GoPro telemetry (GPMF) reader: finds the metadata track in a GoPro MP4 and pulls out GPS.
+// Reads only the parts of the file it needs, so multi-GB clips are fine.
+async function goproTrack(file){
+  const rd=async(o,n)=>new DataView(await file.slice(o,o+n).arrayBuffer());
+  const str=(dv,o,n)=>{let s="";for(let i=0;i<n;i++)s+=String.fromCharCode(dv.getUint8(o+i));return s};
+  // top-level boxes: find moov
+  let off=0,moov=null;const size=file.size;
+  while(off+8<=size){const h=await rd(off,16);let sz=h.getUint32(0);const ty=str(h,4,4);let hl=8;
+    if(sz===1){sz=Number(h.getBigUint64(8));hl=16}else if(sz===0)sz=size-off;
+    if(ty==="moov"){moov={o:off+hl,n:sz-hl};break}if(sz<8)break;off+=sz}
+  if(!moov)return null;
+  const mv=await rd(moov.o,moov.n);
+  function kids(o,end){const out=[];while(o+8<=end){let sz=mv.getUint32(o);const ty=str(mv,o+4,4);let hl=8;if(sz===1){sz=Number(mv.getBigUint64(o+8));hl=16}else if(sz===0)sz=end-o;if(sz<8)break;out.push({ty,o:o+hl,end:o+sz});o+=sz}return out}
+  const find=(list,ty)=>list.find(b=>b.ty===ty);
+  let meta=null;
+  for(const t of kids(0,mv.byteLength).filter(b=>b.ty==="trak")){
+    const mdia=find(kids(t.o,t.end),"mdia");if(!mdia)continue;const mk=kids(mdia.o,mdia.end);
+    const minf=find(mk,"minf");if(!minf)continue;const stbl=find(kids(minf.o,minf.end),"stbl");if(!stbl)continue;const sk=kids(stbl.o,stbl.end);
+    const stsd=find(sk,"stsd");if(!stsd||str(mv,stsd.o+12,4)!=="gpmd")continue;
+    const mdhd=find(mk,"mdhd");const v=mv.getUint8(mdhd.o);const timescale=mv.getUint32(mdhd.o+(v===1?20:12));
+    meta={timescale,sk};break}
+  if(!meta)return null;
+  const {sk,timescale}=meta;const B=t=>find(sk,t);
+  // sample sizes
+  const stsz=B("stsz");const fixed=mv.getUint32(stsz.o+4),count=mv.getUint32(stsz.o+8);const sizes=[];for(let i=0;i<count;i++)sizes.push(fixed||mv.getUint32(stsz.o+12+i*4));
+  // chunk offsets
+  const co=B("stco")||B("co64");const nch=mv.getUint32(co.o+4);const chunks=[];for(let i=0;i<nch;i++)chunks.push(co.ty==="co64"?Number(mv.getBigUint64(co.o+8+i*8)):mv.getUint32(co.o+8+i*4));
+  // sample-to-chunk
+  const stsc=B("stsc");const ns=mv.getUint32(stsc.o+4);const runs=[];for(let i=0;i<ns;i++)runs.push([mv.getUint32(stsc.o+8+i*12),mv.getUint32(stsc.o+12+i*12)]);
+  const offs=[];let si=0;for(let c=0;c<nch&&si<count;c++){let per=0;for(const r of runs)if(r[0]<=c+1)per=r[1];let o=chunks[c];for(let k=0;k<per&&si<count;k++){offs.push(o);o+=sizes[si++]}}
+  // sample times
+  const stts=B("stts");const ne=mv.getUint32(stts.o+4);const times=[];let tt=0;for(let i=0;i<ne;i++){const n=mv.getUint32(stts.o+8+i*8),d=mv.getUint32(stts.o+12+i*8);for(let k=0;k<n;k++){times.push([tt/timescale,d/timescale]);tt+=d}}
+  const pts=[];let anchor=null;let model="";
+  for(let i=0;i<offs.length;i++){
+    const dv=await rd(offs[i],sizes[i]);const[t0,dur]=times[i]||[i,1];
+    const got=parseGpmf(dv,str);if(got.model)model=got.model;
+    for(const g of got.gps){const n=g.rows.length;
+      for(let k=0;k<n;k++){const r=g.rows[k];let utc=null;
+        if(g.gps9){utc=Date.UTC(2000,0,1)+r.days*864e5+r.secs*1000}
+        else if(g.utc!=null)utc=g.utc+k*(dur*1000/n);
+        const vt=t0+k*dur/n;
+        const fx=r.fix!=null?r.fix:g.fix;
+        if(utc!=null&&!anchor&&fx>=2)anchor={utc,vt};
+        if(fx<2||(r.dop!=null&&r.dop>5))continue;
+        pts.push({vt,utc,lat:r.lat,lon:r.lon,alt:r.alt,v:r.s2})}}}
+  if(!pts.length)return{pts:[],model,start:null};
+  // video time -> wall clock, from the first locked fix
+  const base=anchor?anchor.utc-anchor.vt*1000:null;
+  return{model,start:base,pts:pts.map(p=>({...p,t:base!=null?Math.round(base+p.vt*1000):null}))};
+}
+function parseGpmf(dv,str){
+  const out={gps:[],model:""};const SZ={b:1,B:1,c:1,s:2,S:2,l:4,L:4,f:4,d:8,j:8,J:8,q:4,Q:8,U:16,F:4,G:16};
+  function walk(o,end,ctx){
+    while(o+8<=end){const key=str(dv,o,4),type=String.fromCharCode(dv.getUint8(o+4)),ss=dv.getUint8(o+5),rep=dv.getUint16(o+6);const len=ss*rep,d=o+8,next=d+((len+3)&~3);
+      if(key==="\0\0\0\0")break;
+      if(dv.getUint8(o+4)===0){walk(d,Math.min(d+len,end),key==="STRM"?{scal:null,type:null,utc:null,fix:3,dop:null}:ctx)}
+      else if(key==="DVNM"||key==="MINF"){if(!out.model)out.model=str(dv,d,len).replace(/\0+$/,"")}
+      else if(ctx&&key==="SCAL"){const n=SZ[type]||4;ctx.scal=[];for(let i=0;i<len/n;i++)ctx.scal.push(num(type,d+i*n))}
+      else if(ctx&&key==="TYPE"){ctx.type=str(dv,d,len).replace(/\0+$/,"")}
+      else if(ctx&&key==="GPSU"){const s=str(dv,d,16);const m=s.match(/^(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)\.(\d+)/);if(m)ctx.utc=Date.UTC(2000+ +m[1],+m[2]-1,+m[3],+m[4],+m[5],+m[6],+m[7].padEnd(3,"0").slice(0,3))}
+      else if(ctx&&key==="GPSF"){ctx.fix=num(type,d)}
+      else if(ctx&&key==="GPSP"){ctx.dop=num(type,d)/100}
+      else if(ctx&&(key==="GPS5"||key==="GPS9")){
+        const gps9=key==="GPS9";const types=gps9?(type==="?"&&ctx.type?ctx.type:"lllllllSS"):"lllll";const sc=ctx.scal||[1];const rows=[];
+        for(let r=0;r<rep;r++){let p=d+r*ss;const v=[];for(let f=0;f<types.length;f++){const t=types[f];v.push(num(t,p)/(sc[f]!=null?sc[f]:sc[0]));p+=SZ[t]}
+          const row={lat:v[0],lon:v[1],alt:v[2],s2:v[3],s3:v[4],dop:ctx.dop};
+          if(gps9){row.days=v[5];row.secs=v[6];row.dop=v[7];row.fix=Math.round(v[8])}rows.push(row)}
+        out.gps.push({gps9,rows,utc:ctx.utc,fix:ctx.fix})}
+      o=next}
+  }
+  function num(t,o){switch(t){case"b":return dv.getInt8(o);case"B":return dv.getUint8(o);case"s":return dv.getInt16(o);case"S":return dv.getUint16(o);case"l":return dv.getInt32(o);case"L":return dv.getUint32(o);case"f":return dv.getFloat32(o);case"d":return dv.getFloat64(o);case"j":return Number(dv.getBigInt64(o));case"J":return Number(dv.getBigUint64(o));default:return dv.getInt32(o)}}
+  walk(0,dv.byteLength,null);return out;
+}
+// Turn one or more GoPro clips (a long recording is split into several files) into a drive.
+async function importGoPro(files){
+  toast("Reading GPS from your GoPro video…");let tracks=[];
+  for(const f of files){try{const t=await goproTrack(f);if(t)tracks.push({...t,file:f})}catch(e){}}
+  if(!tracks.length){toast("That doesn't look like a GoPro video with telemetry.");return}
+  const withGps=tracks.filter(t=>t.pts.length&&t.start!=null);
+  if(!withGps.length){toast("No GPS lock in that video. Turn GPS on in the GoPro and wait for the GPS icon before you record.");return}
+  const all=withGps.flatMap(t=>t.pts).sort((a,b)=>a.t-b.t);const raw=[];let still=null;
+  for(const q of all){const p=[q.lat,q.lon,q.t,Math.max(0,q.v),q.alt,null,null,null];const last=raw[raw.length-1];
+    if(last&&p[2]-last[2]<180)continue;if(p[3]>90)continue;if(last&&hav(last,p)>Math.max(50,(p[2]-last[2])/1000*90))continue;
+    if(p[3]<=0.5&&last&&last[3]<=0.5&&p[2]-last[2]<2000){still=p;continue}if(still&&p[3]>0.5)raw.push(still);still=null;raw.push(p)}
+  if(raw.length<5||pathLen(raw)<100){toast("The GPS track in that video is too short to save as a drive.");return}
+  const dup=S.drives.find(d=>d.who==="me"&&/^GoPro/.test(d.source||"")&&Math.abs(d.start-raw[0][2])<5000);if(dup){toast("You've already imported this drive");openDrive(dup.id);return}
+  const model=(withGps.find(t=>t.model)||{}).model||"";const nice=/hero|max|fusion/i.test(model)?"GoPro "+model.replace(/^GoPro\s*/i,"").replace(/\bHERO/i,"HERO"):"GoPro";
+  const h=new Date(raw[0][2]).getHours();const title=h<11?"Morning drive":h<14?"Midday drive":h<18?"Afternoon drive":"Evening drive";
+  const d={id:uid(),who:"me",title,vehicle:S.settings.vehicle,source:nice,start:raw[0][2],pts:thin(raw),stats:analyze(raw),video:{gopro:true,clips:withGps.map(t=>({name:t.file.name,start:t.start}))}};
+  S.drives.push(d);if(dropExamples())toast("First drive saved, example drives removed");else toast("Drive imported from your GoPro");save();
+  if(location.hash==="#feed"){render();openDrive(d.id,true)}else{pendingOpen=d.id;location.hash="#feed"}
+}
+function pickVideos(cb){let inp=$("#gp-in");if(!inp){inp=document.createElement("input");inp.type="file";inp.id="gp-in";inp.accept="video/mp4,video/quicktime,video/*,.mp4,.MP4";inp.multiple=true;inp.className="sr";inp.tabIndex=-1;inp.setAttribute("aria-hidden","true");document.body.appendChild(inp)}
+  inp.value="";inp.onchange=()=>{const fs=[...(inp.files||[])];if(fs.length)cb(fs)};inp.click()}
 
 /* ================= drive detail ================= */
 let pendingOpen=null;
@@ -1410,7 +1508,7 @@ async function openVideo(id){
   sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span><h3>Drive video</h3></div></div>
     <div class="wrap body stack">
       <p class="muted" style="margin:0">Pick a clip you filmed during this drive. We line it up with your GPS and add speed, g-force, the route and any timed runs.</p>
-      <div class="row">${d.video?`<button class="btn primary" id="v-own" type="button">Use the video from this drive</button><button class="btn" id="v-pick" type="button">Choose another</button>`:`<button class="btn primary" id="v-pick" type="button">Choose video</button>`}</div>
+      <div class="row">${d.video&&!d.video.gopro?`<button class="btn primary" id="v-own" type="button">Use the video from this drive</button><button class="btn" id="v-pick" type="button">Choose another</button>`:`<button class="btn primary" id="v-pick" type="button">${d.video&&d.video.gopro?"Choose the GoPro clip":"Choose video"}</button>`}</div>
       <input type="file" id="v-in" accept="video/*" class="sr" tabindex="-1" aria-hidden="true">
       <div id="v-ui" hidden class="stack">
         <canvas id="v-cv" class="share-preview" style="max-width:100%;background:#000"></canvas>
@@ -1436,7 +1534,10 @@ async function openVideo(id){
   const fmt=x=>`${x<0?"−":""}${Math.floor(Math.abs(x)/60)}:${(Math.abs(x)%60).toFixed(1).padStart(4,"0")}`;
   function setOff(x){off=Math.round(x*10)/10;$("#v-off").value=off;$("#v-offlab").textContent=`Clip starts ${fmt(off)} into the drive`;paint()}
   const own=$("#v-own");if(own)own.onclick=async()=>{own.disabled=true;const b=await driveVideo(d.video);own.disabled=false;if(!b){toast("The video for this drive is missing on this device.");return}await load(b,(d.video.t0-d.pts[0][2])/1000)};
-  $("#v-pick").onclick=()=>{const inp=$("#v-in");inp.value="";inp.onchange=()=>{file=inp.files&&inp.files[0];if(file)load(file)};inp.click()};
+  $("#v-pick").onclick=()=>{const inp=$("#v-in");inp.value="";inp.onchange=async()=>{file=inp.files&&inp.files[0];if(!file)return;
+    // GoPro clips carry their own clock, so they line up exactly
+    let exact;try{const t=await goproTrack(file);if(t&&t.start!=null)exact=(t.start-d.pts[0][2])/1000}catch(e){}
+    await load(file,exact);if(exact!=null)toast("Lined up using the GoPro's GPS clock")};inp.click()};
   async function load(f,exact){
     if(url)URL.revokeObjectURL(url);url=URL.createObjectURL(f);vid.src=url;
     await new Promise((res,rej)=>{vid.onloadedmetadata=res;vid.onerror=()=>rej(new Error("bad"))}).catch(()=>null);
