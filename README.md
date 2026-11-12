@@ -10,6 +10,7 @@ Live at https://dragondrive.turboloser.co
 - **Timed runs**, detected automatically: 0–60 mph, 60–130 mph, 60 ft, ⅛ mile and ¼ mile (with trap speeds). Runs start when the car moves off from a stop (no rollout subtracted). Phone GPS logs about once a second, so those times are estimates; a 10–25 Hz device gives accurate ones.
 - **Routes:** a map of every road you've driven, grouped by area. There are no leaderboards, so nobody is racing anyone on public roads.
 - **Map styles:** routes are drawn over vector street maps (MapLibre GL with free OpenFreeMap tiles, no API key) in Streets, Light, Dark, Synthwave or Game Boy styles, or over a plain grid or solid color. The choice applies to drive pages, the feed, the Routes tab and share cards. Inside the Claude preview only grid and solid color are available.
+- **Planned routes:** on the Routes tab, tap stops on a map to plan a route. Roads mode snaps each leg to streets with the free OSRM router (OpenStreetMap data); Straight mode joins stops directly for water, trails or tracks. Share a route by link or to followers, and anyone can tap Follow to get the same line on their driving screen.
 - **Photos and share cards:** attach a photo to a drive, then export a 1080 × 1350 card with the photo, route, your avatar and key numbers.
 - **Drive videos:** film the road while recording (exact sync), or import any clip and line it up; Dragon Drive burns in speed, g-force, the route and timed runs and exports an MP4.
 - **Accounts:** email sign-in syncs profile, garage, drives and photos across devices and unlocks following friends. Sign out and in to switch accounts; each account's data stays separate on the phone.
@@ -64,6 +65,6 @@ Sync uses a free [Supabase](https://supabase.com) project with email sign-in lin
 
 **Social features** (profiles, following, shared drives, kudos, comments, public garage): run `supabase/social.sql` in the SQL editor after `setup.sql`. Visibility rules live in the database, so the app can't show a drive to someone who isn't allowed to see it.
    Then run `supabase/vehicle-pages.sql` (vehicle descriptions and extra photos). New projects get it from social.sql already.
-   Also run `supabase/follow-burnout.sql` (everyone follows @burnout) and `supabase/announcements.sql` (verified accounts can post announcements to every feed). social.sql already includes both for new projects.
+   Also run `supabase/follow-burnout.sql` (everyone follows @burnout) and `supabase/announcements.sql` (verified accounts can post announcements to every feed). Then `supabase/routes.sql` (planned routes you can share so a cruise follows the same line). social.sql already includes all of these for new projects.
 
 Supabase's built-in email sender is rate-limited to a few emails an hour and can't change the From name. To send as Burnout, add custom SMTP under Authentication → Emails (e.g. Resend, free tier) with sender name `Burnout from Dragon Drive` and an address like `burnout@turboloser.co`; the email provider will ask you to add a couple of DNS records for turboloser.co.

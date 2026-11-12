@@ -97,6 +97,7 @@ h3{font-size:18px}
 .drive-mode.speeding{animation:speedflash 1s steps(1) infinite}.drive-mode.speeding .speedo .v{color:#fff}.drive-mode.speeding .road,.drive-mode.speeding .k,.drive-mode.speeding .muted,.drive-mode.speeding .v small{color:rgba(255,255,255,.85)}.drive-mode.speeding .gauge .v{color:#fff}.drive-mode.speeding .btn.ghost{color:#fff;border-color:rgba(255,255,255,.6)}.drive-mode.speeding .rec-btn.stop{background:#111}
 @keyframes speedflash{0%{background:#c2410c}50%{background:#7a1f05}}
 .off-route{position:absolute;top:10px;left:10px;background:#111;color:#fff}.off-route:empty{display:none}
+.plan-map{height:56vh;min-height:320px;aspect-ratio:auto}
 .garage-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
 .garage-grid figure{margin:0;border-radius:12px;overflow:hidden;background:var(--surface-2)}
 .garage-grid img,.garage-grid .ph{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--surface-2)}
@@ -457,10 +458,11 @@ const Sync=(()=>{
   async function auth(path,body){const r=await fetch(CLOUD.url+"/auth/v1/"+path,{method:"POST",headers:{apikey:CLOUD.anonKey,"Content-Type":"application/json"},body:JSON.stringify(body)});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.msg||j.error_description||j.message||"Sign-in failed");return j}
   async function token(){if(!ses)return null;if(Date.now()>ses.exp-60000){try{keep({...ses,...fromAuth(await auth("token?grant_type=refresh_token",{refresh_token:ses.refresh}))})}catch(e){if(navigator.onLine!==false){keep(null);status="Signed out, please sign in again"}return null}}return ses.access}
   async function api(path,opt={}){const t=await token();if(!t)throw new Error("signed out");return fetch(CLOUD.url+path,{...opt,headers:{apikey:CLOUD.anonKey,Authorization:"Bearer "+t,...(opt.headers||{})}})}
-  const mineOnly=st=>({v:st.v,updated:st.updated||0,settingsAt:st.settingsAt||0,settings:st.settings,deleted:st.deleted||[],drives:st.drives.filter(d=>d.who==="me"&&!d.sample)});
+  const mineOnly=st=>({v:st.v,updated:st.updated||0,settingsAt:st.settingsAt||0,settings:st.settings,deleted:st.deleted||[],drives:st.drives.filter(d=>d.who==="me"&&!d.sample),routes:st.routes||[]});
   function merge(local,remote){
     const gone=new Set([...(local.deleted||[]),...(remote.deleted||[])]);const by=new Map();
     for(const d of [...remote.drives,...local.drives.filter(d=>d.who==="me"&&!d.sample)]){if(gone.has(d.id))continue;const o=by.get(d.id);by.set(d.id,o?{...o,...d,photo:o.photo||d.photo}:d)}
+    const rby=new Map();for(const r of [...(remote.routes||[]),...(local.routes||[])]){if(gone.has(r.id))continue;const o=rby.get(r.id);if(!o||(r.updated||0)>=(o.updated||0))rby.set(r.id,r)}
     // Newest settings win, except a blank copy (a fresh device: no name, photo or garage) never
     // replaces a filled-in profile.
     const blank=st=>{const x=st.settings||{};return !x.name&&!x.avatar&&!Object.values(x.garage||{}).some(g=>g&&g.photoAt)&&(x.vehicles||[]).filter(v=>v!=="My vehicle").length===0};
@@ -468,7 +470,7 @@ const Sync=(()=>{
     if(blank(newer)&&!blank(older))newer=older;
     // the most recently edited garage wins, so removing a vehicle on one device sticks everywhere
     const vehicles=[...(newer.settings.vehicles&&newer.settings.vehicles.length?newer.settings.vehicles:local.settings.vehicles)];
-    return{...local,settingsAt:newer.settingsAt||0,settings:{...local.settings,...newer.settings,vehicles},deleted:[...gone],drives:[...local.drives.filter(d=>d.who!=="me"||d.sample),...by.values()].sort((a,b)=>b.start-a.start)};
+    return{...local,settingsAt:newer.settingsAt||0,settings:{...local.settings,...newer.settings,vehicles},deleted:[...gone],routes:[...rby.values()].sort((a,b)=>(b.created||0)-(a.created||0)),drives:[...local.drives.filter(d=>d.who!=="me"||d.sample),...by.values()].sort((a,b)=>b.start-a.start)};
   }
   async function run(){
     if(!on()||!ses)return;if(busy){again=true;return}busy=true;status="Syncing…";
@@ -509,7 +511,7 @@ const Sync=(()=>{
 // Profiles, following, shared drives, kudos and comments on top of the account backend.
 // The database decides who can see what (supabase/social.sql); the app only asks.
 const Social=(()=>{
-  const SOC={me:undefined,profiles:new Map(),following:new Set(),drives:[],kudos:new Map(),comments:new Map(),loaded:false,photoUrls:new Map(),posts:new Map()};
+  const SOC={me:undefined,profiles:new Map(),following:new Set(),drives:[],kudos:new Map(),comments:new Map(),loaded:false,photoUrls:new Map(),posts:new Map(),routes:new Map()};
   const ok=()=>Sync.on()&&!!Sync.user;
   const ready=()=>ok()&&!!SOC.me;
   const J=async(path,opt={})=>{const r=await Sync.api(path,{...opt,headers:{"Content-Type":"application/json",...(opt.headers||{})}});if(!r.ok){const j=await r.json().catch(()=>({}));const e=new Error(j.message||("HTTP "+r.status));e.code=j.code;e.status=r.status;throw e}return r.status===204||r.headers.get("content-length")==="0"?null:r.json().catch(()=>null)};
@@ -524,6 +526,7 @@ const Social=(()=>{
   // Announcements share the drives table (kind "post"); keep them out of everything that expects a route.
   function toPost(r){const me=Sync.user&&Sync.user.uid;return{id:r.id,who:r.user_id===me?"me":"u:"+r.user_id,uid:r.user_id,remote:true,post:true,body:r.body||"",start:Date.parse(r.start)}}
   function split(rows){const out=[];for(const r of rows||[]){if(r.kind==="post")SOC.posts.set(r.id,toPost(r));else out.push(r)}return out}
+  function toRoute(r){return{id:r.id,who:"u:"+r.user_id,remote:true,title:r.title,pts:r.pts,dist:r.dist,mode:r.mode,vis:r.visibility,created:Date.parse(r.created_at)}}
   function toLocal(r){const p=SOC.profiles.get(r.user_id);return{id:r.id,who:"u:"+r.user_id,remote:true,title:r.title,vehicle:r.vehicle,source:r.source,start:Date.parse(r.start),stats:r.stats,pts:r.pts,photo:r.photo,vis:r.visibility}}
   const vehPriv=n=>!!(S.settings.garage&&S.settings.garage[n]&&S.settings.garage[n].priv);
   const sig=d=>JSON.stringify([d.title,d.vehicle,vehPriv(d.vehicle),d.vis||S.settings.defaultVis||"followers",!!d.photo,d.pts.length,S.settings.hideEnds!==false]);
@@ -536,6 +539,7 @@ const Social=(()=>{
       const ids=[...SOC.following];
       if(ids.length){addProfiles(await J("/rest/v1/profiles?select=*&id="+inList(ids)));SOC.drives=split(await J("/rest/v1/drives?select=*&user_id="+inList(ids)+"&order=start.desc&limit=60")).map(toLocal)}else SOC.drives=[];
       try{const ps=await J("/rest/v1/drives?select=*&kind=eq.post&order=start.desc&limit=20");const pu=[...new Set(ps.map(x=>x.user_id))].filter(id=>!SOC.profiles.has(id));if(pu.length)addProfiles(await J("/rest/v1/profiles?select=*&id="+inList(pu)));split(ps)}catch(e){}
+      if(ids.length)try{const rs=await J("/rest/v1/routes?select=*&user_id="+inList(ids)+"&order=created_at.desc&limit=30");SOC.routes=new Map(rs.map(r=>[r.id,toRoute(r)]))}catch(e){}
       await loadReactions([...SOC.posts.keys(),...SOC.drives.map(d=>d.id),...Object.keys(S.pub||{})]);
       SOC.loaded=true;
       if(current==="feed"&&!(SHEET&&!$("#sheet").hidden))rerender();
@@ -587,6 +591,11 @@ const Social=(()=>{
       if(d.photo){const b=await photos.get(d.id);if(b)await Sync.api("/storage/v1/object/"+path,{method:"POST",headers:{"Content-Type":b.type||"image/jpeg","x-upsert":"true"},body:b})}
       else if(was)await Sync.api("/storage/v1/object/drive-photos",{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({prefixes:[u.uid+"/"+d.id]})}).catch(()=>{});
       S.pub[d.id]=g;changed=true}
+    // planned routes (need routes.sql; skipped quietly until it's run)
+    try{S.pubR=S.pubR||{};for(const r of S.routes||[]){const want=(r.vis||"public")!=="private",was=S.pubR[r.id],g=JSON.stringify([r.title,r.vis,r.updated]);
+        if(!want){if(was){await J("/rest/v1/routes?id=eq."+encodeURIComponent(r.id),{method:"DELETE"});delete S.pubR[r.id];changed=true}continue}if(was===g)continue;
+        await J("/rest/v1/routes",{method:"POST",headers:{Prefer:"resolution=merge-duplicates,return=minimal"},body:JSON.stringify({id:r.id,user_id:u.uid,title:r.title,pts:r.pts.map(p=>[r5(p[0]),r5(p[1])]),dist:r.dist,mode:r.mode,visibility:r.vis||"public",updated_at:new Date().toISOString()})});S.pubR[r.id]=g;changed=true}
+      for(const id of Object.keys(S.pubR))if(!(S.routes||[]).some(r=>r.id===id)){await J("/rest/v1/routes?id=eq."+encodeURIComponent(id),{method:"DELETE"});delete S.pubR[id];changed=true}}catch(e){}
     for(const id of Object.keys(S.pub))if(!S.drives.some(d=>d.id===id)){await J("/rest/v1/drives?id=eq."+encodeURIComponent(id),{method:"DELETE"});delete S.pub[id];changed=true}
     if(changed){mem=S;try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
   }
@@ -615,6 +624,8 @@ const Social=(()=>{
     async photoUrl(d){if(SOC.photoUrls.has(d.id))return SOC.photoUrls.get(d.id);const uid=d.who.slice(2);const r=await Sync.api("/storage/v1/object/authenticated/drive-photos/"+uid+"/"+encodeURIComponent(d.id)).catch(()=>null);
       const u=r&&r.ok?URL.createObjectURL(await r.blob()):null;SOC.photoUrls.set(d.id,u);return u},
     posts:()=>[...SOC.posts.values()].sort((a,b)=>b.start-a.start),
+    routes:()=>[...SOC.routes.values()],
+    async routeById(id){const r=await J("/rest/v1/routes?select=*&id=eq."+encodeURIComponent(id));if(!r[0])return null;if(!SOC.profiles.has(r[0].user_id))addProfiles(await J("/rest/v1/profiles?select=*&id=eq."+r[0].user_id));const x=toRoute(r[0]);if(Sync.user&&r[0].user_id===Sync.user.uid)x.who="me";SOC.routes.set(x.id,x);return x},
     async announce(body){const u=Sync.user;const row={id:"post-"+uid(),user_id:u.uid,kind:"post",body,title:"",visibility:"public",start:new Date().toISOString(),stats:{},pts:[]};
       const r=await J("/rest/v1/drives",{method:"POST",headers:{Prefer:"return=representation"},body:JSON.stringify(row)});split(r);SOC.kudos.set(row.id,{n:0,mine:false});SOC.comments.set(row.id,[])},
     async unannounce(id){await J("/rest/v1/drives?id=eq."+encodeURIComponent(id),{method:"DELETE"});SOC.posts.delete(id)},
@@ -623,7 +634,7 @@ const Social=(()=>{
       const r=await J("/rest/v1/drives?select=*&visibility=eq.public&user_id=neq."+u.uid+"&order=start.desc&limit=300");
       const need=[...new Set(r.map(x=>x.user_id))].filter(id=>!SOC.profiles.has(id));if(need.length)addProfiles(await J("/rest/v1/profiles?select=*&id="+inList(need)));
       SOC.near=split(r).map(toLocal);SOC.nearAt=Date.now();await loadReactions(SOC.near.map(d=>d.id)).catch(()=>{});return SOC.near},
-    reset(){SOC.posts.clear();SOC.near=[];SOC.nearAt=0;SOC.me=undefined;SOC.profiles.clear();SOC.following.clear();SOC.drives=[];SOC.kudos.clear();SOC.comments.clear();SOC.loaded=false}
+    reset(){SOC.routes.clear();SOC.posts.clear();SOC.near=[];SOC.nearAt=0;SOC.me=undefined;SOC.profiles.clear();SOC.following.clear();SOC.drives=[];SOC.kudos.clear();SOC.comments.clear();SOC.loaded=false}
   };
 })();
 function allDrives(){return Social.ok()?[...S.drives,...Social.SOC.drives.filter(r=>!S.drives.some(d=>d.id===r.id))]:S.drives}
@@ -854,6 +865,7 @@ function fillPhotos(root){(root||document).querySelectorAll("img[data-photo]").f
 let current="feed",signinIntent=null;
 function render(){
   const tab=(location.hash||"#feed").slice(1);
+  if(tab.startsWith("r/")){const id=decodeURIComponent(tab.slice(2));history.replaceState(null,"","#routes");render();openRouteById(id);return}
   if(tab.startsWith("u/")){current="profile";document.querySelectorAll("nav.tabs a").forEach(a=>a.setAttribute("aria-current","false"));$("#me-btn").innerHTML=avatar(person("me"),36,"color:var(--accent-fg);font-size:14px");viewProfile(decodeURIComponent(tab.slice(2)));window.scrollTo(0,0);return}
   current=["feed","record","routes","you"].includes(tab)?tab:"feed";
   document.querySelectorAll("nav.tabs a").forEach(a=>a.setAttribute("aria-current",a.dataset.tab===current?"page":"false"));
@@ -887,7 +899,7 @@ function feedCard(d){
 }
 function viewFeed(){
   const all=allDrives(),groups=cruises(all),inCruise=new Set(groups.flatMap(g=>g.drives.map(d=>d.id)));
-  const items=[...all.filter(d=>!inCruise.has(d.id)).map(d=>({t:d.start,h:()=>feedCard(d)})),...groups.map(g=>({t:g.start,h:()=>cruiseCard(g)})),...(Social.ok()?Social.posts():[]).map(p=>({t:p.start,h:()=>postCard(p)}))].sort((a,b)=>b.t-a.t);
+  const items=[...all.filter(d=>!inCruise.has(d.id)).map(d=>({t:d.start,h:()=>feedCard(d)})),...groups.map(g=>({t:g.start,h:()=>cruiseCard(g)})),...(Social.ok()?Social.posts():[]).map(p=>({t:p.start,h:()=>postCard(p)})),...(Social.ok()?Social.routes().filter(r=>r.who!=="me"):[]).map(r=>({t:r.created,h:()=>routeCard(r)}))].sort((a,b)=>b.t-a.t);
   const canPost=Social.ready()&&Social.me.verified;
   const drives=all;
   const nudge=Sync.on()&&!Sync.user?`<div class="notice signup"><div style="flex:1;min-width:180px"><b>Join Dragon Drive</b> to follow friends, share your drives and keep them on all your devices.</div><div class="row" style="gap:8px"><a class="btn" href="#you" data-signin="in" style="color:var(--fg)">Sign in</a><a class="btn primary" href="#you" data-signin="new" style="color:var(--accent-fg)">Create an account</a></div></div>`:Social.ok()&&Social.SOC.loaded&&!Social.me?`<a class="notice" href="#you" style="display:block;text-decoration:none;color:inherit"><b>Pick your @handle</b> so friends can find and follow you.</a>`:Social.ready()&&![...Social.SOC.following].some(id=>(Social.SOC.profiles.get(id)||{}).handle!=="burnout")?`<a class="notice" href="#you" style="display:block;text-decoration:none;color:inherit"><b>Follow your friends</b> to see their drives here. Find them by @handle or send your invite link.</a>`:"";
@@ -899,7 +911,7 @@ function viewFeed(){
   </div>`;
   document.querySelectorAll("canvas[data-route]").forEach(c=>{const d=findDrive(c.dataset.route);if(d)paintRoute(c,d.pts,{thin:true,key:d.id})});
   document.querySelectorAll("canvas[data-cruisemap]").forEach(c=>{const g=groups.find(x=>x.id===c.dataset.cruisemap);if(g)drawCruise(c,g.drives)});
-  fillPhotos();
+  fillPhotos();paintPlans();
   const af=$("#ann-form");if(af)af.onsubmit=async e=>{e.preventDefault();const v=$("#ann-in").value.trim();if(!v)return;const bt=af.querySelector("button");bt.disabled=true;
     try{await Social.announce(v);toast("Announcement posted");viewFeed()}catch(err){toast(/column|kind|PGRST/i.test(err.message)?"Run announcements.sql in Supabase first":err.message);bt.disabled=false}};
 }
@@ -1230,6 +1242,89 @@ let FOLLOW=null;
 function followRoute(d){FOLLOW={id:d.id,title:d.title,pts:d.pts.map(p=>[p[0],p[1],p[2]])};toast(`Following ${d.title}. Start a drive when you're ready.`);location.hash="#record"}
 function offRoute(p){if(!FOLLOW)return false;let m=Infinity;for(const q of FOLLOW.pts){const d=hav(p,q);if(d<m)m=d;if(m<120)return false}return m>=120}
 function windowPts(p,list,r){return list.filter(q=>hav(p,q)<r)}
+
+/* ================= planned routes ================= */
+// Plan a route by tapping points on the map. "Roads" snaps each leg to roads with the free OSRM
+// router (OpenStreetMap data); "Straight" joins points directly, for boats, trails and tracks.
+async function routeLeg(a,b,mode){
+  if(mode==="straight")return[a,b];
+  try{const r=await fetch(`https://router.project-osrm.org/route/v1/driving/${a[1]},${a[0]};${b[1]},${b[0]}?overview=full&geometries=geojson`);const j=await r.json();
+    const c=j.routes&&j.routes[0]&&j.routes[0].geometry.coordinates;if(c&&c.length>1)return c.map(x=>[+x[1].toFixed(6),+x[0].toFixed(6)])}catch(e){}
+  toast("Couldn't find a road route there, so that leg is a straight line");return[a,b]}
+function myRoutes(){return S.routes||(S.routes=[])}
+function allRoutes(){return[...myRoutes().map(r=>({...r,who:"me"})),...(Social.ok()?Social.routes().filter(r=>!myRoutes().some(m=>m.id===r.id)):[])]}
+function findRoute(id){const m=myRoutes().find(r=>r.id===id);return m?{...m,who:"me"}:Social.SOC.routes.get(id)}
+function routeCard(r){const p=person(r.who);
+  return `<article class="card"><button class="open-link" data-route-open="${r.id}" aria-label="Open route ${esc(r.title)}">
+    <div class="card-head">${avatar(p)}<div style="min-width:0"><div style="font-weight:600">${r.who==="me"?"You":p.handle?`<span data-user="${esc(p.handle)}">${nameHtml(p)}</span>`:esc(p.name)} <span class="muted" style="font-weight:400">planned a route</span></div><div class="muted small">${ago(r.created||Date.now())} · ${fDist(r.dist||pathLen(r.pts)).toFixed(1)} ${dLabel()}</div></div><span class="spacer"></span><span class="head-tags"><span class="chip run">Route</span></span></div>
+    <div class="card-title"><h3>${esc(r.title)}</h3></div>
+    <div class="media"><canvas class="route" data-plan="${r.id}"></canvas></div></button>
+    <div class="card-foot"><button class="kudos" data-route-follow="${r.id}" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8z"/></svg><span>Follow</span></button><span class="spacer"></span><button class="kudos" data-route-share="${r.id}" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M5 13v7h14v-7"/></svg><span>Share</span></button></div></article>`}
+function paintPlans(root){(root||document).querySelectorAll("canvas[data-plan]").forEach(c=>{const r=findRoute(c.dataset.plan);if(r)drawRoute(c,r.pts,{thin:true})})}
+async function shareRoute(r){const url=location.origin+location.pathname+"#r/"+encodeURIComponent(r.id);
+  if(r.who==="me"&&(r.vis||"public")==="private"){toast("This route is set to Only me. Change who can see it to share it.");return}
+  if(r.who==="me"&&!Social.ready()){toast("Sign in and pick a @handle to share routes");return}
+  if(r.who==="me"&&!(S.pubR&&S.pubR[r.id])){await Sync.run()}
+  const text=`Follow my route "${r.title}" on Dragon Drive: ${url}`;try{if(navigator.share){await navigator.share({title:r.title,text,url});return}await navigator.clipboard.writeText(url);toast("Route link copied")}catch(e){}}
+async function openRouteById(id){let r=findRoute(id);if(!r&&Social.ok()){try{r=await Social.routeById(id)}catch(e){}}
+  if(!r){toast(Social.ok()?"That route isn't available. It may be private or deleted.":"Sign in to open shared routes");return}openRoute(r.id)}
+function openRoute(id){const r=findRoute(id);if(!r)return;if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET={kind:"route",id};const sh=$("#sheet");const p=person(r.who),mine=r.who==="me";
+  sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span>${mine?'<button class="btn" id="rt-edit" type="button">Edit</button>':""}<button class="btn primary" id="rt-share" type="button">Share</button></div></div>
+  <div class="wrap body stack">
+    <div><div class="eyebrow">${mine?"Your route":`Planned by ${p.handle?`<a href="#u/${esc(p.handle)}" style="color:inherit">${nameHtml(p)}</a>`:esc(p.name)}`}</div><h1 style="text-transform:none">${esc(r.title)}</h1></div>
+    ${stylePicker()}
+    ${BACKDROPS[backdrop()].map?`<div class="map-box" id="d-map"></div>`:`<canvas class="route" id="d-route" style="border-radius:14px"></canvas>`}
+    <div class="detail-stats">${statBlock("Distance",fDist(r.dist||pathLen(r.pts)).toFixed(1),dLabel())}${statBlock("Type",r.mode==="straight"?"Straight":"Roads")}${statBlock("Visible to",(r.vis||"public")==="public"?"Everyone":r.vis==="followers"?"Followers":"Only me")}</div>
+    <div class="row"><button class="btn primary" id="rt-follow" type="button">Follow this route</button>${mine?'<span class="spacer"></span><button class="btn ghost" id="rt-del" type="button">Delete</button>':""}</div>
+    <p class="muted small" style="margin:0">Share the link with your crew. Everyone who taps Follow gets the same line on their driving screen, and drives done together still group into a cruise.</p></div>`;
+  sh.hidden=false;sh.scrollTop=0;document.body.style.overflow="hidden";$("#sh-x").onclick=closeSheet;
+  if($("#d-map"))mountDetailMap($("#d-map"),r.pts);else drawRoute($("#d-route"),r.pts);
+  $("#rt-follow").onclick=()=>{closeSheet();followRoute({id:r.id,title:r.title,pts:r.pts})};$("#rt-share").onclick=()=>shareRoute(r);
+  const ed=$("#rt-edit");if(ed)ed.onclick=()=>openPlanner(r.id);
+  const del=$("#rt-del");if(del)del.onclick=()=>{if(!confirm(`Delete ${r.title}?`))return;S.routes=myRoutes().filter(x=>x.id!==r.id);(S.deleted=S.deleted||[]).push(r.id);save();closeSheet();toast("Route deleted")};
+}
+function openPlanner(editId){
+  const old=editId?myRoutes().find(r=>r.id===editId):null;
+  if(!canMap()){toast("Planning a route needs the map, which isn't available in this browser.");return}
+  if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET={kind:"planner"};const sh=$("#sheet");
+  const st={wps:old?old.wps.map(x=>[...x]):[],legs:old?old.legs.map(l=>l.map(x=>[...x])):[],mode:old?old.mode:"roads",busy:false};
+  sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Cancel</button><span class="spacer"></span><button class="btn primary" id="pl-save" type="button">Save route</button></div></div>
+  <div class="wrap body stack">
+    <input type="text" id="pl-title" maxlength="120" placeholder="Name this route, e.g. Sunday canyon run" value="${esc(old?old.title:"")}" aria-label="Route name" style="font-family:var(--display);font-size:22px;font-weight:700">
+    <div class="row"><div class="unit-toggle" role="group" aria-label="Route type"><button type="button" data-plmode="roads" aria-pressed="${st.mode==="roads"}">Roads</button><button type="button" data-plmode="straight" aria-pressed="${st.mode==="straight"}">Straight</button></div><span class="spacer"></span><span class="muted small" id="pl-info"></span></div>
+    <div class="map-box plan-map" id="pl-map"></div>
+    <div class="row"><button class="btn" id="pl-undo" type="button">Undo</button><button class="btn ghost" id="pl-clear" type="button">Clear</button><span class="spacer"></span>
+      <label class="row muted small" style="gap:8px">Visible to<select id="pl-vis" style="flex:none"><option value="public" ${(old?old.vis:"public")==="public"?"selected":""}>Everyone</option><option value="followers" ${old&&old.vis==="followers"?"selected":""}>Followers</option><option value="private" ${old&&old.vis==="private"?"selected":""}>Only me</option></select></label></div>
+    <p class="muted small" style="margin:0">Tap the map to add stops in order. Roads mode follows streets between them using OpenStreetMap; switch to Straight for water, trails or a track.</p></div>`;
+  sh.hidden=false;sh.scrollTop=0;document.body.style.overflow="hidden";
+  const pts=()=>st.legs.length?st.legs.flatMap((l,i)=>i?l.slice(1):l):st.wps.slice();
+  const info=()=>{const d=pathLen(pts());$("#pl-info").textContent=st.wps.length?`${st.wps.length} stop${st.wps.length===1?"":"s"} · ${fDist(d).toFixed(1)} ${dLabel()}${st.busy?" · routing…":""}`:"Tap the map to start"};
+  let map=null;const k=backdrop(),ink=routeInk(BACKDROPS[k].map?k:"streets");
+  const draw=()=>{info();if(!map||!map.getSource("plan"))return;const P=pts();
+    map.getSource("plan").setData({type:"Feature",geometry:{type:"LineString",coordinates:P.length>1?P.map(p=>[p[1],p[0]]):[]}});
+    map.getSource("wps").setData({type:"FeatureCollection",features:st.wps.map((p,i)=>({type:"Feature",properties:{c:i===0?"#1d8a52":i===st.wps.length-1?"#c2410c":"#ffffff"},geometry:{type:"Point",coordinates:[p[1],p[0]]}}))})};
+  async function add(p){if(st.busy)return;st.wps.push(p);if(st.wps.length>1){st.busy=true;draw();const leg=await routeLeg(st.wps[st.wps.length-2],p,st.mode);st.busy=false;st.legs.push(leg)}draw()}
+  $("#pl-undo").onclick=()=>{if(st.busy||!st.wps.length)return;st.wps.pop();if(st.legs.length>=st.wps.length&&st.legs.length)st.legs.pop();draw()};
+  $("#pl-clear").onclick=()=>{if(st.busy)return;st.wps=[];st.legs=[];draw()};
+  sh.querySelectorAll("[data-plmode]").forEach(b=>b.onclick=()=>{st.mode=b.dataset.plmode;sh.querySelectorAll("[data-plmode]").forEach(x=>x.setAttribute("aria-pressed",x===b))});
+  const close=()=>{map=null;closeSheet()};$("#sh-x").onclick=close;
+  $("#pl-save").onclick=()=>{const P=pts();if(P.length<2){toast("Add at least two stops");return}const title=$("#pl-title").value.trim()||"Planned route";
+    const r={id:old?old.id:"rt-"+uid(),title,mode:st.legs.some(l=>l.length>2)?"roads":st.mode,wps:st.wps,legs:st.legs,pts:P,dist:pathLen(P),vis:$("#pl-vis").value,created:old?old.created:Date.now(),updated:Date.now()};
+    S.routes=[r,...myRoutes().filter(x=>x.id!==r.id)];save();map=null;closeSheet();toast("Route saved");openRoute(r.id)};
+  info();
+  loadMapLib().then(ml=>{const el=$("#pl-map");if(!el)return;
+    const mine=S.drives.filter(isReal);const last=mine.length?mine[mine.length-1].pts.slice(-1)[0]:null;
+    const opts={container:el,style:BACKDROPS[BACKDROPS[k].map?k:"streets"].map(),attributionControl:{compact:true}};
+    if(old)Object.assign(opts,{bounds:boundsOf(old.pts),fitBoundsOptions:{padding:30}});else Object.assign(opts,last?{center:[last[1],last[0]],zoom:12}:{center:[-98.35,39.5],zoom:3});
+    map=new ml.Map(opts);DETAIL_MAP=map;
+    map.on("load",()=>{map.addSource("plan",{type:"geojson",data:{type:"Feature",geometry:{type:"LineString",coordinates:[]}}});map.addSource("wps",{type:"geojson",data:{type:"FeatureCollection",features:[]}});
+      map.addLayer({id:"plan-casing",type:"line",source:"plan",layout:{"line-cap":"round","line-join":"round"},paint:{"line-color":ink.casing,"line-width":8}});
+      map.addLayer({id:"plan",type:"line",source:"plan",layout:{"line-cap":"round","line-join":"round"},paint:{"line-color":ink.route,"line-width":4.5}});
+      map.addLayer({id:"wps",type:"circle",source:"wps",paint:{"circle-radius":7,"circle-color":["get","c"],"circle-stroke-color":"#111","circle-stroke-width":2}});draw()});
+    map.on("click",e=>add([+e.lngLat.lat.toFixed(6),+e.lngLat.lng.toFixed(6)]));
+    if(!old&&!last&&navigator.geolocation)navigator.geolocation.getCurrentPosition(pos=>{if(map&&!st.wps.length)map.jumpTo({center:[pos.coords.longitude,pos.coords.latitude],zoom:12})},()=>{},{maximumAge:600000,timeout:8000});
+  }).catch(()=>toast("The map couldn't load"));
+}
 
 /* ================= GoPro ================= */
 // GoPro telemetry (GPMF) reader: finds the metadata track in a GoPro MP4 and pulls out GPS.
@@ -1803,11 +1898,13 @@ function viewRoutes(){
   const total=drives.reduce((a,d)=>a+d.stats.dist,0);
   $("#view").innerHTML=`<div class="stack">
     <div class="row"><div><div class="eyebrow">Where you've been</div><h1>Routes</h1></div><span class="spacer"></span>${routeToggle()}</div>
+    <div class="panel"><div class="row"><div style="flex:1;min-width:180px"><h3 style="margin:0">Planned routes</h3><p class="muted small" style="margin:0">Map out a drive and share it so your whole crew follows the same line.</p></div><button class="btn primary" id="plan-new" type="button">Plan a route</button></div>
+      ${allRoutes().map(r=>`<button class="effort open-link" data-route-open="${r.id}" style="display:flex">${avatar(person(r.who),30)}<div style="flex:1;min-width:0"><div style="font-weight:600">${esc(r.title)}</div><div class="muted small">${r.who==="me"?"You":esc(person(r.who).name)} · ${fDist(r.dist||pathLen(r.pts)).toFixed(1)} ${dLabel()}</div></div><span class="chip">${r.mode==="straight"?"Straight":"Roads"}</span></button>`).join("")}</div>
     <p class="muted" style="margin:0">${drives.length} ${drives.length===1?"drive":"drives"} · ${fDist(total).toFixed(0)} ${dLabel()} on the road. Roads you drive often show brighter.</p>
     ${stylePicker()}
     ${areaCards(ar)||`<div class="empty">No routes yet. Tap <b>Drive</b> to record your first one.</div>`}
   </div>`;
-  bindRoutes(ar);
+  bindRoutes(ar);const pn=$("#plan-new");if(pn)pn.onclick=()=>openPlanner();
 }
 // Nearby: drives people shared with Everyone, in the areas where you drive. No live location is used.
 async function viewNearby(){
@@ -1906,6 +2003,9 @@ document.addEventListener("click",e=>{
   const ms=e.target.closest("[data-mapstyle]");if(ms){S.settings.mapStyle=ms.dataset.mapstyle;save();rerender();return}
   const sh=e.target.closest("[data-share]");if(sh){e.preventDefault();openShare(sh.dataset.share);return}
   const o=e.target.closest("[data-open]");if(o){e.preventDefault();openDrive(o.dataset.open);return}
+  const ro=e.target.closest("[data-route-open]");if(ro){e.preventDefault();openRoute(ro.dataset.routeOpen);return}
+  const rf=e.target.closest("[data-route-follow]");if(rf){e.preventDefault();const r=findRoute(rf.dataset.routeFollow);if(r)followRoute({id:r.id,title:r.title,pts:r.pts});return}
+  const rs=e.target.closest("[data-route-share]");if(rs){e.preventDefault();const r=findRoute(rs.dataset.routeShare);if(r)shareRoute(r);return}
   const po=e.target.closest("[data-post]");if(po){e.preventDefault();openPost(po.dataset.post);return}
   const cr=e.target.closest("[data-cruise]");if(cr){e.preventDefault();openCruise(cr.dataset.cruise)}
 });
@@ -1913,7 +2013,7 @@ document.addEventListener("click",e=>{
 document.addEventListener("change",e=>{if(e.target.id==="solid-color"){S.settings.solidColor=e.target.value;save();rerender()}});
 // Re-draw after a setting change without losing the reader's place.
 function rerender(){const sh=$("#sheet");
-  if(SHEET&&!sh.hidden){if(SHEET.kind==="video")return;const y=sh.scrollTop;if(SHEET.kind==="cruise"){openCruise(SHEET.id);sh.scrollTop=y;return}if(SHEET.kind==="vehicle"){openVehicle(SHEET.spec);sh.scrollTop=y;return}if(SHEET.kind==="post"){openPost(SHEET.id);sh.scrollTop=y;return}if(SHEET.kind==="share")openShare(SHEET.id,SHEET.back);else openDrive(SHEET.id);sh.scrollTop=y}
+  if(SHEET&&!sh.hidden){if(SHEET.kind==="video")return;const y=sh.scrollTop;if(SHEET.kind==="cruise"){openCruise(SHEET.id);sh.scrollTop=y;return}if(SHEET.kind==="vehicle"){openVehicle(SHEET.spec);sh.scrollTop=y;return}if(SHEET.kind==="post"){openPost(SHEET.id);sh.scrollTop=y;return}if(SHEET.kind==="planner")return;if(SHEET.kind==="route"){openRoute(SHEET.id);sh.scrollTop=y;return}if(SHEET.kind==="share")openShare(SHEET.id,SHEET.back);else openDrive(SHEET.id);sh.scrollTop=y}
   else{const y=window.scrollY;render();window.scrollTo(0,y)}}
 window.addEventListener("hashchange",()=>{if(!$("#sheet").hidden){if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET=null;$("#sheet").hidden=true;document.body.style.overflow=""}render();if(pendingOpen){const id=pendingOpen;pendingOpen=null;openDrive(id,true)}});
 let rz,lastW=window.innerWidth;window.addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(()=>{if(window.innerWidth===lastW)return;lastW=window.innerWidth;if($("#sheet").hidden)render()},200)});
