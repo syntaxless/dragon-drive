@@ -1,7 +1,7 @@
 <title>Dragon Drive</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=Exo+2:ital,wght@1,900&display=swap">
 <style>
 /* Layout: one-column phone app, sticky header, fixed bottom tab bar; road-sign green accent, amber for routes, red-orange for highlights */
 :root{
@@ -11,6 +11,7 @@
   --grid:rgba(22,32,28,.07);
   --display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
   --body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --logo:"Exo 2","Barlow Condensed",system-ui,sans-serif;
   --tab-h:64px;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
@@ -33,7 +34,7 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .wrap{max-width:640px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
 header.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:10px}
-.brand{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:700;font-size:24px;letter-spacing:.02em;text-transform:uppercase}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--logo);font-style:italic;font-weight:900;font-size:22px;letter-spacing:.01em;text-transform:uppercase}
 .brand .logo{display:flex;flex:none}.brand .logo svg{display:block}
 .unit-toggle{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .unit-toggle button{border:0;background:transparent;padding:4px 10px;font-family:var(--display);font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
@@ -956,7 +957,7 @@ function exportGpx(d){
 /* ================= share card ================= */
 const LOGO_SVG="<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 64 64\"><rect width=\"64\" height=\"64\" rx=\"14\" fill=\"#fff4d6\"/><path d=\"M43 33q5-4 10-3q-2 2 0 3q4 1 9-1q-1 5-6 6q3 2 3 5q-6 0-9-3q-3 1-7-1z\" fill=\"#ff8a1f\" stroke=\"#b8400c\" stroke-width=\"1.6\" stroke-linejoin=\"round\"/><path d=\"M48 34q3-1 6 0q-2 2-6 1z\" fill=\"#ffd23f\"/><path d=\"M9 60q-2-14 2-24q3-10 11-15q8-5 16-2q6 2 8 7q5 1 6 5q1 5-4 6q-3 1-6 0q-1 4-6 6q-5 2-10 1q-3 5-2 16z\" fill=\"#61c24a\" stroke=\"#1e2a1c\" stroke-width=\"2.4\" stroke-linejoin=\"round\"/><path d=\"M12 36l-5-3l4-2l-5-5l6 0l-3-6l7 3\" fill=\"none\" stroke=\"#1e2a1c\" stroke-width=\"2.2\" stroke-linejoin=\"round\" stroke-linecap=\"round\"/><path d=\"M27 19l-3-9l6 6M35 17l2-10l2 9\" fill=\"#61c24a\" stroke=\"#1e2a1c\" stroke-width=\"2\" stroke-linejoin=\"round\" stroke-linecap=\"round\"/><circle cx=\"33\" cy=\"26\" r=\"5\" fill=\"#fff\" stroke=\"#1e2a1c\" stroke-width=\"1.8\"/><circle cx=\"35\" cy=\"25\" r=\"2\" fill=\"#1e2a1c\"/><path d=\"M47 30l2 0\" stroke=\"#1e2a1c\" stroke-width=\"2\" stroke-linecap=\"round\"/><path d=\"M40 37q-4 2-9 1\" fill=\"none\" stroke=\"#1e2a1c\" stroke-width=\"1.8\" stroke-linecap=\"round\"/><path d=\"M33 38l1 3l2-3\" fill=\"#fff\" stroke=\"#1e2a1c\" stroke-width=\"1.2\" stroke-linejoin=\"round\"/></svg>";
 async function buildCard(d){
-  try{await document.fonts.load('700 64px "Barlow Condensed"');await document.fonts.load('500 28px "Barlow"')}catch(e){}
+  try{await document.fonts.load('italic 900 46px "Exo 2"');await document.fonts.load('700 64px "Barlow Condensed"');await document.fonts.load('500 28px "Barlow"')}catch(e){}
   const W=1080,H=1350,c=document.createElement("canvas");c.width=W;c.height=H;const g=c.getContext("2d");
   const BG="#0f1513",FG="#f2f5f3",MUTED="#9fb0a9",AMBER="#f2a93b",GREEN="#3fbf8a";
   const DF='"Barlow Condensed","Arial Narrow",sans-serif',BF='"Barlow",system-ui,sans-serif';
@@ -985,7 +986,7 @@ async function buildCard(d){
   }
   // brand
   try{const logo=await loadImage("data:image/svg+xml;charset=utf-8,"+encodeURIComponent(LOGO_SVG));g.drawImage(logo,56,44,72,72)}catch(e){}
-  g.fillStyle=FG;g.font=`700 46px ${DF}`;g.textBaseline="middle";g.fillText("DRAGON DRIVE",142,82);
+  g.fillStyle=FG;g.font=`italic 900 44px "Exo 2",${DF}`;g.textBaseline="middle";g.fillText("DRAGON DRIVE",142,82);
   // title block
   const p=person(d.who);g.textBaseline="alphabetic";
   g.fillStyle=FG;g.font=`700 72px ${DF}`;fitText(g,d.title,60,top+70,W-120,72,DF);
