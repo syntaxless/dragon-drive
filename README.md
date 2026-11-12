@@ -1,8 +1,8 @@
-# RoadTripper
+# Dragon Drive
 
 A Strava-style logbook for driving. Record a drive with your phone or a performance GPS, see the route, elevation and g-force, time your runs, share drives in a feed with kudos and comments, and post a share card with your photo.
 
-Live at https://roadtripper.itschefff.com
+Live at https://dragondrive.itschefff.com
 
 ## What it records
 
@@ -46,5 +46,5 @@ No GPS handy? Tap **Drive**, then **Simulate a road drive** or **Simulate a drag
 
 ## Current limits
 
-- Drives live on the device (localStorage; photos in IndexedDB). The other drivers you see are labelled example data.
+- Drives live on the device (localStorage; photos in IndexedDB). The storage keys still say `roadtripper` on purpose, so drives recorded before the rename are kept. The other drivers you see are labelled example data.
 - A real shared feed between friends needs a backend with accounts; that's the next step.
