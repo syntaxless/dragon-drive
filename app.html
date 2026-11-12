@@ -629,7 +629,13 @@ function projector(pts,w,h,pad){
   const k=Math.cos(rad((a+b)/2));const sw=(d-c)*k||1e-5,sh=(b-a)||1e-5;const sc=Math.min((w-2*pad)/sw,(h-2*pad)/sh);
   const ox=(w-sw*sc)/2,oy=(h-sh*sc)/2;return p=>[ox+(p[1]-c)*k*sc,h-oy-(p[0]-a)*sc];
 }
-function strokePath(g,P,arr,col,wd){if(arr.length<2)return;g.strokeStyle=col;g.lineWidth=wd;g.lineJoin="round";g.lineCap="round";g.beginPath();arr.forEach((p,i)=>{const[x,y]=P(p);i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke()}
+// A jump with no GPS in between (the phone locked, or signal dropped) is drawn dashed, not as road.
+const isGap=(a,b)=>b[2]-a[2]>15000&&hav(a,b)>150;
+function strokePath(g,P,arr,col,wd){if(arr.length<2)return;g.strokeStyle=col;g.lineWidth=wd;g.lineJoin="round";g.lineCap="round";g.beginPath();const gaps=[];
+  arr.forEach((p,i)=>{const[x,y]=P(p);if(i&&isGap(arr[i-1],p)){gaps.push([arr[i-1],p]);g.moveTo(x,y)}else i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke();
+  if(gaps.length){g.save();g.setLineDash([wd*1.2,wd*2.2]);g.globalAlpha=.7;g.beginPath();for(const[a,b]of gaps){const[x1,y1]=P(a),[x2,y2]=P(b);g.moveTo(x1,y1);g.lineTo(x2,y2)}g.stroke();g.restore()}}
+function routeLines(pts){const solid=[[]],gaps=[];pts.forEach((p,i)=>{if(i&&isGap(pts[i-1],p)){gaps.push([[pts[i-1][1],pts[i-1][0]],[p[1],p[0]]]);solid.push([])}solid[solid.length-1].push([p[1],p[0]])});
+  return{solid:{type:"Feature",geometry:{type:"MultiLineString",coordinates:solid.filter(l=>l.length>1)}},gaps:{type:"Feature",geometry:{type:"MultiLineString",coordinates:gaps}}}}
 function drawRoute(c,pts,opt={}){
   const {g,w,h}=sizeCanvas(c);g.clearRect(0,0,w,h);
   if(opt.bg){g.fillStyle=opt.bg;g.fillRect(0,0,w,h)}
@@ -748,8 +754,9 @@ function mountDetailMap(el,pts){
   loadMapLib().then(ml=>{if(!el.isConnected)return;
     const m=new ml.Map({container:el,style:BACKDROPS[k].map(),bounds:boundsOf(pts),fitBoundsOptions:{padding:30,maxZoom:16},attributionControl:{compact:true},cooperativeGestures:true});
     DETAIL_MAP=m;
-    m.on("load",()=>{const line={type:"Feature",geometry:{type:"LineString",coordinates:pts.map(p=>[p[1],p[0]])}};
-      m.addSource("route",{type:"geojson",data:line});
+    m.on("load",()=>{const L=routeLines(pts);
+      m.addSource("route",{type:"geojson",data:L.solid});m.addSource("gaps",{type:"geojson",data:L.gaps});
+      m.addLayer({id:"gaps",type:"line",source:"gaps",layout:{"line-cap":"butt"},paint:{"line-color":ink.route,"line-width":3,"line-opacity":.75,"line-dasharray":[1.5,2]}});
       m.addLayer({id:"route-casing",type:"line",source:"route",layout:{"line-cap":"round","line-join":"round"},paint:{"line-color":ink.casing,"line-width":8}});
       m.addLayer({id:"route",type:"line",source:"route",layout:{"line-cap":"round","line-join":"round"},paint:{"line-color":ink.route,"line-width":4.5}});
       m.addSource("ends",{type:"geojson",data:{type:"FeatureCollection",features:[[pts[0],"#1d8a52"],[pts[pts.length-1],"#c2410c"]].map(([p,c])=>({type:"Feature",properties:{c},geometry:{type:"Point",coordinates:[p[1],p[0]]}}))}});
@@ -1016,6 +1023,7 @@ function viewRecord(){
       <button class="rec-btn" id="rec-btn" type="button"><span class="fill"></span><span class="lbl">${REC.on?"Hold to finish":"Start drive"}</span></button>
     </div>
     <div class="notice"><strong>Drive first.</strong> Mount your phone and start recording before you pull away. Once you're moving, Dragon Drive switches to a simple screen with one large control, and you finish by holding the button. Every stat, from elevation and g-force to 0–60 and quarter-mile times, is logged automatically on every drive.</div>
+    <div class="notice"><strong>Keep it open.</strong> iPhone pauses GPS for web apps when the screen locks or you switch to another app, which leaves straight lines across your route. Dragon Drive keeps the screen awake while recording; leave it on screen and plug the phone in for long drives.</div>
     ${geoOK||src!=="phone"?"":`<div class="notice">This browser doesn't offer location, so drives can't be recorded here. Open Dragon Drive on your phone.</div>`}
   </div>`;
   document.querySelectorAll("[data-src]").forEach(b=>b.onclick=()=>{S.settings.source=b.dataset.src;save();viewRecord()});
@@ -1038,7 +1046,14 @@ function bindHold(btn){
   btn.onkeyup=stopAnim;
 }
 function setGps(cls,txt){const d=document.querySelector("#gps .dot"),t=$("#gps-t");if(d)d.className="dot "+cls;if(t)t.textContent=txt}
-async function wakeLock(on){try{if(on&&navigator.wakeLock)REC.wake=await navigator.wakeLock.request("screen");else if(!on&&REC.wake){await REC.wake.release();REC.wake=null}}catch(e){}}
+async function wakeLock(on){try{if(on&&navigator.wakeLock&&document.visibilityState==="visible"){if(REC.wake&&!REC.wake.released)return;REC.wake=await navigator.wakeLock.request("screen");REC.wake.addEventListener("release",()=>{if(REC.on&&document.visibilityState==="visible")setTimeout(()=>wakeLock(true),500)})}else if(!on&&REC.wake){const w=REC.wake;REC.wake=null;await w.release()}}catch(e){}}
+// iPhone stops GPS for web apps whenever the screen locks or you switch apps. Keep the screen awake,
+// and if it happened anyway, note the gap and say so when the driver is back.
+document.addEventListener("visibilitychange",()=>{if(!REC.on)return;
+  if(document.visibilityState==="hidden"){REC.hiddenAt=Date.now();return}
+  wakeLock(true);const away=REC.hiddenAt?Date.now()-REC.hiddenAt:0;REC.hiddenAt=null;
+  if(away>5000){(REC.gaps=REC.gaps||[]).push([Date.now()-away,Date.now()]);const m=Math.round(away/60000);
+    toast(`GPS was paused for ${m<1?"under a minute":m===1?"1 minute":m+" minutes"} while Dragon Drive was closed. Keep it open with the screen on.`)}});
 const CAM={stream:null,rec:null,key:null,t0:0,n:0,type:"",writes:[]};
 async function startCam(){
   try{
@@ -1068,7 +1083,7 @@ async function delDriveVideo(v){for(let i=0;;i++){const k=v.key+":"+i;const b=aw
 function startRec(){
   const src=S.settings.source;
   if(src!=="phone"&&!(DEV.device&&DEV.device.gatt&&DEV.device.gatt.connected)){toast(`Connect your ${SOURCES[src].name} first, or switch to Phone GPS.`);return}
-  REC.on=true;REC.pts=[];REC.start=Date.now();REC.lastStill=null;REC.source=src==="phone"?"Phone GPS":DEV.name||SOURCES[src].name;
+  REC.on=true;REC.pts=[];REC.start=Date.now();REC.lastStill=null;REC.gaps=[];REC.hiddenAt=null;REC.source=src==="phone"?"Phone GPS":DEV.name||SOURCES[src].name;
   wakeLock(true);
   if(src==="phone"){
     startMotion();
@@ -1087,6 +1102,7 @@ function startRec(){
   }else setGps("ok","Recording from "+REC.source);
   REC.tick=setInterval(updateLive,1000);
   viewRecord();
+  if(src==="phone")toast("Keep Dragon Drive open with the screen on. iPhone pauses GPS if it locks.");
   if(S.settings.film)startCam();
 }
 function ingest(f){
@@ -1112,7 +1128,7 @@ function updateLive(){
   const moving=REC.on&&n>2&&pts[n-1][3]>4;const dm=$("#drivemode");
   if(moving&&dm.hidden&&!REC.dismissed){dm.hidden=false;dm.innerHTML=`<div class="road">Eyes on the road${CAM.rec?' <span class="rec-dot">● REC</span>':""}</div>
     <div class="stack" style="align-items:center;text-align:center"><div class="gauge big"><div class="k">Distance</div><div class="v num" id="dm-dist"></div></div><div class="gauge"><div class="k">Time</div><div class="v num" id="dm-time"></div></div></div>
-    <div class="stack"><button class="rec-btn stop" id="dm-btn" type="button"><span class="fill"></span><span class="lbl">Hold to finish</span></button><button class="btn ghost" id="dm-x" type="button" style="justify-content:center">I'm a passenger, show full screen</button></div>`;
+    <div class="stack"><button class="rec-btn stop" id="dm-btn" type="button"><span class="fill"></span><span class="lbl">Hold to finish</span></button><button class="btn ghost" id="dm-x" type="button" style="justify-content:center">I'm a passenger, show full screen</button><p class="muted small" style="margin:0;text-align:center">Leave this screen open. GPS pauses if the phone locks or you switch apps.</p></div>`;
     bindHold($("#dm-btn"));$("#dm-x").onclick=()=>{REC.dismissed=true;dm.hidden=true}}
   set("dm-dist",`${fDist(dist).toFixed(1)}<small>${dLabel()}</small>`);set("dm-time",fDur(el));
   const b=$("#rec-btn");if(b){b.classList.toggle("stop",REC.on);b.querySelector(".lbl").textContent=REC.on?"Hold to finish":"Start drive"}
@@ -1125,7 +1141,7 @@ function finishRec(){
   if(raw.length<5||pathLen(raw)<100){stopCam(true).then(v=>{});if(CAM.key)delDriveVideo({key:CAM.key});toast("That drive was too short to save.");viewRecord();return}
   const h=new Date(raw[0][2]).getHours();
   const title=h<11?"Morning drive":h<14?"Midday drive":h<18?"Afternoon drive":"Evening drive";
-  const d={id:uid(),who:"me",title,vehicle:S.settings.vehicle,source:REC.source,start:raw[0][2],pts:thin(raw),stats:analyze(raw)};
+  const d={id:uid(),who:"me",title,vehicle:S.settings.vehicle,source:REC.source,start:raw[0][2],pts:thin(raw),stats:analyze(raw)};if(REC.gaps&&REC.gaps.length)d.gaps=REC.gaps;REC.gaps=[];
   S.drives.push(d);if(dropExamples())toast("First drive saved, example drives removed");save();
   if(CAM.rec||CAM.stream)stopCam().then(v=>{if(v){d.video=v;save();if(SHEET&&SHEET.kind==="drive"&&SHEET.id===d.id)openDrive(d.id,true)}});
   if(location.hash==="#feed"){render();openDrive(d.id,true)}else{pendingOpen=d.id;location.hash="#feed"}
