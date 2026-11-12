@@ -60,6 +60,7 @@ h3{font-size:18px}
 .veh-row{display:flex;gap:12px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
 .veh-thumb{width:64px;height:48px;border-radius:10px;border:1px dashed var(--line);background:var(--surface-2);color:var(--muted);display:grid;place-items:center;overflow:hidden;flex:none;padding:0;cursor:pointer}
 .veh-thumb img{width:100%;height:100%;object-fit:cover}
+.user-link{display:contents;cursor:pointer;color:inherit}.link-btn{background:none;border:0;padding:0;font:inherit;color:inherit;text-decoration:underline;text-underline-offset:2px;cursor:pointer}
 .garage-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
 .garage-grid figure{margin:0;border-radius:12px;overflow:hidden;background:var(--surface-2)}
 .garage-grid img,.garage-grid .ph{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--surface-2)}
@@ -559,7 +560,8 @@ const Social=(()=>{
     async byHandle(h){const r=await J("/rest/v1/profiles?select=*&handle=eq."+encodeURIComponent(h.toLowerCase()));if(r[0])addProfiles(r);return r[0]||null},
     async search(q){q=q.replace(/[^a-z0-9_]/gi,"").toLowerCase();if(!q)return[];const r=await J("/rest/v1/profiles?select=*&handle=ilike."+encodeURIComponent("*"+q+"*")+"&limit=10");addProfiles(r);return r.filter(p=>p.id!==Sync.user.uid)},
     async profileData(p){const [drv,fol,fing,veh]=await Promise.all([J("/rest/v1/drives?select=*&user_id=eq."+p.id+"&order=start.desc&limit=50"),J("/rest/v1/follows?select=follower&followee=eq."+p.id),J("/rest/v1/follows?select=followee&follower=eq."+p.id),J("/rest/v1/vehicles?select=*&user_id=eq."+p.id+"&order=pos.asc")]);
-      const ds=drv.map(toLocal);for(const d of ds)if(!SOC.drives.some(x=>x.id===d.id))SOC.drives.push(d);await loadReactions(ds.map(d=>d.id));return{drives:ds,followers:fol.length,following:fing.length,vehicles:veh}},
+      const ds=drv.map(toLocal);for(const d of ds)if(!SOC.drives.some(x=>x.id===d.id))SOC.drives.push(d);await loadReactions(ds.map(d=>d.id));const ppl=[...new Set([...fol.map(x=>x.follower),...fing.map(x=>x.followee)])].filter(id=>!SOC.profiles.has(id));if(ppl.length)addProfiles(await J("/rest/v1/profiles?select=*&id="+inList(ppl)));
+      return{drives:ds,followers:fol.length,following:fing.length,followerIds:fol.map(x=>x.follower),followingIds:fing.map(x=>x.followee),vehicles:veh}},
     async follow(id,on){const u=Sync.user;if(on){await J("/rest/v1/follows",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify({follower:u.uid,followee:id})});SOC.following.add(id)}
       else{await J("/rest/v1/follows?follower=eq."+u.uid+"&followee=eq."+id,{method:"DELETE"});SOC.following.delete(id);SOC.drives=SOC.drives.filter(d=>d.who!=="u:"+id)}refresh()},
     async photoUrl(d){if(SOC.photoUrls.has(d.id))return SOC.photoUrls.get(d.id);const uid=d.who.slice(2);const r=await Sync.api("/storage/v1/object/authenticated/drive-photos/"+uid+"/"+encodeURIComponent(d.id)).catch(()=>null);
@@ -579,7 +581,7 @@ function dropExamples(){if(!S.drives.some(d=>d.sample)||!S.drives.some(isReal))r
   const gone=new Set(S.drives.filter(d=>d.sample).map(d=>d.id));S.drives=S.drives.filter(d=>!d.sample);
   for(const id of gone){delete S.kudos[id];delete S.comments[id];if(S.kudosFrom)delete S.kudosFrom[id]}return true}
 if(dropExamples())save();
-const person=id=>typeof id==="string"&&id.startsWith("u:")?Social.person(id):id==="me"?{id:"me",name:"You",color:"var(--accent)"}:(S.people.find(p=>p.id===id)||{name:"Driver",color:"#666"});
+const person=id=>typeof id==="string"&&id.startsWith("u:")?Social.person(id):id==="me"?{id:"me",name:"You",color:"var(--accent)",handle:Social.me&&Social.me.handle||undefined}:(S.people.find(p=>p.id===id)||{name:"Driver",color:"#666"});
 const nameHtml=p=>esc(p.name)+(p.verified?' <span class="verified" title="Official Dragon Drive account" role="img" aria-label="Official">🔥</span>':"");
 const initials=n=>n==="You"?"ME":n.split(/\s+/).map(x=>x[0]).join("").slice(0,2).toUpperCase();
 
@@ -794,7 +796,7 @@ function feedCard(d){
   const p=person(d.who),s=d.stats;
   return `<article class="card">
     <button class="open-link" data-open="${d.id}" aria-label="Open ${esc(d.title)}">
-      <div class="card-head">${avatar(p)}<div style="min-width:0"><div style="font-weight:600">${p.handle?`<span data-user="${esc(p.handle)}">${nameHtml(p)}</span>`:esc(p.name)}</div><div class="muted small">${ago(d.start)}${d.vehicle?" · "+esc(d.vehicle):""}</div></div><span class="spacer"></span><span class="head-tags">${d.sample?'<span class="chip example">Example</span>':""}<span class="chip">${esc(d.source||"Phone GPS")}</span></span></div>
+      <div class="card-head">${p.handle?`<span data-user="${esc(p.handle)}" class="user-link">${avatar(p)}</span>`:avatar(p)}<div style="min-width:0"><div style="font-weight:600">${p.handle?`<span data-user="${esc(p.handle)}">${nameHtml(p)}</span>`:esc(p.name)}</div><div class="muted small">${ago(d.start)}${d.vehicle?" · "+esc(d.vehicle):""}</div></div><span class="spacer"></span><span class="head-tags">${d.sample?'<span class="chip example">Example</span>':""}<span class="chip">${esc(d.source||"Phone GPS")}</span></span></div>
       <div class="card-title"><h3>${esc(d.title)}</h3></div>
       <div class="stats">${statBlock("Distance",fDist(s.dist).toFixed(fDist(s.dist)<10?2:1),dLabel())}${statBlock("Moving time",fDur(s.moving))}${statBlock("Top speed",Math.round(fSpeed(s.max)),sLabel())}</div>
       <div class="chips">${driveChips(d)}</div>
@@ -1076,7 +1078,7 @@ function openDrive(id,fresh){
   const sh=$("#sheet");
   sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span>${d.sample?'<span class="chip example">Example</span>':""}${d.remote?"":'<button class="btn" id="d-video" type="button">Video</button>'}<button class="btn primary" id="d-share" type="button">Share</button></div></div>
   <div class="wrap body stack">
-    <div class="row">${avatar(p)}<div><div style="font-weight:600">${p.handle?`<a href="#u/${esc(p.handle)}" style="color:inherit">${nameHtml(p)}</a> <span class="muted small">@${esc(p.handle)}</span>`:esc(p.name)}</div><div class="muted small">${new Date(d.start).toLocaleString(undefined,{weekday:"short",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})} · ${esc(d.vehicle)} · ${esc(d.source||"Phone GPS")}</div></div></div>
+    <div class="row">${p.handle?`<a href="#u/${esc(p.handle)}" class="user-link" aria-label="${esc(p.name)}'s profile">${avatar(p)}</a>`:avatar(p)}<div><div style="font-weight:600">${p.handle?`<a href="#u/${esc(p.handle)}" style="color:inherit">${nameHtml(p)}</a> <span class="muted small">@${esc(p.handle)}</span>`:esc(p.name)}</div><div class="muted small">${new Date(d.start).toLocaleString(undefined,{weekday:"short",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})} · ${esc(d.vehicle)} · ${esc(d.source||"Phone GPS")}</div></div></div>
     ${mine?`<input type="text" id="title-in" value="${esc(d.title)}" aria-label="Drive title" style="font-family:var(--display);font-size:26px;font-weight:700">`:`<h1 style="text-transform:none">${esc(d.title)}</h1>`}
     ${mine&&Social.ready()&&isReal(d)?`<label class="row muted small" style="gap:8px">Who can see this<select id="d-vis" style="flex:none"><option value="followers" ${(d.vis||S.settings.defaultVis||"followers")==="followers"?"selected":""}>Followers</option><option value="public" ${(d.vis||S.settings.defaultVis)==="public"?"selected":""}>Everyone</option><option value="private" ${(d.vis||S.settings.defaultVis)==="private"?"selected":""}>Only me</option></select></label>`:""}
     ${(()=>{const g=cruiseOf(d);return g?`<button class="notice open-link" data-cruise="${g.id}" style="text-align:left;width:100%"><b>Cruise:</b> ${esc(cruiseTitle(g))} drove this together. See everyone →</button>`:""})()}
@@ -1096,7 +1098,7 @@ function openDrive(id,fresh){
     ${hasAlt?`<div class="panel"><div class="row"><h3>Elevation</h3><span class="spacer"></span><span class="muted small">${aLabel()} over distance</span></div><canvas class="chart" id="d-alt"></canvas></div>`:""}
     ${hasGG?`<div class="panel"><div class="row"><h3>G-force</h3><span class="spacer"></span><span class="muted small">Acceleration vs cornering</span></div><canvas class="gg" id="d-gg"></canvas></div>`:""}
     <div class="panel"><div class="row"><h3>Kudos & comments</h3><span class="spacer"></span><button class="kudos" id="d-kudos" aria-pressed="${kudosMine(d)}" aria-label="Kudos" ${mine?"disabled":""}>${heart}<span>${kudosCount(d)}</span></button></div>
-      <div class="stack">${commentsOf(d).map(c=>{const cp=person(c.who);return `<div class="comment">${avatar(cp)}<div><div style="font-weight:600;font-size:13px">${esc(cp.name)} <span class="muted" style="font-weight:400">${ago(c.t)}</span></div><p>${esc(c.text)}</p></div></div>`}).join("")||'<p class="muted" style="margin:0">No comments yet.</p>'}</div>
+      <div class="stack">${commentsOf(d).map(c=>{const cp=person(c.who);return `<div class="comment">${cp.handle?`<a href="#u/${esc(cp.handle)}" class="user-link">${avatar(cp)}</a>`:avatar(cp)}<div><div style="font-weight:600;font-size:13px">${cp.handle?`<a href="#u/${esc(cp.handle)}" style="color:inherit">${nameHtml(cp)}</a>`:esc(cp.name)} <span class="muted" style="font-weight:400">${ago(c.t)}</span></div><p>${esc(c.text)}</p></div></div>`}).join("")||'<p class="muted" style="margin:0">No comments yet.</p>'}</div>
       <form class="row" id="c-form"><input type="text" id="c-in" placeholder="Add a comment" style="flex:1;min-width:0" maxlength="280"><button class="btn" type="submit">Post</button></form>
     </div>
     ${d.remote?"":`<div class="row">${!window.claude?`<button class="btn" id="gpx" type="button">Export GPX</button>`:""}<span class="spacer"></span><button class="btn danger" id="del" type="button">Delete drive</button></div>`}
@@ -1397,7 +1399,7 @@ function drawCruise(c,drives){
     snapshot(k,w,h,window.devicePixelRatio||1,all,24,(g2,P)=>lines(g2,P,3.5)).then(img=>{if(c._tok!==tok||!c.isConnected)return;const g3=c.getContext("2d");g3.setTransform(1,0,0,1,0,0);g3.drawImage(img,0,0,c.width,c.height)}).catch(()=>{if(c._tok===tok&&c.isConnected)flat()});return}
   flat();
 }
-function cruiseRows(g){return g.drives.map((d,i)=>{const p=person(d.who);return `<button class="effort open-link" data-open="${d.id}" style="display:flex;align-items:center"><span class="cruise-dot" style="background:${CRUISE_COLORS[i%CRUISE_COLORS.length]}"></span>${avatar(p,30)}<div style="flex:1;min-width:0"><div style="font-weight:600">${esc(d.who==="me"?"You":p.name)}</div><div class="muted small">${esc(d.vehicle||"")}${d.vehicle?" · ":""}${fDist(d.stats.dist).toFixed(1)} ${dLabel()} · top ${Math.round(fSpeed(d.stats.max))} ${sLabel()}</div></div><span class="chip">${esc(d.source||"Phone GPS")}</span></button>`}).join("")}
+function cruiseRows(g){return g.drives.map((d,i)=>{const p=person(d.who);return `<button class="effort open-link" data-open="${d.id}" style="display:flex;align-items:center"><span class="cruise-dot" style="background:${CRUISE_COLORS[i%CRUISE_COLORS.length]}"></span>${p.handle?`<span data-user="${esc(p.handle)}" class="user-link">${avatar(p,30)}</span>`:avatar(p,30)}<div style="flex:1;min-width:0"><div style="font-weight:600">${d.who==="me"?"You":p.handle?`<span data-user="${esc(p.handle)}">${nameHtml(p)}</span>`:esc(p.name)}</div><div class="muted small">${esc(d.vehicle||"")}${d.vehicle?" · ":""}${fDist(d.stats.dist).toFixed(1)} ${dLabel()} · top ${Math.round(fSpeed(d.stats.max))} ${sLabel()}</div></div><span class="chip">${esc(d.source||"Phone GPS")}</span></button>`}).join("")}
 function cruiseCard(g){
   const dist=Math.max(...g.drives.map(d=>d.stats.dist)),dur=Math.max(...g.drives.map(d=>d.stats.dur)),top=Math.max(...g.drives.map(d=>d.stats.max));
   return `<article class="card cruise">
@@ -1431,14 +1433,18 @@ async function viewProfile(handle){
   v.innerHTML=`<div class="stack">
     <div class="panel"><div class="profile">${avatar(pp,84)}<div class="stack" style="flex:1;min-width:180px;gap:6px">
       <div><h1 style="text-transform:none;margin:0">${nameHtml(pp)}</h1><div class="muted">@${esc(p.handle)}</div></div>
-      <div class="muted small">${data.followers} follower${data.followers===1?"":"s"} · ${data.following} following</div>
+      <div class="muted small"><button class="link-btn" id="p-fol" type="button">${data.followers} follower${data.followers===1?"":"s"}</button> · <button class="link-btn" id="p-fing" type="button">${data.following} following</button></div>
       ${me?`<div class="row"><a class="btn" href="#you">Edit profile</a></div>`:Social.ready()?`<div class="row"><button class="btn ${fol?"":"primary"}" id="fol" type="button">${fol?"Following":"Follow"}</button></div>`:`<div class="notice">Pick your own @handle on your <a href="#you">profile page</a> to follow people.</div>`}
     </div></div></div>
     <div class="detail-stats">${statBlock("Drives",ds.length)}${statBlock("Distance",fDist(dist).toFixed(fDist(dist)<10?1:0),dLabel())}${statBlock("Top speed",Math.round(fSpeed(top)),sLabel())}</div>
+    <div class="panel" id="p-list" hidden></div>
     ${data.vehicles.length?`<div class="panel"><h3>Garage</h3><div class="garage-grid">${data.vehicles.map(x=>`<figure>${x.photo_url?`<img src="${esc(x.photo_url)}" alt="${esc(x.name)}" loading="lazy">`:`<div class="ph"></div>`}<figcaption>${esc(x.name)}</figcaption></figure>`).join("")}</div></div>`:""}
     ${ds.length?ds.map(feedCard).join(""):`<div class="empty">${fol||me?"No shared drives yet.":"Follow @"+esc(p.handle)+" to see their drives."}</div>`}
   </div>`;
   document.querySelectorAll("canvas[data-route]").forEach(c=>{const d=findDrive(c.dataset.route);if(d)paintRoute(c,d.pts,{thin:true,key:d.id})});fillPhotos();
+  const showList=(title,ids)=>{const box=$("#p-list"),open=!box.hidden&&box.dataset.k===title;box.hidden=open;box.dataset.k=title;if(open)return;
+    box.innerHTML=`<h3>${title}</h3>`+(ids.length?ids.map(id=>{const q=Social.SOC.profiles.get(id);if(!q)return"";const qp=Social.person("u:"+id);return `<a class="effort" href="#u/${esc(q.handle)}" style="display:flex;text-decoration:none;color:inherit">${avatar(qp,32)}<div style="flex:1;min-width:0"><div style="font-weight:600">${nameHtml(qp)}</div><div class="muted small">@${esc(q.handle)}</div></div></a>`}).join(""):'<p class="muted small" style="margin:0">Nobody yet.</p>');box.scrollIntoView({behavior:"smooth",block:"nearest"})};
+  $("#p-fol").onclick=()=>showList("Followers",data.followerIds);$("#p-fing").onclick=()=>showList("Following",data.followingIds);
   const fb=$("#fol");if(fb)fb.onclick=async()=>{fb.disabled=true;try{await Social.follow(p.id,!fol);toast(fol?`Unfollowed @${p.handle}`:`Following @${p.handle}`);viewProfile(handle)}catch(e){toast("Couldn't reach the server");fb.disabled=false}};
 }
 
@@ -1524,7 +1530,7 @@ function viewYou(){
     ${Social.ok()&&Social.SOC.loaded&&!Social.me?`<div class="panel"><h3>Pick your @handle</h3><p class="muted small" style="margin:0">This is how friends find and follow you. Lowercase letters, numbers and _ only.</p>
       <form class="row" id="h-form"><span style="font-weight:700">@</span><input type="text" id="h-in" placeholder="burnout" pattern="[a-z0-9_]{3,20}" maxlength="20" autocapitalize="none" autocomplete="username" style="flex:1;min-width:0" required><button class="btn primary" type="submit">Claim it</button></form></div>`:""}
     ${Social.ready()?`<div class="panel"><div class="row"><h3>Friends</h3><span class="spacer"></span><a class="muted small" href="#u/${esc(Social.me.handle)}">@${esc(Social.me.handle)}</a></div>
-      <p class="muted small" style="margin:0">Following ${Social.SOC.following.size}. Your drives go to your followers unless you choose otherwise.</p>
+      <p class="muted small" style="margin:0"><a href="#u/${esc(Social.me.handle)}">Following ${Social.SOC.following.size}</a>. Your drives go to your followers unless you choose otherwise.</p>
       <div class="row"><button class="btn primary" id="inv" type="button">Invite friends</button></div>
       <form class="row" id="f-form"><input type="search" id="f-in" placeholder="Find people by @handle" autocapitalize="none" style="flex:1;min-width:0"><button class="btn" type="submit">Search</button></form>
       <div id="f-res" class="stack" style="gap:0"></div>
