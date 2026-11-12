@@ -625,6 +625,7 @@ const Social=(()=>{
       const u=r&&r.ok?URL.createObjectURL(await r.blob()):null;SOC.photoUrls.set(d.id,u);return u},
     posts:()=>[...SOC.posts.values()].sort((a,b)=>b.start-a.start),
     routes:()=>[...SOC.routes.values()],
+    async stats(){return J("/rest/v1/rpc/app_stats",{method:"POST",body:"{}"})},
     async routeById(id){const r=await J("/rest/v1/routes?select=*&id=eq."+encodeURIComponent(id));if(!r[0])return null;if(!SOC.profiles.has(r[0].user_id))addProfiles(await J("/rest/v1/profiles?select=*&id=eq."+r[0].user_id));const x=toRoute(r[0]);if(Sync.user&&r[0].user_id===Sync.user.uid)x.who="me";SOC.routes.set(x.id,x);return x},
     async announce(body){const u=Sync.user;const row={id:"post-"+uid(),user_id:u.uid,kind:"post",body,title:"",visibility:"public",start:new Date().toISOString(),stats:{},pts:[]};
       const r=await J("/rest/v1/drives",{method:"POST",headers:{Prefer:"return=representation"},body:JSON.stringify(row)});split(r);SOC.kudos.set(row.id,{n:0,mine:false});SOC.comments.set(row.id,[])},
@@ -906,15 +907,27 @@ function viewFeed(){
   $("#view").innerHTML=`<div class="stack">
     <div class="row"><div><div class="eyebrow">Your road crew</div><h1>Feed</h1></div><span class="spacer"></span><a class="btn primary" href="#record">Start a drive</a></div>
     ${nudge}
+    ${canPost?`<div class="panel" id="adm-stats"><h3>Dragon Drive stats</h3><p class="muted small" style="margin:0">Loading…</p></div>`:""}
     ${canPost?`<form class="panel compose" id="ann-form"><h3>Post an announcement</h3><textarea id="ann-in" rows="3" maxlength="1000" placeholder="Everyone on Dragon Drive will see this in their feed." required></textarea><div class="row"><span class="muted small" style="flex:1">Posting as ${nameHtml(Social.person("u:"+Sync.user.uid))}</span><button class="btn primary" type="submit">Post</button></div></form>`:""}
     ${items.length?items.map(x=>x.h()).join(""):`<div class="empty">No drives yet. Tap <b>Drive</b> to record your first one.</div>`}
   </div>`;
   document.querySelectorAll("canvas[data-route]").forEach(c=>{const d=findDrive(c.dataset.route);if(d)paintRoute(c,d.pts,{thin:true,key:d.id})});
   document.querySelectorAll("canvas[data-cruisemap]").forEach(c=>{const g=groups.find(x=>x.id===c.dataset.cruisemap);if(g)drawCruise(c,g.drives)});
   fillPhotos();paintPlans();
+  if(canPost)fillAdminStats();
   const af=$("#ann-form");if(af)af.onsubmit=async e=>{e.preventDefault();const v=$("#ann-in").value.trim();if(!v)return;const bt=af.querySelector("button");bt.disabled=true;
     try{await Social.announce(v);toast("Announcement posted");viewFeed()}catch(err){toast(/column|kind|PGRST/i.test(err.message)?"Run announcements.sql in Supabase first":err.message);bt.disabled=false}};
 }
+// Only verified accounts (Burnout) can call app_stats; it reads every account's totals server side.
+async function fillAdminStats(){const el=$("#adm-stats");if(!el)return;let x;
+  try{x=await Social.stats()}catch(e){if(el.isConnected)el.querySelector("p").textContent=/app_stats|PGRST|404/i.test(e.message+e.status)?"Run stats-dashboard.sql in Supabase to turn this on.":"Couldn't load stats: "+e.message;return}
+  if(!el.isConnected||!x)return;const n=v=>Number(v||0).toLocaleString();
+  el.innerHTML=`<div class="row"><h3 style="margin:0">Dragon Drive stats</h3><span class="spacer"></span><span class="muted small">Only you can see this</span></div>
+  <div class="detail-stats" style="margin-top:10px;border:0;padding:0;background:none">${statBlock("Accounts",n(x.accounts))}${statBlock("New this week",n(x.new7))}${statBlock("Signed in this week",n(x.signin7))}
+  ${statBlock("Drove this week",n(x.active7))}${statBlock("Drove this month",n(x.active30))}${statBlock("Have driven",n(x.drivers))}
+  ${statBlock("Drives",n(x.drives))}${statBlock("Drives this week",n(x.drives7))}${statBlock("Distance",n(Math.round(fDist(x.meters))),dLabel())}
+  ${statBlock("Shared drives",n(x.shared))}${statBlock("Follows",n(x.follows))}${statBlock("Kudos",n(x.kudos))}
+  ${statBlock("Comments",n(x.comments))}${statBlock("Vehicles",n(x.vehicles))}${statBlock("Planned routes",n(x.routes))}</div>`}
 function linkify(t){return esc(t).replace(/https?:\/\/[^\s<]+[^\s<.,!?)]/g,u=>`<a href="${u}" target="_blank" rel="noopener">${u}</a>`)}
 function postCard(d){const p=person(d.who),n=commentsOf(d).length;
   return `<article class="card post"><div class="card-head">${p.handle?`<span data-user="${esc(p.handle)}" class="user-link">${avatar(p)}</span>`:avatar(p)}<div style="min-width:0"><div style="font-weight:600">${p.handle?`<span data-user="${esc(p.handle)}">${nameHtml(p)}</span>`:esc(p.name)}</div><div class="muted small">${ago(d.start)}</div></div><span class="spacer"></span><span class="head-tags"><span class="chip run">Announcement</span></span></div>
