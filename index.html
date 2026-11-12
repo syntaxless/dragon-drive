@@ -984,7 +984,7 @@ async function buildCard(d){
     g.save();g.beginPath();g.rect(0,0,W,top);g.clip();g.drawImage(photo,(W-pw)/2,(top-ph)/2,pw,ph);g.restore();
     const gr=g.createLinearGradient(0,top-300,0,top);gr.addColorStop(0,"rgba(15,21,19,0)");gr.addColorStop(1,BG);g.fillStyle=gr;g.fillRect(0,top-300,W,300);
     const gt=g.createLinearGradient(0,0,0,180);gt.addColorStop(0,"rgba(15,21,19,.65)");gt.addColorStop(1,"rgba(15,21,19,0)");g.fillStyle=gt;g.fillRect(0,0,W,180);
-    const bx=W-380,by=top-400,bs=330;
+    const bx=W-340,by=40,bs=300;
     if(map){try{const img=await snapshot(k,bs/2,bs/2,2,d.pts,18,(g2,P)=>inkRoute(g2,P,d.pts,ink,3));g.save();roundRect(g,bx,by,bs,bs,28);g.clip();g.drawImage(img,bx,by,bs,bs);g.restore()}catch(e){map=false}}
     if(!map){g.fillStyle=k==="solid"?ink.bg:"rgba(15,21,19,.55)";roundRect(g,bx,by,bs,bs,28);g.fill();routeBox(bx,by,bs,bs,6)}
   }else{
