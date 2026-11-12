@@ -77,6 +77,8 @@ h3{font-size:18px}
 .garage-grid figure{margin:0;border-radius:12px;overflow:hidden;background:var(--surface-2)}
 .garage-grid img,.garage-grid .ph{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--surface-2)}
 .garage-grid figcaption{padding:6px 10px;font-weight:600;font-size:14px}
+.cruise-dot{width:10px;height:10px;border-radius:50%;flex:none}
+.cruise-badge{background:var(--hl,#f2a93b);color:#111;font-weight:800}
 .head-tags{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px;flex:none;max-width:45%}
 .chip.example{border:1px dashed var(--muted);background:transparent}
 .chip.run{color:var(--hl)}
@@ -403,6 +405,10 @@ function seed(){
     mk("p1","Cliffside detour","2019 Mazda MX-5","Phone GPS",now-4.5*D,driveFrom(150,480,12,now-4.5*D,lively)),
     mk("me","Strip night with the crew","My vehicle","RaceBox Mini",now-3.4*D-H,dragRun(9,now-3.4*D-H,{a0:4.2,vtop:48,target:{d:1320*FT}})),
     mk("me","Weekend coast run","My vehicle","Phone GPS",now-9*D,driveFrom(100,440,13,now-9*D,calm)),
+    // a cruise: three friends on the same road a few seconds apart
+    mk("p1","Saturday cruise","2019 Mazda MX-5","Phone GPS",now-30*H,driveFrom(60,330,21,now-30*H,calm)),
+    mk("p4","Canyon run with the crew","2011 Honda Fit","Phone GPS",now-30*H+9e3,driveFrom(60,330,22,now-30*H+9e3,calm)),
+    mk("p2","Cruise with Priya and Sam","2016 Subaru WRX","RaceBox Mini",now-30*H+17e3,driveFrom(60,330,23,now-30*H+17e3,calm)),
   ];
   const S0={v:2,people,drives,
     kudos:{},kudosFrom:{},comments:{},
@@ -803,14 +809,17 @@ function feedCard(d){
     </div></article>`;
 }
 function viewFeed(){
-  const drives=allDrives().slice().sort((a,b)=>b.start-a.start);
+  const all=allDrives(),groups=cruises(all),inCruise=new Set(groups.flatMap(g=>g.drives.map(d=>d.id)));
+  const items=[...all.filter(d=>!inCruise.has(d.id)).map(d=>({t:d.start,h:()=>feedCard(d)})),...groups.map(g=>({t:g.start,h:()=>cruiseCard(g)}))].sort((a,b)=>b.t-a.t);
+  const drives=all;
   const nudge=Social.ok()&&Social.SOC.loaded&&!Social.me?`<a class="notice" href="#you" style="display:block;text-decoration:none;color:inherit"><b>Pick your @handle</b> so friends can find and follow you.</a>`:Social.ready()&&!Social.SOC.following.size?`<a class="notice" href="#you" style="display:block;text-decoration:none;color:inherit"><b>Follow your friends</b> to see their drives here. Find them by @handle or send your invite link.</a>`:"";
   $("#view").innerHTML=`<div class="stack">
     <div class="row"><div><div class="eyebrow">Your road crew</div><h1>Feed</h1></div><span class="spacer"></span><a class="btn primary" href="#record">Start a drive</a></div>
     ${nudge}
-    ${drives.length?drives.map(feedCard).join(""):`<div class="empty">No drives yet. Tap <b>Drive</b> to record your first one.</div>`}
+    ${items.length?items.map(x=>x.h()).join(""):`<div class="empty">No drives yet. Tap <b>Drive</b> to record your first one.</div>`}
   </div>`;
   document.querySelectorAll("canvas[data-route]").forEach(c=>{const d=findDrive(c.dataset.route);if(d)paintRoute(c,d.pts,{thin:true,key:d.id})});
+  document.querySelectorAll("canvas[data-cruisemap]").forEach(c=>{const g=groups.find(x=>x.id===c.dataset.cruisemap);if(g)drawCruise(c,g.drives)});
   fillPhotos();
 }
 
@@ -1109,6 +1118,7 @@ function openDrive(id,fresh){
     <div class="row">${avatar(p)}<div><div style="font-weight:600">${p.handle?`<a href="#u/${esc(p.handle)}" style="color:inherit">${esc(p.name)}</a> <span class="muted small">@${esc(p.handle)}</span>`:esc(p.name)}</div><div class="muted small">${new Date(d.start).toLocaleString(undefined,{weekday:"short",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})} · ${esc(d.vehicle)} · ${esc(d.source||"Phone GPS")}</div></div></div>
     ${mine?`<input type="text" id="title-in" value="${esc(d.title)}" aria-label="Drive title" style="font-family:var(--display);font-size:26px;font-weight:700">`:`<h1 style="text-transform:none">${esc(d.title)}</h1>`}
     ${mine&&Social.ready()&&isReal(d)?`<label class="row muted small" style="gap:8px">Who can see this<select id="d-vis" style="flex:none"><option value="followers" ${(d.vis||S.settings.defaultVis||"followers")==="followers"?"selected":""}>Followers</option><option value="public" ${(d.vis||S.settings.defaultVis)==="public"?"selected":""}>Everyone</option><option value="private" ${(d.vis||S.settings.defaultVis)==="private"?"selected":""}>Only me</option></select></label>`:""}
+    ${(()=>{const g=cruiseOf(d);return g?`<button class="notice open-link" data-cruise="${g.id}" style="text-align:left;width:100%"><b>Cruise:</b> ${esc(cruiseTitle(g))} drove this together. See everyone →</button>`:""})()}
     ${fresh?`<div class="notice">Drive saved. Give it a name, add a photo, then share it.</div>`:""}
     <div class="photo-edit">${d.photo?`<img class="photo" data-photo="${d.id}" alt="Photo from ${esc(d.title)}">`:""}
       ${mine?`<div class="row" style="margin-top:${d.photo?"8px":"0"}"><button class="btn" id="add-photo" type="button"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>${d.photo?"Change photo":"Add a photo"}</button>${d.photo?`<button class="btn ghost" id="rm-photo" type="button">Remove photo</button>`:""}</div>`:""}</div>
@@ -1392,6 +1402,61 @@ async function openVideo(id){
   };
 }
 
+/* ================= cruises ================= */
+// Drives by different people that cover the same roads at the same time become a cruise.
+// Only drives you can already see are compared, so grouping never reveals anything new.
+const CRUISE_COLORS=["#0a84ff","#ff7a45","#3fbf8a","#bf5af2","#ffd60a","#ff375f","#64d2ff"];
+function posAt(pts,t){if(!pts.length||t<pts[0][2]||t>pts[pts.length-1][2])return null;let lo=0,hi=pts.length-1;while(hi-lo>1){const m=(lo+hi)>>1;if(pts[m][2]<=t)lo=m;else hi=m}
+  const a=pts[lo],b=pts[hi],f=b[2]>a[2]?(t-a[2])/(b[2]-a[2]):0;return[a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f]}
+function droveTogether(a,b){
+  if(a.who===b.who||a.pts.length<2||b.pts.length<2)return false;
+  const t0=Math.max(a.pts[0][2],b.pts[0][2]),t1=Math.min(a.pts[a.pts.length-1][2],b.pts[b.pts.length-1][2]);if(t1-t0<120e3)return false;
+  let n=0,hit=0;for(let t=t0;t<=t1;t+=15e3){const p=posAt(a.pts,t),q=posAt(b.pts,t);if(!p||!q)continue;n++;if(hav(p,q)<600)hit++}
+  return n>=8&&hit/n>=.6;
+}
+let CRUISE_CACHE={key:"",groups:[]};
+function cruises(drives){
+  const key=drives.map(d=>d.id+":"+d.pts.length).sort().join("|");if(key===CRUISE_CACHE.key)return CRUISE_CACHE.groups;
+  const ds=drives.filter(d=>d.pts.length>1).sort((a,b)=>a.start-b.start),parent=new Map(ds.map(d=>[d.id,d.id]));
+  const find=x=>{while(parent.get(x)!==x){parent.set(x,parent.get(parent.get(x)));x=parent.get(x)}return x};
+  for(let i=0;i<ds.length;i++)for(let j=i+1;j<ds.length;j++){if(ds[j].start>ds[i].pts[ds[i].pts.length-1][2])break;if(droveTogether(ds[i],ds[j]))parent.set(find(ds[j].id),find(ds[i].id))}
+  const by=new Map();for(const d of ds){const r=find(d.id);if(!by.has(r))by.set(r,[]);by.get(r).push(d)}
+  const groups=[...by.values()].filter(g=>new Set(g.map(d=>d.who)).size>1).map(g=>({id:"c-"+g[0].id,drives:g,start:g[0].start}));
+  CRUISE_CACHE={key,groups};return groups;
+}
+function cruiseOf(d){return cruises(allDrives()).find(g=>g.drives.includes(d))}
+function cruiseTitle(g){const names=g.drives.map(d=>d.who==="me"?"You":person(d.who).name.split(" ")[0]);return names.length>3?`${names.slice(0,2).join(", ")} and ${names.length-2} others`:names.slice(0,-1).join(", ")+" and "+names[names.length-1]}
+function drawCruise(c,drives){
+  const k=backdrop(),ink=routeInk(k),all=[].concat(...drives.map(d=>d.pts));if(!all.length)return;
+  const lines=(g,P,lw)=>drives.forEach((d,i)=>{strokePath(g,P,d.pts,"rgba(0,0,0,.35)",lw+3);strokePath(g,P,d.pts,CRUISE_COLORS[i%CRUISE_COLORS.length],lw)});
+  const flat=()=>{const {g,w,h}=sizeCanvas(c);g.clearRect(0,0,w,h);
+  if(k==="solid"){g.fillStyle=ink.bg;g.fillRect(0,0,w,h)}else{g.strokeStyle=css("--grid");g.lineWidth=1;for(let x=0;x<w;x+=24){g.beginPath();g.moveTo(x+.5,0);g.lineTo(x+.5,h);g.stroke()}for(let y=0;y<h;y+=24){g.beginPath();g.moveTo(0,y+.5);g.lineTo(w,y+.5);g.stroke()}}
+  lines(g,projector(all,w,h,18),4)};
+  if(BACKDROPS[k].map){const {g,w,h}=sizeCanvas(c);g.fillStyle=css("--surface-2");g.fillRect(0,0,w,h);const tok=c._tok=(c._tok||0)+1;
+    snapshot(k,w,h,window.devicePixelRatio||1,all,24,(g2,P)=>lines(g2,P,3.5)).then(img=>{if(c._tok!==tok||!c.isConnected)return;const g3=c.getContext("2d");g3.setTransform(1,0,0,1,0,0);g3.drawImage(img,0,0,c.width,c.height)}).catch(()=>{if(c._tok===tok&&c.isConnected)flat()});return}
+  flat();
+}
+function cruiseRows(g){return g.drives.map((d,i)=>{const p=person(d.who);return `<button class="effort open-link" data-open="${d.id}" style="display:flex;align-items:center"><span class="cruise-dot" style="background:${CRUISE_COLORS[i%CRUISE_COLORS.length]}"></span>${avatar(p,30)}<div style="flex:1;min-width:0"><div style="font-weight:600">${esc(d.who==="me"?"You":p.name)}</div><div class="muted small">${esc(d.vehicle||"")}${d.vehicle?" · ":""}${fDist(d.stats.dist).toFixed(1)} ${dLabel()} · top ${Math.round(fSpeed(d.stats.max))} ${sLabel()}</div></div><span class="chip">${esc(d.source||"Phone GPS")}</span></button>`}).join("")}
+function cruiseCard(g){
+  const dist=Math.max(...g.drives.map(d=>d.stats.dist)),dur=Math.max(...g.drives.map(d=>d.stats.dur)),top=Math.max(...g.drives.map(d=>d.stats.max));
+  return `<article class="card cruise">
+    <button class="open-link" data-cruise="${g.id}" aria-label="Open cruise">
+      <div class="card-head"><span class="avatar cruise-badge" aria-hidden="true">${g.drives.length}</span><div style="min-width:0"><div style="font-weight:600">${esc(cruiseTitle(g))}</div><div class="muted small">${ago(g.start)} · ${g.drives.length} vehicles</div></div><span class="spacer"></span><span class="head-tags">${g.drives.some(d=>d.sample)?'<span class="chip example">Example</span>':""}<span class="chip run">Cruise</span></span></div>
+      <div class="stats">${statBlock("Distance",fDist(dist).toFixed(fDist(dist)<10?2:1),dLabel())}${statBlock("Time",fDur(dur))}${statBlock("Top speed",Math.round(fSpeed(top)),sLabel())}</div>
+      <div class="media"><canvas class="route" data-cruisemap="${g.id}"></canvas></div>
+    </button>
+    <div style="padding:4px 14px 10px">${cruiseRows(g)}</div></article>`;
+}
+function openCruise(id){
+  const g=cruises(allDrives()).find(x=>x.id===id);if(!g)return;if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET={kind:"cruise",id};const sh=$("#sheet");
+  sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span><span class="chip run">Cruise</span></div></div>
+    <div class="wrap body stack"><div><div class="eyebrow">${new Date(g.start).toLocaleString(undefined,{weekday:"short",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}</div><h1 style="text-transform:none">${esc(cruiseTitle(g))}</h1></div>
+    ${stylePicker()}<canvas class="route" id="cr-map" style="border-radius:14px;aspect-ratio:4/3"></canvas>
+    <div class="panel"><h3>Who was there</h3>${cruiseRows(g)}</div>
+    <p class="muted small" style="margin:0">Drives become a cruise automatically when two or more people cover the same roads at the same time. Tap anyone to see their drive.</p></div>`;
+  sh.hidden=false;sh.scrollTop=0;document.body.style.overflow="hidden";fillPhotos(sh);drawCruise($("#cr-map"),g.drives);$("#sh-x").onclick=closeSheet;
+}
+
 /* ================= profiles ================= */
 async function viewProfile(handle){
   const v=$("#view");
@@ -1565,13 +1630,14 @@ document.addEventListener("click",e=>{
       k.setAttribute("aria-pressed",kudosMine(d));k.querySelector("span").textContent=kudosCount(d);if(kudosMine(d))toast("Kudos given")})();return}
   const ms=e.target.closest("[data-mapstyle]");if(ms){S.settings.mapStyle=ms.dataset.mapstyle;save();rerender();return}
   const sh=e.target.closest("[data-share]");if(sh){e.preventDefault();openShare(sh.dataset.share);return}
-  const o=e.target.closest("[data-open]");if(o){e.preventDefault();openDrive(o.dataset.open)}
+  const o=e.target.closest("[data-open]");if(o){e.preventDefault();openDrive(o.dataset.open);return}
+  const cr=e.target.closest("[data-cruise]");if(cr){e.preventDefault();openCruise(cr.dataset.cruise)}
 });
 
 document.addEventListener("change",e=>{if(e.target.id==="solid-color"){S.settings.solidColor=e.target.value;save();rerender()}});
 // Re-draw after a setting change without losing the reader's place.
 function rerender(){const sh=$("#sheet");
-  if(SHEET&&!sh.hidden){if(SHEET.kind==="video")return;const y=sh.scrollTop;if(SHEET.kind==="share")openShare(SHEET.id,SHEET.back);else openDrive(SHEET.id);sh.scrollTop=y}
+  if(SHEET&&!sh.hidden){if(SHEET.kind==="video")return;const y=sh.scrollTop;if(SHEET.kind==="cruise"){openCruise(SHEET.id);sh.scrollTop=y;return}if(SHEET.kind==="share")openShare(SHEET.id,SHEET.back);else openDrive(SHEET.id);sh.scrollTop=y}
   else{const y=window.scrollY;render();window.scrollTo(0,y)}}
 window.addEventListener("hashchange",()=>{if(!$("#sheet").hidden){if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET=null;$("#sheet").hidden=true;document.body.style.overflow=""}render();if(pendingOpen){const id=pendingOpen;pendingOpen=null;openDrive(id,true)}});
 let rz,lastW=window.innerWidth;window.addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(()=>{if(window.innerWidth===lastW)return;lastW=window.innerWidth;if($("#sheet").hidden)render()},200)});
