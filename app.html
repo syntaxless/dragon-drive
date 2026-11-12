@@ -116,12 +116,17 @@ canvas.route{display:block;width:100%;aspect-ratio:16/9;max-width:100%;backgroun
 
 /* tabs */
 nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
-nav.tabs .in{max-width:640px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);height:var(--tab-h)}
+nav.tabs .in{max-width:640px;margin:0 auto;display:grid;grid-template-columns:1fr 1.2fr 1fr;height:var(--tab-h)}
 nav.tabs a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-decoration:none;color:var(--muted);font-family:var(--display);font-weight:600;font-size:13px;letter-spacing:.08em;text-transform:uppercase}
 nav.tabs a svg{width:24px;height:24px}
 nav.tabs a[aria-current="page"]{color:var(--accent)}
-nav.tabs a.rec-tab span.ring{width:40px;height:40px;border-radius:50%;background:var(--accent);color:var(--accent-fg);display:grid;place-items:center;margin-top:-6px}
-nav.tabs a.rec-tab[aria-current="page"] span.ring{box-shadow:0 0 0 3px var(--surface),0 0 0 5px var(--accent)}
+nav.tabs a.rec-tab{justify-content:flex-end;padding-bottom:6px}
+nav.tabs a.rec-tab span.ring{width:68px;height:68px;border-radius:50%;background:var(--accent);color:var(--accent-fg);display:grid;place-items:center;margin-top:-34px;box-shadow:0 0 0 5px var(--surface),0 6px 18px rgba(0,0,0,.22)}
+nav.tabs a.rec-tab span.ring svg{width:34px;height:34px}
+nav.tabs a.rec-tab .rec-lbl{color:var(--accent);font-size:14px}
+nav.tabs a.rec-tab[aria-current="page"] span.ring{box-shadow:0 0 0 5px var(--surface),0 0 0 8px var(--accent)}
+.me-btn{display:block;border-radius:50%;text-decoration:none}
+.me-btn[aria-current="page"] .avatar{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--accent)}
 
 /* sheet */
 .sheet{position:fixed;inset:0;z-index:25;background:var(--bg);overflow-y:auto;padding-top:env(safe-area-inset-top,0px)}
@@ -164,19 +169,15 @@ input[type=range]{width:100%;accent-color:var(--hl)}
     <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="1" y="1" width="26" height="26" rx="6" fill="var(--accent)"/><path d="M11 23 L13 5 M17 23 L15 5" stroke="var(--accent-fg)" stroke-width="2.4" stroke-linecap="round" fill="none"/><path d="M14 9v2M14 14v2M14 19v2" stroke="var(--accent-fg)" stroke-width="1.6" stroke-linecap="round"/></svg>
     RoadTripper
   </div>
-  <div class="unit-toggle" role="group" aria-label="Units">
-    <button id="u-mi" type="button" aria-pressed="true">mi</button>
-    <button id="u-km" type="button" aria-pressed="false">km</button>
-  </div>
+  <a href="#you" class="me-btn" id="me-btn" aria-label="You: profile, stats and settings"><span class="avatar" style="background:var(--accent);color:var(--accent-fg);width:36px;height:36px;font-size:14px" aria-hidden="true">ME</span></a>
 </div></header>
 
 <main><div class="wrap" id="view"></div></main>
 
 <nav class="tabs" aria-label="Sections"><div class="in">
   <a href="#feed" data-tab="feed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Feed</a>
-  <a href="#record" data-tab="record" class="rec-tab"><span class="ring"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg></span>Drive</a>
+  <a href="#record" data-tab="record" class="rec-tab"><span class="ring"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 16h14M6.5 16l1.6-5.2A2 2 0 0 1 10 9.4h4a2 2 0 0 1 1.9 1.4L17.5 16M5 16v3h2.5v-3M19 16v3h-2.5v-3"/><circle cx="8.5" cy="13.5" r=".6" fill="currentColor"/><circle cx="15.5" cy="13.5" r=".6" fill="currentColor"/></svg></span><span class="rec-lbl">Drive</span></a>
   <a href="#routes" data-tab="routes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/></svg>Routes</a>
-  <a href="#you" data-tab="you"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg>You</a>
 </div></nav>
 
 <div id="sheet" class="sheet" hidden></div>
@@ -449,7 +450,7 @@ function render(){
   const tab=(location.hash||"#feed").slice(1);
   current=["feed","record","routes","you"].includes(tab)?tab:"feed";
   document.querySelectorAll("nav.tabs a").forEach(a=>a.setAttribute("aria-current",a.dataset.tab===current?"page":"false"));
-  $("#u-mi").setAttribute("aria-pressed",U()==="mi");$("#u-km").setAttribute("aria-pressed",U()==="km");
+  $("#me-btn").setAttribute("aria-current",current==="you"?"page":"false");
   ({feed:viewFeed,record:viewRecord,routes:viewRoutes,you:viewYou})[current]();
   window.scrollTo(0,0);
 }
@@ -606,9 +607,9 @@ function viewRecord(){
       <canvas class="route" id="live-route" style="border-radius:12px"></canvas>
       <label class="field">Vehicle<select id="veh">${S.settings.vehicles.map(v=>`<option ${v===S.settings.vehicle?"selected":""}>${esc(v)}</option>`).join("")}</select></label>
       <button class="rec-btn" id="rec-btn" type="button"><span class="fill"></span><span class="lbl">${REC.on?"Hold to finish":"Start drive"}</span></button>
-      <div class="row"><button class="btn ghost" id="sim-btn" type="button" ${REC.on?"disabled":""}>Simulate a road drive</button><button class="btn ghost" id="sim-drag" type="button" ${REC.on?"disabled":""}>Simulate a drag-strip pass</button></div>
+      <button class="btn ghost" id="sim-btn" type="button" style="align-self:flex-start" ${REC.on?"disabled":""}>Simulate a drive (demo)</button>
     </div>
-    <div class="notice"><strong>Drive first.</strong> Mount your phone and start recording before you pull away. Once you're moving, RoadTripper switches to a simple screen with one large control, and you finish by holding the button. Timed runs like 0–60 and the quarter mile are meant for drag strips and closed courses.</div>
+    <div class="notice"><strong>Drive first.</strong> Mount your phone and start recording before you pull away. Once you're moving, RoadTripper switches to a simple screen with one large control, and you finish by holding the button. Every stat, from elevation and g-force to 0–60 and quarter-mile times, is logged automatically on every drive.</div>
     ${geoOK||src!=="phone"?"":`<div class="notice">This browser doesn't offer location. Use the demo to see how recording works.</div>`}
   </div>`;
   document.querySelectorAll("[data-src]").forEach(b=>b.onclick=()=>{S.settings.source=b.dataset.src;save();viewRecord()});
@@ -616,8 +617,7 @@ function viewRecord(){
   const c=$("#connect");if(c)c.onclick=()=>connectDevice(src);
   $("#veh").onchange=e=>{S.settings.vehicle=e.target.value;save()};
   bindHold($("#rec-btn"));
-  $("#sim-btn").onclick=()=>{if(!REC.on)startRec("road")};
-  $("#sim-drag").onclick=()=>{if(!REC.on)startRec("drag")};
+  $("#sim-btn").onclick=()=>{if(!REC.on)startRec("demo")};
   updateDevice();updateLive();
 }
 function bindHold(btn){
@@ -636,7 +636,7 @@ function startRec(sim){
   if(!sim&&src!=="phone"&&!(DEV.device&&DEV.device.gatt&&DEV.device.gatt.connected)){toast(`Connect your ${SOURCES[src].name} first, or switch to Phone GPS.`);return}
   REC.on=true;REC.pts=[];REC.start=Date.now();REC.lastStill=null;REC.simulating=!!sim;REC.source=sim?"Simulated":(src==="phone"?"Phone GPS":DEV.name||SOURCES[src].name);
   wakeLock(true);
-  if(sim)simulate(sim);
+  if(sim)simulate();
   else if(src==="phone"){
     startMotion();
     if(!("geolocation" in navigator)){REC.on=false;toast("Location isn't available here. Try the demo.");return}
@@ -667,12 +667,35 @@ function ingest(f){
   REC.lastStill=null;REC.pts.push(p);
   if(!REC.simulating)setGps("ok",`Recording · ${REC.source}${f.acc?` · ±${Math.round(f.acc)} m`:""}`);
 }
-function simulate(kind){
-  const raw=kind==="drag"?dragRun(Math.floor(Math.random()*1e6),Date.now(),{a0:4.6+Math.random()*2.5,vtop:50+Math.random()*12,target:{d:1320*FT}})
-    :driveFrom(40+Math.floor(Math.random()*60),340,Math.floor(Math.random()*1e6),Date.now(),{base:16,wave:4,noise:3,resp:.25,brakeP:.01});
-  const speed=kind==="drag"?1:12;let i=0;const t0=Date.now(),base=raw[0][2];
-  setGps("ok",kind==="drag"?"Demo: replaying a quarter-mile pass at real speed":"Demo: replaying a road drive at 12× speed");
-  REC.source=kind==="drag"?"Simulated RaceBox":"Simulated phone GPS";
+// Demo: a full drive along the example road at 10 Hz, with a standing launch, a stop partway, and normal cruising.
+function demoDrive(seed,start){
+  const r=rng(seed);const from=20+Math.floor(r()*40),to=Math.min(ROAD.length-1,from+260);
+  const road=ROAD.slice(from,to+1),cum=[0];for(let i=1;i<road.length;i++)cum.push(cum[i-1]+hav(road[i-1],road[i]));
+  const total=cum[cum.length-1];let k=0;
+  const at=d=>{while(k<cum.length-2&&cum[k+1]<d)k++;const f=Math.min(1,(d-cum[k])/((cum[k+1]-cum[k])||1));const A=road[k],B=road[k+1];return[A[0]+(B[0]-A[0])*f,A[1]+(B[1]-A[1])*f,A[2]+(B[2]-A[2])*f]};
+  const a0=4.6+r()*2.5,vtop=50+r()*12,stopAt=total*(0.5+r()*0.1);
+  const pts=[];let v=0,d=0,t=start,phase="stage",clock=0,launched=false;const dt=0.1;
+  for(let n=0;n<20000;n++){
+    const cruise=16+Math.sin(d/600)*4;let a=0;
+    if(phase==="stage"){if(clock>3)phase="launch"}
+    else if(phase==="launch"){a=Math.min(a0,a0*1.15*(1-(v/vtop)**2));if(v>=29){phase="cruise";launched=true}}
+    else if(phase==="cruise"){a=Math.max(-2.5,Math.min(1.8,(cruise-v)*0.4));if(d<stopAt&&stopAt-d<v*v/6+5)phase="stop";if(total-d<v*v/6+5)phase="end"}
+    else if(phase==="stop"){a=-3;if(v<=0.05){v=0;phase="wait";clock=0}}
+    else if(phase==="wait"){if(clock>4)phase="pull"}
+    else if(phase==="pull"){a=Math.min(2.6,2.6*(1-(v/cruise)**2)+0.3);if(v>=cruise-1)phase="cruise"}
+    else if(phase==="end"){a=-3;if(v<=0.05){v=0}}
+    const p=at(d);
+    pts.push([p[0],p[1],Math.round(t),Math.max(0,v),p[2]+(r()-.5)*0.6,+(a/G+(r()-.5)*0.02).toFixed(3),+((r()-.5)*0.05+(v>8?Math.sin(d/90)*0.25:0)).toFixed(3),null]);
+    if(phase==="end"&&v===0)break;
+    v=Math.max(0,v+a*dt);d=Math.min(total,d+v*dt);t+=dt*1000;clock+=dt;
+  }
+  return pts;
+}
+function simulate(){
+  const raw=demoDrive(Math.floor(Math.random()*1e6),Date.now());
+  const speed=15;let i=0;const t0=Date.now(),base=raw[0][2];
+  setGps("ok","Demo: replaying a drive at 15× speed");
+  REC.source="Simulated RaceBox";
   REC.sim=setInterval(()=>{
     const simT=base+(Date.now()-t0)*speed;
     while(i<raw.length&&raw[i][2]<=simT){const r=raw[i];ingest({lat:r[0],lon:r[1],t:r[2],v:r[3],alt:r[4],gLong:r[5],gLat:r[6],gTot:r[7]});i++}
@@ -712,7 +735,7 @@ function finishRec(){
 let pendingOpen=null;
 function runsTable(st){
   const rows=RUN_DEFS.map(r=>{const v=st.runs&&st.runs[r.k];if(!v)return"";return `<tr><th scope="row">${r.label}</th><td class="t">${v.trap?`${Math.round(fSpeed(v.trap))} ${sLabel()} trap`:""}</td><td class="v">${fSec(v.t)}</td></tr>`}).join("");
-  if(!rows)return `<p class="muted" style="margin:0">No timed runs on this drive. Runs are detected from a standing start (0–60, 60 ft, ⅛ and ¼ mile) or a rolling pull from 60 to 130 mph.</p>`;
+  if(!rows)return `<p class="muted" style="margin:0">No timed runs on this drive yet. They're logged automatically whenever you pull away from a stop (0–60, 60 ft, ⅛ and ¼ mile) or accelerate from 60 to 130 mph.</p>`;
   return `<table class="runs"><tbody>${rows}</tbody></table>${st.hz<5?`<p class="muted small" style="margin:0">Estimate: this drive was logged at about ${st.hz||1} Hz. A 10–25 Hz device like RaceBox or Dragy gives accurate times.</p>`:`<p class="muted small" style="margin:0">Logged at ${st.hz} Hz, no rollout subtracted.</p>`}`;
 }
 function openDrive(id,fresh){
@@ -903,11 +926,13 @@ function viewYou(){
   for(let i=7;i>=0;i--){const a=now-(i+1)*wk,b=now-i*wk;weeks.push({label:i===0?"Now":`-${i}w`,v:mine.filter(d=>d.start>a&&d.start<=b).reduce((s,d)=>s+fDist(d.stats.dist),0)})}
   const mx=Math.max(1,...weeks.map(w=>w.v));
   $("#view").innerHTML=`<div class="stack">
-    <div><div class="eyebrow">Your logbook</div><h1>You</h1></div>
+    <div><div class="eyebrow">Your logbook and settings</div><h1>You</h1></div>
     <div class="detail-stats">${statBlock("Drives",mine.length)}${statBlock("Distance",fDist(tot.dist).toFixed(0),dLabel())}${statBlock("Climbed",Math.round(fAlt(tot.up)),aLabel())}${statBlock("Top speed",Math.round(fSpeed(tot.top)),sLabel())}${statBlock("Max g",fG(tot.g),"g")}</div>
     <div class="panel"><h3>Personal bests</h3>${Object.keys(pb).length?`<table class="runs"><tbody>${RUN_DEFS.filter(r=>pb[r.k]).map(r=>`<tr><th scope="row">${r.label}</th><td class="t"><button class="open-link muted small" data-open="${pb[r.k].d.id}" style="text-align:right">${esc(pb[r.k].d.title)}</button></td><td class="v">${fSec(pb[r.k].v.t)}</td></tr>`).join("")}</tbody></table>`:'<p class="muted" style="margin:0">Record a run from a standing start to set your first times.</p>'}</div>
     <div class="panel"><div class="row"><h3>Distance per week</h3><span class="spacer"></span><span class="muted small">${dLabel()}, last 8 weeks</span></div>
       <div class="bars" role="img" aria-label="Distance per week">${weeks.map(w=>`<div class="b"><span class="num">${w.v?w.v.toFixed(0):""}</span><i style="height:${w.v/mx*80}%"></i><span>${w.label}</span></div>`).join("")}</div></div>
+    <div class="panel"><div class="row"><h3>Units</h3><span class="spacer"></span>
+      <div class="unit-toggle" role="group" aria-label="Units"><button id="u-mi" type="button" aria-pressed="${U()==="mi"}">Miles</button><button id="u-km" type="button" aria-pressed="${U()==="km"}">Kilometers</button></div></div></div>
     <div class="panel"><h3>Garage</h3>
       ${S.settings.vehicles.map(v=>`<div class="row"><span style="flex:1;font-weight:600">${esc(v)}</span>${v===S.settings.vehicle?'<span class="chip">Default</span>':`<button class="btn ghost" data-defveh="${esc(v)}" type="button">Make default</button>`}</div>`).join("")}
       <form class="row" id="veh-form"><input type="text" id="veh-in" placeholder="Add a vehicle, e.g. 2018 Civic Si" style="flex:1;min-width:0" maxlength="60"><button class="btn" type="submit">Add</button></form>
@@ -918,6 +943,7 @@ function viewYou(){
       <div id="reset-confirm" hidden class="row"><span style="flex:1">Erase all drives, photos and comments on this device?</span><button class="btn danger" id="reset-yes" type="button">Erase</button></div>
     </div>
   </div>`;
+  $("#u-mi").onclick=()=>{S.settings.units="mi";save();viewYou()};$("#u-km").onclick=()=>{S.settings.units="km";save();viewYou()};
   document.querySelectorAll("[data-defveh]").forEach(b=>b.onclick=()=>{S.settings.vehicle=b.dataset.defveh;save();viewYou()});
   $("#veh-form").onsubmit=e=>{e.preventDefault();const v=$("#veh-in").value.trim();if(!v)return;if(!S.settings.vehicles.includes(v))S.settings.vehicles.push(v);S.settings.vehicle=v;save();viewYou();toast("Vehicle added")};
   $("#clr-ex").onclick=()=>{S.drives=S.drives.filter(d=>!d.sample);save();viewYou();toast("Examples removed")};
@@ -931,8 +957,7 @@ document.addEventListener("click",e=>{
   const sh=e.target.closest("[data-share]");if(sh){e.preventDefault();openShare(sh.dataset.share);return}
   const o=e.target.closest("[data-open]");if(o){e.preventDefault();openDrive(o.dataset.open)}
 });
-$("#u-mi").onclick=()=>{S.settings.units="mi";save();render()};
-$("#u-km").onclick=()=>{S.settings.units="km";save();render()};
+
 window.addEventListener("hashchange",()=>{if(!$("#sheet").hidden){$("#sheet").hidden=true;document.body.style.overflow=""}render();if(pendingOpen){const id=pendingOpen;pendingOpen=null;openDrive(id,true)}});
 let rz,lastW=window.innerWidth;window.addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(()=>{if(window.innerWidth===lastW)return;lastW=window.innerWidth;if($("#sheet").hidden)render()},200)});
 render();
