@@ -125,6 +125,9 @@ nav.tabs a.rec-tab span.ring{width:56px;height:56px;border-radius:50%;background
 nav.tabs a.rec-tab span.ring svg{width:40px;height:40px}
 nav.tabs a.rec-tab .rec-lbl{color:var(--accent);font-size:14px}
 nav.tabs a.rec-tab[aria-current="page"] span.ring{box-shadow:0 0 0 4px var(--surface),0 0 0 6px var(--accent)}
+img.avatar{object-fit:cover;background:var(--surface-2);padding:0}
+.profile{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.profile .avatar{width:84px;height:84px;font-size:30px}
 .me-btn{display:block;border-radius:50%;text-decoration:none}
 .me-btn[aria-current="page"] .avatar{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--accent)}
 
@@ -182,7 +185,7 @@ input[type=range]{width:100%;accent-color:var(--hl)}
     <span class="logo" aria-hidden="true"><svg width="34" height="34" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#fff4d6"/><path d="M43 33q5-4 10-3q-2 2 0 3q4 1 9-1q-1 5-6 6q3 2 3 5q-6 0-9-3q-3 1-7-1z" fill="#ff8a1f" stroke="#b8400c" stroke-width="1.6" stroke-linejoin="round"/><path d="M48 34q3-1 6 0q-2 2-6 1z" fill="#ffd23f"/><path d="M9 60q-2-14 2-24q3-10 11-15q8-5 16-2q6 2 8 7q5 1 6 5q1 5-4 6q-3 1-6 0q-1 4-6 6q-5 2-10 1q-3 5-2 16z" fill="#61c24a" stroke="#1e2a1c" stroke-width="2.4" stroke-linejoin="round"/><path d="M12 36l-5-3l4-2l-5-5l6 0l-3-6l7 3" fill="none" stroke="#1e2a1c" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/><path d="M27 19l-3-9l6 6M35 17l2-10l2 9" fill="#61c24a" stroke="#1e2a1c" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="33" cy="26" r="5" fill="#fff" stroke="#1e2a1c" stroke-width="1.8"/><circle cx="35" cy="25" r="2" fill="#1e2a1c"/><path d="M47 30l2 0" stroke="#1e2a1c" stroke-width="2" stroke-linecap="round"/><path d="M40 37q-4 2-9 1" fill="none" stroke="#1e2a1c" stroke-width="1.8" stroke-linecap="round"/><path d="M33 38l1 3l2-3" fill="#fff" stroke="#1e2a1c" stroke-width="1.2" stroke-linejoin="round"/></svg></span>
     Dragon Drive
   </div>
-  <a href="#you" class="me-btn" id="me-btn" aria-label="You: profile, stats and settings"><span class="avatar" style="background:var(--accent);color:var(--accent-fg);width:36px;height:36px;font-size:14px" aria-hidden="true">ME</span></a>
+  <a href="#you" class="me-btn" id="me-btn" aria-label="You: profile, stats and settings"></a>
 </div></header>
 
 <main><div class="wrap" id="view"></div></main>
@@ -565,7 +568,12 @@ function drawGG(c,pts){
 /* ================= UI helpers ================= */
 const $=s=>document.querySelector(s);
 function toast(msg){const t=$("#toast");t.textContent=msg;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,2600)}
-function avatar(p,size){return `<span class="avatar" style="background:${p.color}${size?`;width:${size}px;height:${size}px`:""}" aria-hidden="true">${esc(initials(p.name))}</span>`}
+// Your profile photo lives in IndexedDB next to drive photos.
+const AV={url:null};
+async function loadAvatar(){AV.url=S.settings.avatar?await photos.url("avatar:me"):null;document.querySelectorAll("img[data-avatar]").forEach(i=>{if(AV.url)i.src=AV.url})}
+function avatar(p,size){
+  if(p.id==="me"&&S.settings.avatar)return `<img class="avatar" data-avatar alt="" ${AV.url?`src="${AV.url}"`:""} style="${size?`width:${size}px;height:${size}px`:""}">`;
+  return `<span class="avatar" style="background:${p.color}${size?`;width:${size}px;height:${size}px`:""}" aria-hidden="true">${esc(initials(p.name))}</span>`}
 function kudosCount(d){return (S.kudosFrom[d.id]||[]).length+(S.kudos[d.id]?1:0)}
 const heart=`<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 21V10l4-7c1.5 0 2.5 1 2.2 2.6L12.6 9H19a2 2 0 0 1 2 2.3l-1.3 7.6A2.5 2.5 0 0 1 17.2 21H7zM3 10h2.5v11H3z"/></svg>`;
 function statBlock(k,v,u){return `<div class="stat"><div class="k">${k}</div><div class="v">${v}${u?`<small>${u}</small>`:""}</div></div>`}
@@ -577,7 +585,7 @@ function render(){
   const tab=(location.hash||"#feed").slice(1);
   current=["feed","record","routes","you"].includes(tab)?tab:"feed";
   document.querySelectorAll("nav.tabs a").forEach(a=>a.setAttribute("aria-current",a.dataset.tab===current?"page":"false"));
-  $("#me-btn").setAttribute("aria-current",current==="you"?"page":"false");
+  $("#me-btn").setAttribute("aria-current",current==="you"?"page":"false");$("#me-btn").innerHTML=avatar(person("me"),36).replace('class="avatar"','class="avatar" style="color:var(--accent-fg);font-size:14px"');
   ({feed:viewFeed,record:viewRecord,routes:viewRoutes,you:viewYou})[current]();
   window.scrollTo(0,0);
 }
@@ -926,6 +934,13 @@ function pickPhoto(d){
   inp.click();
 }
 function loadImage(src){return new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=rej;im.src=src})}
+function pickImage(cb){const inp=$("#photo-in");inp.value="";inp.onchange=async()=>{const f=inp.files&&inp.files[0];if(!f)return;try{await cb(f)}catch(e){toast("That file couldn't be read as a photo. Try a JPEG or PNG.")}};inp.click()}
+async function squareCrop(file,size){
+  const url=URL.createObjectURL(file);try{const im=await loadImage(url);const m=Math.min(im.naturalWidth,im.naturalHeight);
+    const c=document.createElement("canvas");c.width=c.height=size;c.getContext("2d").drawImage(im,(im.naturalWidth-m)/2,(im.naturalHeight-m)/2,m,m,0,0,size,size);
+    return await new Promise((res,rej)=>c.toBlob(b=>b?res(b):rej(new Error("encode")),"image/jpeg",0.88));
+  }finally{URL.revokeObjectURL(url)}
+}
 async function downscale(file,max){
   const url=URL.createObjectURL(file);try{const im=await loadImage(url);
     const k=Math.min(1,max/Math.max(im.naturalWidth,im.naturalHeight));const c=document.createElement("canvas");c.width=Math.round(im.naturalWidth*k);c.height=Math.round(im.naturalHeight*k);
@@ -974,8 +989,15 @@ async function buildCard(d){
   // title block
   const p=person(d.who);g.textBaseline="alphabetic";
   g.fillStyle=FG;g.font=`700 72px ${DF}`;fitText(g,d.title,60,top+70,W-120,72,DF);
-  g.fillStyle=MUTED;g.font=`500 30px ${BF}`;
-  g.fillText(`${p.name==="You"?"":p.name+" · "}${new Date(d.start).toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})} · ${d.vehicle}`.slice(0,70),60,top+120);
+  // driver row: avatar circle, name, then date and vehicle
+  const ax=92,ay=top+130,ar=32;const who=d.who==="me"?(S.settings.name||""):p.name;
+  let face=null;if(d.who==="me"&&S.settings.avatar){const u=await photos.url("avatar:me");if(u)try{face=await loadImage(u)}catch(e){}}
+  g.save();g.beginPath();g.arc(ax,ay,ar,0,7);g.closePath();
+  if(face){g.clip();g.drawImage(face,ax-ar,ay-ar,ar*2,ar*2)}else{g.fillStyle=d.who==="me"?GREEN:p.color;g.fill();g.fillStyle=d.who==="me"?BG:"#fff";g.font=`700 28px ${DF}`;g.textAlign="center";g.textBaseline="middle";g.fillText(d.who==="me"?(who?initials(who):"ME"):initials(p.name),ax,ay+1)}
+  g.restore();g.strokeStyle="rgba(255,255,255,.85)";g.lineWidth=3;g.beginPath();g.arc(ax,ay,ar,0,7);g.stroke();
+  g.textAlign="left";g.textBaseline="alphabetic";const meta=`${new Date(d.start).toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})} · ${d.vehicle}`.slice(0,60);
+  if(who){g.fillStyle=FG;g.font=`600 32px ${BF}`;g.fillText(who.slice(0,40),142,ay-6);g.fillStyle=MUTED;g.font=`500 26px ${BF}`;g.fillText(meta,142,ay+28)}
+  else{g.fillStyle=MUTED;g.font=`500 30px ${BF}`;g.fillText(meta,142,ay+10)}
   // metrics
   const s=d.stats;const m=[["Distance",fDist(s.dist).toFixed(fDist(s.dist)<10?2:1),dLabel()],["Top speed",Math.round(fSpeed(s.max)),sLabel()]];
   if(s.altMin!=null&&s.up>3)m.push(["Elev. gain",Math.round(fAlt(s.up)),aLabel()]);
@@ -984,7 +1006,7 @@ async function buildCard(d){
   if(m.length<6)m.push(["Moving time",fDur(s.moving),""]);
   if(m.length<6)m.push(["Avg speed",Math.round(fSpeed(s.avg)),sLabel()]);
   const colW=(W-120)/3;
-  m.slice(0,6).forEach(([k,v,u],i)=>{const x=60+(i%3)*colW,y=top+200+Math.floor(i/3)*150;
+  m.slice(0,6).forEach(([k,v,u],i)=>{const x=60+(i%3)*colW,y=top+215+Math.floor(i/3)*145;
     g.fillStyle=MUTED;g.font=`600 26px ${DF}`;g.fillText(k.toUpperCase(),x,y);
     g.fillStyle=FG;g.font=`700 76px ${DF}`;g.fillText(String(v),x,y+76);const vw=g.measureText(String(v)).width;
     g.fillStyle=MUTED;g.font=`600 30px ${DF}`;g.fillText(u,x+vw+8,y+76)});
@@ -1075,6 +1097,11 @@ function viewYou(){
   const mx=Math.max(1,...weeks.map(w=>w.v));
   $("#view").innerHTML=`<div class="stack">
     <div><div class="eyebrow">Your logbook and settings</div><h1>You</h1></div>
+    <div class="panel"><div class="profile">${avatar(person("me"),84)}
+      <div class="stack" style="flex:1;min-width:200px;gap:8px">
+        <label class="field">Name on share cards<input type="text" id="me-name" value="${esc(S.settings.name||"")}" placeholder="Your name or handle" maxlength="40"></label>
+        <div class="row"><button class="btn" id="av-pick" type="button">${S.settings.avatar?"Change photo":"Add a profile photo"}</button>${S.settings.avatar?`<button class="btn ghost" id="av-rm" type="button">Remove</button>`:""}</div>
+      </div></div></div>
     <div class="detail-stats">${statBlock("Drives",mine.length)}${statBlock("Distance",fDist(tot.dist).toFixed(0),dLabel())}${statBlock("Climbed",Math.round(fAlt(tot.up)),aLabel())}${statBlock("Top speed",Math.round(fSpeed(tot.top)),sLabel())}${statBlock("Max g",fG(tot.g),"g")}</div>
     <div class="panel"><h3>Personal bests</h3>${Object.keys(pb).length?`<table class="runs"><tbody>${RUN_DEFS.filter(r=>pb[r.k]).map(r=>`<tr><th scope="row">${r.label}</th><td class="t"><button class="open-link muted small" data-open="${pb[r.k].d.id}" style="text-align:right">${esc(pb[r.k].d.title)}</button></td><td class="v">${fSec(pb[r.k].v.t)}</td></tr>`).join("")}</tbody></table>`:'<p class="muted" style="margin:0">Record a run from a standing start to set your first times.</p>'}</div>
     <div class="panel"><div class="row"><h3>Distance per week</h3><span class="spacer"></span><span class="muted small">${dLabel()}, last 8 weeks</span></div>
@@ -1092,6 +1119,9 @@ function viewYou(){
       <div id="reset-confirm" hidden class="row"><span style="flex:1">Erase all drives, photos and comments on this device?</span><button class="btn danger" id="reset-yes" type="button">Erase</button></div>
     </div>
   </div>`;
+  $("#me-name").onchange=e=>{S.settings.name=e.target.value.trim();save();toast("Name saved")};
+  $("#av-pick").onclick=()=>pickImage(async f=>{await photos.put("avatar:me",await squareCrop(f,400));S.settings.avatar=true;save();await loadAvatar();render();toast("Profile photo updated")});
+  const rmav=$("#av-rm");if(rmav)rmav.onclick=async()=>{await photos.del("avatar:me");S.settings.avatar=false;AV.url=null;save();render();toast("Profile photo removed")};
   $("#u-mi").onclick=()=>{S.settings.units="mi";save();viewYou()};$("#u-km").onclick=()=>{S.settings.units="km";save();viewYou()};
   document.querySelectorAll("[data-defveh]").forEach(b=>b.onclick=()=>{S.settings.vehicle=b.dataset.defveh;save();viewYou()});
   $("#veh-form").onsubmit=e=>{e.preventDefault();const v=$("#veh-in").value.trim();if(!v)return;if(!S.settings.vehicles.includes(v))S.settings.vehicles.push(v);S.settings.vehicle=v;save();viewYou();toast("Vehicle added")};
@@ -1112,6 +1142,6 @@ document.addEventListener("change",e=>{if(e.target.id==="solid-color"){S.setting
 function rerender(){if(SHEET&&!$("#sheet").hidden){if(SHEET.kind==="share")openShare(SHEET.id,SHEET.back);else openDrive(SHEET.id)}else render()}
 window.addEventListener("hashchange",()=>{if(!$("#sheet").hidden){if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET=null;$("#sheet").hidden=true;document.body.style.overflow=""}render();if(pendingOpen){const id=pendingOpen;pendingOpen=null;openDrive(id,true)}});
 let rz,lastW=window.innerWidth;window.addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(()=>{if(window.innerWidth===lastW)return;lastW=window.innerWidth;if($("#sheet").hidden)render()},200)});
-render();
+render();loadAvatar();
 })();
 </script>
