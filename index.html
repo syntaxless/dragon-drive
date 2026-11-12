@@ -70,7 +70,10 @@ h3{font-size:18px}
 .btn.danger{color:var(--bad);border-color:currentColor;background:transparent}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:600;background:var(--surface-2);color:var(--muted);white-space:nowrap}
-.veh-row{display:flex;gap:12px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.veh-row{display:flex;gap:12px;align-items:center;padding:8px 0;border:0;border-top:1px solid var(--line);background:none;width:100%;font:inherit;color:inherit;cursor:pointer}
+.veh-gallery{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.veh-gallery figure{margin:0;position:relative;border-radius:12px;overflow:hidden;background:var(--surface-2)}.veh-gallery figure.cover{grid-column:1/-1}.veh-gallery img{display:block;width:100%;aspect-ratio:4/3;object-fit:cover}.veh-gallery figure.cover img{aspect-ratio:16/10}
+.pic-x{position:absolute;top:6px;right:6px;width:30px;height:30px;border-radius:50%;border:0;background:rgba(0,0,0,.6);color:#fff;font-size:18px;line-height:1}
+.veh-about{margin:0;white-space:pre-wrap}.garage-grid figure[role=button]{cursor:pointer}
 .veh-thumb{width:64px;height:48px;border-radius:10px;border:1px dashed var(--line);background:var(--surface-2);color:var(--muted);display:grid;place-items:center;overflow:hidden;flex:none;padding:0;cursor:pointer}
 .veh-thumb img{width:100%;height:100%;object-fit:cover}
 .user-link{display:contents;cursor:pointer;color:inherit}.link-btn{background:none;border:0;padding:0;font:inherit;color:inherit;text-decoration:underline;text-underline-offset:2px;cursor:pointer}
@@ -476,11 +479,11 @@ const Sync=(()=>{
     async verify(email,code){const j=await auth("verify",{type:"email",email,token:code});keep(fromAuth(j));this.adopt();S.settingsAt=0;loadAvatar();await this.uploadAll();await run();await Social.refresh()},
     // Each account keeps its own copy of its data on this phone, so switching accounts never mixes them.
     async signOut(){if(!ses)return;await run();const uid=ses.uid;try{localStorage.setItem(KEY+":"+uid,JSON.stringify(S))}catch(e){}
-      await photos.del("avatar:me",true);for(const n of Object.keys(S.settings.garage||{}))await photos.del("veh:"+n,true);AV.url=null;
+      await photos.del("avatar:me",true);for(const [n,i] of Object.entries(S.settings.garage||{})){await photos.del("veh:"+n,true);for(const ph of i.photos||[])await photos.del(vehPhotoId(i,ph),true)}AV.url=null;
       keep(null);status="";Social.reset();S=seed();S.settings.garage={};lastSJ=JSON.stringify(S.settings);mem=S;try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}},
     adopt(){if(!ses)return;let st=null;try{st=JSON.parse(localStorage.getItem(KEY+":"+ses.uid)||"null")}catch(e){}
       if(st&&!S.drives.some(isReal)){S=st;lastSJ=JSON.stringify(S.settings);mem=S;try{localStorage.setItem(KEY,JSON.stringify(S));localStorage.removeItem(KEY+":"+ses.uid)}catch(e){}}},
-    async uploadAll(){const ids=S.drives.filter(d=>d.who==="me"&&!d.sample&&d.photo).map(d=>d.id);if(S.settings.avatar)ids.push("avatar:me");for(const [n,i] of Object.entries(S.settings.garage||{}))if(i.photoAt)ids.push("veh:"+n);for(const id of ids){const b=await photos.get(id);if(b)await this.putPhoto(id,b)}},
+    async uploadAll(){const ids=S.drives.filter(d=>d.who==="me"&&!d.sample&&d.photo).map(d=>d.id);if(S.settings.avatar)ids.push("avatar:me");for(const [n,i] of Object.entries(S.settings.garage||{})){if(i.photoAt)ids.push("veh:"+n);for(const ph of i.photos||[])ids.push(vehPhotoId(i,ph))}for(const id of ids){const b=await photos.get(id);if(b)await this.putPhoto(id,b)}},
     async putPhoto(id,blob){if(!on()||!ses)return;try{await api(objPath(id),{method:"POST",headers:{"Content-Type":blob.type||"image/jpeg","x-upsert":"true"},body:blob})}catch(e){}},
     async delPhoto(id){if(!on()||!ses)return;try{await api("/storage/v1/object/photos",{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({prefixes:[ses.uid+"/"+id]})})}catch(e){}},
     async getPhoto(id){if(!on()||!ses||String(id).startsWith("video:"))return null;try{const r=await api("/storage/v1/object/authenticated/photos/"+ses.uid+"/"+encodeURIComponent(id));return r.ok?await r.blob():null}catch(e){return null}}
@@ -545,9 +548,16 @@ const Social=(()=>{
         if(info.priv){if(info.pubPhoto){await Sync.api("/storage/v1/object/avatars",{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({prefixes:[`${u.uid}/veh-${info.key}.jpg`]})}).catch(()=>{});info.pubPhoto=0}continue}
         let url=null;if(info.photoAt){if(info.pubPhoto!==info.photoAt){const b=await photos.get("veh:"+n);if(b){const r=await Sync.api("/storage/v1/object/"+path,{method:"POST",headers:{"Content-Type":b.type||"image/jpeg","x-upsert":"true"},body:b});if(r.ok)info.pubPhoto=info.photoAt}}
           if(info.pubPhoto)url=CLOUD.url+"/storage/v1/object/public/"+path+"?v="+info.photoAt}
-        rows.push({user_id:u.uid,name:n,photo_url:url,pos:pos++})}
+        const extra=[];for(const ph of info.photos||[]){const pp=`avatars/${u.uid}/veh-${info.key}-${ph.k}.jpg`;
+          if(ph.pub!==ph.at){const b=await photos.get(vehPhotoId(info,ph));if(b){const r=await Sync.api("/storage/v1/object/"+pp,{method:"POST",headers:{"Content-Type":b.type||"image/jpeg","x-upsert":"true"},body:b});if(r.ok)ph.pub=ph.at}}
+          if(ph.pub)extra.push(CLOUD.url+"/storage/v1/object/public/"+pp+"?v="+ph.at)}
+        for(const k of info.dropped||[])await Sync.api("/storage/v1/object/avatars",{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({prefixes:[`${u.uid}/veh-${info.key}-${k}.jpg`]})}).catch(()=>{});
+        delete info.dropped;
+        rows.push({user_id:u.uid,name:n,photo_url:url,pos:pos++,about:(info.about||"").slice(0,2000),photos:extra})}
       S.settings.garage=G;
-      await J("/rest/v1/vehicles?user_id=eq."+u.uid,{method:"DELETE"});if(rows.length)await J("/rest/v1/vehicles",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify(rows)});
+      await J("/rest/v1/vehicles?user_id=eq."+u.uid,{method:"DELETE"});
+      // vehicle pages need vehicle-pages.sql; until it's run, publish the basics
+      if(rows.length)await J("/rest/v1/vehicles",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify(rows)}).catch(e=>{if(e.code==="PGRST204"||/column/i.test(e.message))return J("/rest/v1/vehicles",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify(rows.map(({about,photos,...r})=>r))});throw e});
       S.pubGarage=JSON.stringify(S.settings.vehicles.map(n=>[n,G[n]||{}]));changed=true}
     for(const d of S.drives.filter(isReal)){
       const want=(d.vis||S.settings.defaultVis||"followers")!=="private",was=S.pub[d.id];
@@ -791,6 +801,17 @@ function avatar(p,size,extra=""){
   if(p.avatarUrl)return `<img class="avatar" alt="" src="${esc(p.avatarUrl)}" style="${size?`width:${size}px;height:${size}px;`:""}${extra}">`;
   if(p.id==="me"&&S.settings.avatar)return `<img class="avatar" data-avatar alt="" ${AV.url?`src="${AV.url}"`:""} style="${size?`width:${size}px;height:${size}px;`:""}${extra}">`;
   return `<span class="avatar" style="background:${p.color}${p.id==="me"?";color:var(--accent-fg)":""}${size?`;width:${size}px;height:${size}px`:""};${extra}" aria-hidden="true">${esc(initials(p.name))}</span>`}
+// Vehicles: each garage entry can have a cover photo (veh:<name>), up to 6 more photos and a description.
+const VEH_MAX_PHOTOS=6;
+function vehPhotoId(info,ph){return "vehp:"+info.key+":"+ph.k}
+function vehInfo(n){S.settings.garage=S.settings.garage||{};const g=S.settings.garage[n]=S.settings.garage[n]||{};if(!g.key)g.key=uid();return g}
+async function renameVehicle(from,to){
+  to=to.trim().slice(0,60);if(!to||to===from)return from;if(S.settings.vehicles.includes(to)){toast("You already have a vehicle called that");return from}
+  S.settings.vehicles=S.settings.vehicles.map(v=>v===from?to:v);if(S.settings.vehicle===from)S.settings.vehicle=to;
+  const G=S.settings.garage||{};if(G[from]){G[to]=G[from];delete G[from]}
+  const b=await photos.get("veh:"+from);if(b){await photos.put("veh:"+to,b);await photos.del("veh:"+from)}
+  for(const d of S.drives)if(d.who==="me"&&d.vehicle===from)d.vehicle=to;
+  save();return to}
 function kudosCount(d){const k=Social.ok()&&Social.published(d)&&Social.kudos(d.id);return k?k.n:(S.kudosFrom[d.id]||[]).length+(S.kudos[d.id]?1:0)}
 function kudosMine(d){const k=Social.ok()&&Social.published(d)&&Social.kudos(d.id);return k?k.mine:!!S.kudos[d.id]}
 function commentsOf(d){const c=Social.ok()&&Social.published(d)&&Social.comments(d.id);return c||S.comments[d.id]||[]}
@@ -1149,6 +1170,49 @@ function openDrive(id,fresh){
   $("#del").onclick=()=>{$("#del-confirm").hidden=false};$("#del-no").onclick=()=>{$("#del-confirm").hidden=true};
   $("#del-yes").onclick=()=>{if(d.video)delDriveVideo(d.video);S.drives=S.drives.filter(x=>x.id!==d.id);(S.deleted=S.deleted||[]).push(d.id);photos.del(d.id);save();closeSheet();toast("Drive deleted")};
 }
+function vehStats(list){return list.reduce((a,d)=>({n:a.n+1,dist:a.dist+d.stats.dist,top:Math.max(a.top,d.stats.max)}),{n:0,dist:0,top:0})}
+function vehDriveRows(list){return list.slice(0,10).map(d=>`<button class="effort open-link" data-open="${d.id}" style="display:flex"><div style="flex:1;min-width:0"><div style="font-weight:600">${esc(d.title)}</div><div class="muted small">${ago(d.start)} · ${fDist(d.stats.dist).toFixed(1)} ${dLabel()} · top ${Math.round(fSpeed(d.stats.max))} ${sLabel()}</div></div></button>`).join("")}
+// spec: {name} for one of mine, or {row, who, drives} for someone else's
+async function openVehicle(spec){
+  if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET={kind:"vehicle",spec};const sh=$("#sheet");const wasOpen=!sh.hidden;
+  const mine=!spec.row;let name,about,pics,drives,owner;
+  if(mine){name=spec.name;if(!S.settings.vehicles.includes(name)){closeSheet();return}const g=vehInfo(name);about=g.about||"";drives=S.drives.filter(d=>d.who==="me"&&!d.sample&&d.vehicle===name).sort((a,b)=>b.start-a.start);
+    pics=[...(g.photoAt?[{id:"veh:"+name,cover:true}]:[]),...(g.photos||[]).map(ph=>({id:vehPhotoId(g,ph),k:ph.k}))]}
+  else{name=spec.row.name;about=spec.row.about||"";owner=Social.person(spec.who);drives=(spec.drives||[]).filter(d=>d.vehicle===name);
+    pics=[...(spec.row.photo_url?[{url:spec.row.photo_url,cover:true}]:[]),...(spec.row.photos||[]).map(u=>({url:u}))]}
+  const st=vehStats(drives),g=mine?vehInfo(name):null;
+  const gallery=pics.map((x,i)=>`<figure class="${i===0?"cover":""}"><img ${x.url?`src="${esc(x.url)}"`:`data-vpic="${esc(x.id)}"`} alt="${esc(name)}${i?" photo "+(i+1):""}" loading="lazy">${mine&&!x.cover?`<button class="pic-x" data-vpicrm="${esc(x.k)}" type="button" aria-label="Remove photo">×</button>`:""}</figure>`).join("");
+  sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span>${mine&&g.priv?'<span class="chip">🔒 Private</span>':""}</div></div>
+  <div class="wrap body stack">
+    ${mine?`<input type="text" id="veh-name" value="${esc(name)}" maxlength="60" aria-label="Vehicle name" style="font-family:var(--display);font-size:26px;font-weight:700">`
+      :`<div><div class="eyebrow"><a href="#u/${esc(owner.handle)}" style="color:inherit">${nameHtml(owner)}</a>'s garage</div><h1 style="text-transform:none">${esc(name)}</h1></div>`}
+    ${pics.length?`<div class="veh-gallery">${gallery}</div>`:mine?"":`<div class="empty">No photos yet.</div>`}
+    ${mine?`<div class="row"><button class="btn" id="veh-cover" type="button">${g.photoAt?"Change cover photo":"Add a cover photo"}</button>${(g.photos||[]).length<VEH_MAX_PHOTOS?`<button class="btn" id="veh-more" type="button">Add photos</button>`:""}</div>`:""}
+    <div class="detail-stats">${statBlock("Drives",st.n)}${statBlock("Distance",fDist(st.dist).toFixed(fDist(st.dist)<10?1:0),dLabel())}${statBlock("Top speed",Math.round(fSpeed(st.top)),sLabel())}</div>
+    <div class="panel"><h3>Specs and mods</h3>${mine?`<textarea id="veh-about" rows="7" maxlength="2000" placeholder="Engine, power, suspension, wheels, tune… list what you've done to it.">${esc(about)}</textarea><p class="muted small" style="margin:0">${g.priv?"This vehicle is private, so only you see this.":"Shows on your profile for anyone who opens this vehicle."}</p>`
+      :about?`<p class="veh-about">${esc(about)}</p>`:`<p class="muted" style="margin:0">Nothing listed yet.</p>`}</div>
+    ${drives.length?`<div class="panel"><h3>Recent drives</h3>${vehDriveRows(drives)}</div>`:""}
+    ${mine?`<div class="panel"><div class="row" style="gap:8px">${name===S.settings.vehicle?'<span class="chip">Default for new drives</span>':`<button class="btn" id="veh-def" type="button">Make default</button>`}<button class="btn" id="veh-priv" type="button" aria-pressed="${!!g.priv}">${g.priv?"🔒 Private":"Visible on profile"}</button><span class="spacer"></span>${S.settings.vehicles.length>1?`<button class="btn ghost" id="veh-rm" type="button">Remove vehicle</button>`:""}</div></div>`:""}
+  </div>`;
+  sh.hidden=false;if(!wasOpen)sh.scrollTop=0;document.body.style.overflow="hidden";$("#sh-x").onclick=closeSheet;
+  sh.querySelectorAll("img[data-vpic]").forEach(async im=>{const u=await photos.url(im.dataset.vpic);if(u)im.src=u;else im.closest("figure").hidden=true});
+  if(!mine)return;
+  const again=()=>openVehicle(SHEET&&SHEET.kind==="vehicle"?SHEET.spec:{name});
+  $("#veh-name").onchange=async e=>{const to=await renameVehicle(name,e.target.value);e.target.value=to;if(to!==name){toast("Renamed");openVehicle({name:to})}};
+  $("#veh-about").onchange=e=>{vehInfo(name).about=e.target.value.slice(0,2000);save();toast("Saved")};
+  $("#veh-cover").onclick=()=>pickImage(async f=>{await photos.put("veh:"+name,await downscale(f,1600));vehInfo(name).photoAt=Date.now();save();again();toast("Cover photo updated")});
+  const more=$("#veh-more");if(more)more.onclick=()=>pickImages(async files=>{const gi=vehInfo(name);gi.photos=gi.photos||[];let n=0;
+    for(const f of files){if(gi.photos.length>=VEH_MAX_PHOTOS)break;try{const ph={k:uid(),at:Date.now()};await photos.put(vehPhotoId(gi,ph),await downscale(f,1600));gi.photos.push(ph);n++}catch(e){}}
+    save();again();toast(n?`Added ${n} photo${n===1?"":"s"}`:"Those files couldn't be read as photos")});
+  sh.querySelectorAll("[data-vpicrm]").forEach(b=>b.onclick=async()=>{const gi=vehInfo(name);const ph=(gi.photos||[]).find(x=>x.k===b.dataset.vpicrm);if(!ph)return;
+    gi.photos=gi.photos.filter(x=>x!==ph);if(ph.pub)(gi.dropped=gi.dropped||[]).push(ph.k);await photos.del(vehPhotoId(gi,ph));save();again();toast("Photo removed")});
+  const df=$("#veh-def");if(df)df.onclick=()=>{S.settings.vehicle=name;save();again()};
+  $("#veh-priv").onclick=()=>{const gi=vehInfo(name);gi.priv=!gi.priv;save();again();toast(gi.priv?`${name} is private. Its name is hidden on your shared drives too.`:`${name} shows on your profile`)};
+  const rm=$("#veh-rm");if(rm)rm.onclick=async()=>{if(!confirm(`Remove ${name} from your garage? Its photos and description go too. Your drives stay.`))return;
+    const gi=vehInfo(name);for(const ph of gi.photos||[])await photos.del(vehPhotoId(gi,ph));await photos.del("veh:"+name);
+    S.settings.vehicles=S.settings.vehicles.filter(x=>x!==name);if(S.settings.vehicle===name)S.settings.vehicle=S.settings.vehicles[0];delete S.settings.garage[name];save();closeSheet();toast("Vehicle removed")};
+}
+function pickImages(cb){const inp=$("#photo-in");inp.value="";inp.multiple=true;inp.onchange=async()=>{inp.multiple=false;const fs=[...(inp.files||[])];if(fs.length)await cb(fs)};inp.click()}
 function closeSheet(){if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET=null;$("#sheet").hidden=true;document.body.style.overflow="";render()}
 function pickPhoto(d){
   const inp=$("#photo-in");inp.value="";
@@ -1158,7 +1222,7 @@ function pickPhoto(d){
   inp.click();
 }
 function loadImage(src){return new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=rej;im.src=src})}
-function pickImage(cb){const inp=$("#photo-in");inp.value="";inp.onchange=async()=>{const f=inp.files&&inp.files[0];if(!f)return;try{await cb(f)}catch(e){toast("That file couldn't be read as a photo. Try a JPEG or PNG.")}};inp.click()}
+function pickImage(cb){const inp=$("#photo-in");inp.value="";inp.multiple=false;inp.onchange=async()=>{const f=inp.files&&inp.files[0];if(!f)return;try{await cb(f)}catch(e){toast("That file couldn't be read as a photo. Try a JPEG or PNG.")}};inp.click()}
 async function squareCrop(file,size){
   const url=URL.createObjectURL(file);try{const im=await loadImage(url);const m=Math.min(im.naturalWidth,im.naturalHeight);
     const c=document.createElement("canvas");c.width=c.height=size;c.getContext("2d").drawImage(im,(im.naturalWidth-m)/2,(im.naturalHeight-m)/2,m,m,0,0,size,size);
@@ -1462,10 +1526,11 @@ async function viewProfile(handle){
     </div></div></div>
     <div class="detail-stats">${statBlock("Drives",ds.length)}${statBlock("Distance",fDist(dist).toFixed(fDist(dist)<10?1:0),dLabel())}${statBlock("Top speed",Math.round(fSpeed(top)),sLabel())}</div>
     <div class="panel" id="p-list" hidden></div>
-    ${data.vehicles.length?`<div class="panel"><h3>Garage</h3><div class="garage-grid">${data.vehicles.map(x=>`<figure>${x.photo_url?`<img src="${esc(x.photo_url)}" alt="${esc(x.name)}" loading="lazy">`:`<div class="ph"></div>`}<figcaption>${esc(x.name)}</figcaption></figure>`).join("")}</div></div>`:""}
+    ${data.vehicles.length?`<div class="panel"><h3>Garage</h3><div class="garage-grid">${data.vehicles.map((x,i)=>`<figure data-vehview="${i}" role="button" tabindex="0">${x.photo_url?`<img src="${esc(x.photo_url)}" alt="${esc(x.name)}" loading="lazy">`:`<div class="ph"></div>`}<figcaption>${esc(x.name)}</figcaption></figure>`).join("")}</div></div>`:""}
     ${ds.length?ds.map(feedCard).join(""):`<div class="empty">${fol||me?"No shared drives yet.":"Follow @"+esc(p.handle)+" to see their drives."}</div>`}
   </div>`;
   document.querySelectorAll("canvas[data-route]").forEach(c=>{const d=findDrive(c.dataset.route);if(d)paintRoute(c,d.pts,{thin:true,key:d.id})});fillPhotos();
+  document.querySelectorAll("[data-vehview]").forEach(f=>{const go=()=>openVehicle({row:data.vehicles[+f.dataset.vehview],who:"u:"+p.id,drives:ds});f.onclick=go;f.onkeydown=e=>{if(e.key==="Enter")go()}});
   const showList=(title,ids)=>{const box=$("#p-list"),open=!box.hidden&&box.dataset.k===title;box.hidden=open;box.dataset.k=title;if(open)return;
     box.innerHTML=`<h3>${title}</h3>`+(ids.length?ids.map(id=>{const q=Social.SOC.profiles.get(id);if(!q)return"";const qp=Social.person("u:"+id);return `<a class="effort" href="#u/${esc(q.handle)}" style="display:flex;text-decoration:none;color:inherit">${avatar(qp,32)}<div style="flex:1;min-width:0"><div style="font-weight:600">${nameHtml(qp)}</div><div class="muted small">@${esc(q.handle)}</div></div></a>`}).join(""):'<p class="muted small" style="margin:0">Nobody yet.</p>');box.scrollIntoView({behavior:"smooth",block:"nearest"})};
   $("#p-fol").onclick=()=>showList("Followers",data.followerIds);$("#p-fing").onclick=()=>showList("Following",data.followingIds);
@@ -1569,9 +1634,9 @@ function viewYou(){
     <div class="panel"><h3>Map style</h3><p class="muted small" style="margin:0">Used behind routes everywhere, including share cards.</p>${stylePicker()}</div>
     <div class="panel"><div class="row"><h3>Units</h3><span class="spacer"></span>
       <div class="unit-toggle" role="group" aria-label="Units"><button id="u-mi" type="button" aria-pressed="${U()==="mi"}">Miles</button><button id="u-km" type="button" aria-pressed="${U()==="km"}">Kilometers</button></div></div></div>
-    <div class="panel"><h3>Garage</h3><p class="muted small" style="margin:0">Cars, bikes, boats, anything you drive. ${Social.ready()?"Vehicles show on your profile unless you lock them.":"Add a photo for each one."}</p>
-      ${S.settings.vehicles.map((v,i)=>{const gi=(S.settings.garage||{})[v]||{};return `<div class="veh-row"><button class="veh-thumb" data-vehphoto="${i}" type="button" aria-label="${gi.photoAt?"Change":"Add"} photo of ${esc(v)}">${gi.photoAt?`<img data-vehimg="${esc(v)}" alt="">`:`<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>`}</button>
-        <div style="flex:1;min-width:0"><div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(v)}</div><div class="row" style="gap:6px;margin-top:4px">${v===S.settings.vehicle?'<span class="chip">Default</span>':`<button class="chip pick" data-defveh="${i}" type="button">Make default</button>`}<button class="chip pick" data-vehpriv="${i}" type="button" aria-pressed="${!!gi.priv}">${gi.priv?"🔒 Private":"Visible"}</button>${S.settings.vehicles.length>1?`<button class="chip pick" data-vehrm="${i}" type="button" aria-label="Remove ${esc(v)}">Remove</button>`:""}</div></div></div>`}).join("")}
+    <div class="panel"><h3>Garage</h3><p class="muted small" style="margin:0">Cars, bikes, boats, anything you drive. Tap one to add photos and list your mods.${Social.ready()?" Vehicles show on your profile unless you make them private.":""}</p>
+      ${S.settings.vehicles.map((v,i)=>{const gi=(S.settings.garage||{})[v]||{};const np=(gi.photoAt?1:0)+(gi.photos||[]).length;return `<button class="veh-row" data-vehopen="${i}" type="button"><span class="veh-thumb">${gi.photoAt?`<img data-vehimg="${esc(v)}" alt="">`:`<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>`}</span>
+        <span style="flex:1;min-width:0;text-align:left"><span style="display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(v)}</span><span class="muted small">${[v===S.settings.vehicle?"Default":"",gi.priv?"🔒 Private":"",np?np+(np===1?" photo":" photos"):"",gi.about?"Mods listed":""].filter(Boolean).join(" · ")||"Tap to add photos and mods"}</span></span><span class="muted" aria-hidden="true">›</span></button>`}).join("")}
       <form class="row" id="veh-form"><input type="text" id="veh-in" placeholder="Add a vehicle, e.g. 2018 Civic Si or Ducati Monster" style="flex:1;min-width:0" maxlength="60"><button class="btn" type="submit">Add</button></form>
     </div>
     <div class="panel"><h3>Your drives</h3>${mine.map(d=>`<button class="effort open-link" data-open="${d.id}" style="display:flex"><div style="flex:1;min-width:0"><div style="font-weight:600">${esc(d.title)}</div><div class="muted small">${ago(d.start)} · ${fDist(d.stats.dist).toFixed(1)} ${dLabel()} · top ${Math.round(fSpeed(d.stats.max))} ${sLabel()}</div></div>${headlineRun(d.stats)?`<span class="chip run">${headlineRun(d.stats).label} ${fSec(headlineRun(d.stats).v.t)}</span>`:""}</button>`).join("")||'<p class="muted" style="margin:0">Nothing recorded yet.</p>'}</div>
@@ -1590,10 +1655,7 @@ function viewYou(){
   const rmav=$("#av-rm");if(rmav)rmav.onclick=async()=>{await photos.del("avatar:me");S.settings.avatar=false;AV.url=null;save();render();toast("Profile photo removed")};
   $("#u-mi").onclick=()=>{S.settings.units="mi";save();viewYou()};$("#u-km").onclick=()=>{S.settings.units="km";save();viewYou()};
   const VN=i=>S.settings.vehicles[+i];const GI=n=>{S.settings.garage=S.settings.garage||{};return S.settings.garage[n]=S.settings.garage[n]||{}};
-  document.querySelectorAll("[data-defveh]").forEach(b=>b.onclick=()=>{S.settings.vehicle=VN(b.dataset.defveh);save();viewYou()});
-  document.querySelectorAll("[data-vehpriv]").forEach(b=>b.onclick=()=>{const n=VN(b.dataset.vehpriv),g=GI(n);g.priv=!g.priv;save();viewYou();toast(g.priv?`${n} is private. Its name is hidden on your shared drives too.`:`${n} shows on your profile`)});
-  document.querySelectorAll("[data-vehrm]").forEach(b=>b.onclick=async()=>{const n=VN(b.dataset.vehrm);S.settings.vehicles=S.settings.vehicles.filter(x=>x!==n);if(S.settings.vehicle===n)S.settings.vehicle=S.settings.vehicles[0];if(S.settings.garage)delete S.settings.garage[n];await photos.del("veh:"+n);save();viewYou();toast("Vehicle removed")});
-  document.querySelectorAll("[data-vehphoto]").forEach(b=>b.onclick=()=>{const n=VN(b.dataset.vehphoto);pickImage(async f=>{try{await photos.put("veh:"+n,await downscale(f,1200));GI(n).photoAt=Date.now();save();viewYou();toast("Photo added")}catch(e){toast("That file couldn't be read as a photo.")}})});
+  document.querySelectorAll("[data-vehopen]").forEach(b=>b.onclick=()=>openVehicle({name:VN(b.dataset.vehopen)}));
   document.querySelectorAll("img[data-vehimg]").forEach(async im=>{const u=await photos.url("veh:"+im.dataset.vehimg);if(u)im.src=u});
   $("#veh-form").onsubmit=e=>{e.preventDefault();const v=$("#veh-in").value.trim();if(!v)return;if(!S.settings.vehicles.includes(v))S.settings.vehicles.push(v);S.settings.vehicle=v;save();viewYou();toast("Vehicle added")};
   if(Sync.on()){
@@ -1629,7 +1691,7 @@ document.addEventListener("click",e=>{
 document.addEventListener("change",e=>{if(e.target.id==="solid-color"){S.settings.solidColor=e.target.value;save();rerender()}});
 // Re-draw after a setting change without losing the reader's place.
 function rerender(){const sh=$("#sheet");
-  if(SHEET&&!sh.hidden){if(SHEET.kind==="video")return;const y=sh.scrollTop;if(SHEET.kind==="cruise"){openCruise(SHEET.id);sh.scrollTop=y;return}if(SHEET.kind==="share")openShare(SHEET.id,SHEET.back);else openDrive(SHEET.id);sh.scrollTop=y}
+  if(SHEET&&!sh.hidden){if(SHEET.kind==="video")return;const y=sh.scrollTop;if(SHEET.kind==="cruise"){openCruise(SHEET.id);sh.scrollTop=y;return}if(SHEET.kind==="vehicle"){openVehicle(SHEET.spec);sh.scrollTop=y;return}if(SHEET.kind==="share")openShare(SHEET.id,SHEET.back);else openDrive(SHEET.id);sh.scrollTop=y}
   else{const y=window.scrollY;render();window.scrollTo(0,y)}}
 window.addEventListener("hashchange",()=>{if(!$("#sheet").hidden){if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET=null;$("#sheet").hidden=true;document.body.style.overflow=""}render();if(pendingOpen){const id=pendingOpen;pendingOpen=null;openDrive(id,true)}});
 let rz,lastW=window.innerWidth;window.addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(()=>{if(window.innerWidth===lastW)return;lastW=window.innerWidth;if($("#sheet").hidden)render()},200)});

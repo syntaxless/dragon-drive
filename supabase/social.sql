@@ -129,3 +129,7 @@ drop policy if exists "vehicles readable" on public.vehicles;
 create policy "vehicles readable" on public.vehicles for select to authenticated using (true);
 drop policy if exists "own vehicles" on public.vehicles;
 create policy "own vehicles" on public.vehicles for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- Vehicle pages: specs/mods description and extra photos (same as vehicle-pages.sql).
+alter table public.vehicles add column if not exists about text not null default '' check (char_length(about) <= 2000);
+alter table public.vehicles add column if not exists photos jsonb not null default '[]'::jsonb;
