@@ -141,6 +141,14 @@ canvas.gg{display:block;width:100%;max-width:280px;aspect-ratio:1/1;margin:0 aut
 .runs td,.runs th{padding:8px 4px;border-top:1px solid var(--line);text-align:left}
 .runs th{font-weight:500;color:var(--muted);font-size:13px}
 .runs td.v{font-family:var(--display);font-weight:700;font-size:22px;text-align:right}
+.runs td.v.best{color:var(--hl)}
+.runs tr.attempts td{border-top:0;padding-top:0}
+.runs details summary{cursor:pointer;color:var(--muted);font-size:13px;padding:2px 0}
+.runs details ol{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:2px}
+.runs details li{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:4px 8px;border-radius:8px;color:var(--muted)}
+.runs details li b{font-size:18px;color:var(--fg)}
+.runs details li.is-best{background:var(--surface-2)}
+.runs details li.is-best b{color:var(--hl)}
 .runs td.t{color:var(--muted);text-align:right;font-size:13px;width:6.5em}
 .effort{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
 .effort:first-of-type{border-top:0}
@@ -224,7 +232,10 @@ const RUN_DEFS=[
   {k:"quarter",label:"¼ mile",kind:"dist",d:1320*FT,trap:true}];
 function timedRuns(pts){
   const out={};const n=pts.length;if(n<3)return out;
-  const best=(k,v)=>{if(!out[k]||v.t<out[k].t)out[k]=v};
+  // keep every attempt, and the quickest one as the headline (t, trap)
+  const tStart=pts[0][2];
+  const best=(k,v,t0)=>{v.at=Math.max(0,(t0-tStart)/1000);const all=out[k]?out[k].all:[];all.push(v);
+    const b=all.reduce((x,y)=>y.t<x.t?y:x);out[k]={t:b.t,trap:b.trap,at:b.at,all}};
   const lerp=(a,b,f)=>a+(b-a)*f;
   // cumulative distance from integrated speed (more accurate than positions over short runs)
   const cd=[0];for(let i=1;i<n;i++)cd.push(cd[i-1]+(pts[i-1][3]+pts[i][3])/2*Math.max(0,(pts[i][2]-pts[i-1][2])/1000));
@@ -237,9 +248,9 @@ function timedRuns(pts){
       const need={z60:1,ft60:1,eighth:1,quarter:1};
       for(let j=i;j<n;j++){
         const a=pts[j-1],b=pts[j];if(b[3]<=STILL)break;
-        if(need.z60&&a[3]<60*MPH&&b[3]>=60*MPH){const g=(60*MPH-a[3])/(b[3]-a[3]);best("z60",{t:(lerp(a[2],b[2],g)-t0)/1000});need.z60=0}
+        if(need.z60&&a[3]<60*MPH&&b[3]>=60*MPH){const g=(60*MPH-a[3])/(b[3]-a[3]);best("z60",{t:(lerp(a[2],b[2],g)-t0)/1000},t0);need.z60=0}
         for(const r of RUN_DEFS){if(r.kind!=="dist"||!need[r.k])continue;
-          if(cd[j-1]-d0<r.d&&cd[j]-d0>=r.d){const g=(r.d-(cd[j-1]-d0))/((cd[j]-cd[j-1])||1);best(r.k,{t:(lerp(a[2],b[2],g)-t0)/1000,trap:lerp(a[3],b[3],g)});need[r.k]=0}}
+          if(cd[j-1]-d0<r.d&&cd[j]-d0>=r.d){const g=(r.d-(cd[j-1]-d0))/((cd[j]-cd[j-1])||1);best(r.k,{t:(lerp(a[2],b[2],g)-t0)/1000,trap:lerp(a[3],b[3],g)},t0);need[r.k]=0}}
         if(!need.z60&&!need.ft60&&!need.eighth&&!need.quarter)break;
       }
     }
@@ -247,7 +258,7 @@ function timedRuns(pts){
     if(v0<60*MPH&&v1>=60*MPH){
       const f=(60*MPH-v0)/(v1-v0);const t0=lerp(pts[i-1][2],pts[i][2],f);
       for(let j=i+1;j<n;j++){const a=pts[j-1],b=pts[j];if(b[3]<60*MPH)break;
-        if(a[3]<130*MPH&&b[3]>=130*MPH){const g=(130*MPH-a[3])/(b[3]-a[3]);best("s60_130",{t:(lerp(a[2],b[2],g)-t0)/1000});break}}
+        if(a[3]<130*MPH&&b[3]>=130*MPH){const g=(130*MPH-a[3])/(b[3]-a[3]);best("s60_130",{t:(lerp(a[2],b[2],g)-t0)/1000},t0);break}}
     }
   }
   return out;
@@ -682,7 +693,7 @@ function demoDrive(seed,start){
     else if(phase==="cruise"){a=Math.max(-2.5,Math.min(1.8,(cruise-v)*0.4));if(d<stopAt&&stopAt-d<v*v/6+5)phase="stop";if(total-d<v*v/6+5)phase="end"}
     else if(phase==="stop"){a=-3;if(v<=0.05){v=0;phase="wait";clock=0}}
     else if(phase==="wait"){if(clock>4)phase="pull"}
-    else if(phase==="pull"){a=Math.min(2.6,2.6*(1-(v/cruise)**2)+0.3);if(v>=cruise-1)phase="cruise"}
+    else if(phase==="pull"){a=Math.min(a0*0.85,a0*0.98*(1-(v/vtop)**2));if(v>=28)phase="cruise"}
     else if(phase==="end"){a=-3;if(v<=0.05){v=0}}
     const p=at(d);
     pts.push([p[0],p[1],Math.round(t),Math.max(0,v),p[2]+(r()-.5)*0.6,+(a/G+(r()-.5)*0.02).toFixed(3),+((r()-.5)*0.05+(v>8?Math.sin(d/90)*0.25:0)).toFixed(3),null]);
@@ -734,7 +745,10 @@ function finishRec(){
 /* ================= drive detail ================= */
 let pendingOpen=null;
 function runsTable(st){
-  const rows=RUN_DEFS.map(r=>{const v=st.runs&&st.runs[r.k];if(!v)return"";return `<tr><th scope="row">${r.label}</th><td class="t">${v.trap?`${Math.round(fSpeed(v.trap))} ${sLabel()} trap`:""}</td><td class="v">${fSec(v.t)}</td></tr>`}).join("");
+  const rows=RUN_DEFS.map(r=>{const v=st.runs&&st.runs[r.k];if(!v)return"";const all=v.all||[v];
+    const best=`<tr><th scope="row">${r.label}${all.length>1?`<div class="muted small">Best of ${all.length}</div>`:""}</th><td class="t">${v.trap?`${Math.round(fSpeed(v.trap))} ${sLabel()} trap`:""}</td><td class="v best">${fSec(v.t)}</td></tr>`;
+    if(all.length<2)return best;
+    return best+`<tr class="attempts"><td colspan="3"><details><summary>All ${all.length} ${r.label} runs</summary><ol>${all.map((x,i)=>`<li${x.t===v.t?' class="is-best"':""}><span>Run ${i+1}${x.at!=null?` · ${fDur(x.at)} into the drive`:""}${x.trap?` · ${Math.round(fSpeed(x.trap))} ${sLabel()} trap`:""}</span><b class="num">${fSec(x.t)}</b></li>`).join("")}</ol></details></td></tr>`}).join("");
   if(!rows)return `<p class="muted" style="margin:0">No timed runs on this drive yet. They're logged automatically whenever you pull away from a stop (0–60, 60 ft, ⅛ and ¼ mile) or accelerate from 60 to 130 mph.</p>`;
   return `<table class="runs"><tbody>${rows}</tbody></table>${st.hz<5?`<p class="muted small" style="margin:0">Estimate: this drive was logged at about ${st.hz||1} Hz. A 10–25 Hz device like RaceBox or Dragy gives accurate times.</p>`:`<p class="muted small" style="margin:0">Logged at ${st.hz} Hz, no rollout subtracted.</p>`}`;
 }
