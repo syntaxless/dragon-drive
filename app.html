@@ -171,6 +171,7 @@ input[type=range]{width:100%;accent-color:var(--hl)}
 .chip.pick{border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:5px 11px;font-size:13px;cursor:pointer}
 .chip.pick[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
 .chip.pick input[type=color]{width:22px;height:22px;border:0;padding:0;background:none;cursor:pointer}
+.cam-prev{display:block;width:100%;max-height:220px;object-fit:cover;border-radius:12px;background:#000;margin-top:10px}.rec-dot{color:#ff453a;font-weight:700;margin-left:8px}
 .share-preview{display:block;width:100%;max-width:420px;margin:0 auto;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.18)}
 .photo-edit{position:relative}
 .photo-edit .photo{border-radius:14px;aspect-ratio:4/3}
@@ -440,7 +441,7 @@ const Sync=(()=>{
     async uploadAll(){const ids=S.drives.filter(d=>d.who==="me"&&!d.sample&&d.photo).map(d=>d.id);if(S.settings.avatar)ids.push("avatar:me");for(const id of ids){const b=await photos.get(id);if(b)await this.putPhoto(id,b)}},
     async putPhoto(id,blob){if(!on()||!ses)return;try{await api(objPath(id),{method:"POST",headers:{"Content-Type":blob.type||"image/jpeg","x-upsert":"true"},body:blob})}catch(e){}},
     async delPhoto(id){if(!on()||!ses)return;try{await api("/storage/v1/object/photos",{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({prefixes:[ses.uid+"/"+id]})})}catch(e){}},
-    async getPhoto(id){if(!on()||!ses)return null;try{const r=await api("/storage/v1/object/authenticated/photos/"+ses.uid+"/"+encodeURIComponent(id));return r.ok?await r.blob():null}catch(e){return null}}
+    async getPhoto(id){if(!on()||!ses||String(id).startsWith("video:"))return null;try{const r=await api("/storage/v1/object/authenticated/photos/"+ses.uid+"/"+encodeURIComponent(id));return r.ok?await r.blob():null}catch(e){return null}}
   };
 })();
 
@@ -789,6 +790,8 @@ function viewRecord(){
          ${hasBLE?"":`<div class="notice">Bluetooth devices need Chrome or Edge on Android, Windows, macOS or ChromeOS. iPhone browsers don't support Web Bluetooth yet, so on iPhone use Phone GPS.</div>`}
          ${src==="dragy"?`<p class="muted small" style="margin:0">Dragy doesn't publish its Bluetooth format. Dragon Drive tries the standard NMEA GPS format; if your Dragy connects but shows no data, let us know.</p>`:""}`}
     </div>
+    <div class="panel"><label class="check"><input type="checkbox" id="film" ${S.settings.film?"checked":""} ${REC.on?"disabled":""}> Film the road while driving. Mount the phone facing forward; the video lines up with your data automatically. Uses about 20 MB per minute.</label>
+      ${CAM.stream?`<video id="cam-prev" class="cam-prev" muted playsinline autoplay></video>`:""}</div>
     <div class="rec-panel">
       <div class="gps" id="gps"><span class="dot ${REC.on?"ok":""}"></span><span id="gps-t">${REC.on?"Recording":"Ready when you are"}</span></div>
       <div class="dash">
@@ -806,6 +809,8 @@ function viewRecord(){
   </div>`;
   document.querySelectorAll("[data-src]").forEach(b=>b.onclick=()=>{S.settings.source=b.dataset.src;save();viewRecord()});
   const m=$("#motion");if(m)m.onchange=e=>{S.settings.motion=e.target.checked;save()};
+  $("#film").onchange=e=>{S.settings.film=e.target.checked;save()};
+  const cp=$("#cam-prev");if(cp){cp.srcObject=CAM.stream;cp.play().catch(()=>{})}
   const c=$("#connect");if(c)c.onclick=()=>connectDevice(src);
   $("#veh").onchange=e=>{S.settings.vehicle=e.target.value;save()};
   bindHold($("#rec-btn"));
@@ -823,6 +828,32 @@ function bindHold(btn){
 }
 function setGps(cls,txt){const d=document.querySelector("#gps .dot"),t=$("#gps-t");if(d)d.className="dot "+cls;if(t)t.textContent=txt}
 async function wakeLock(on){try{if(on&&navigator.wakeLock)REC.wake=await navigator.wakeLock.request("screen");else if(!on&&REC.wake){await REC.wake.release();REC.wake=null}}catch(e){}}
+const CAM={stream:null,rec:null,key:null,t0:0,n:0,type:"",writes:[]};
+async function startCam(){
+  try{
+    if(!navigator.mediaDevices||typeof MediaRecorder==="undefined")throw new Error("unsupported");
+    CAM.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30}},audio:true}).catch(()=>navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false}));
+    if(!REC.on){stopCam(true);return}
+    CAM.type=["video/mp4;codecs=avc1","video/mp4","video/webm;codecs=vp9","video/webm"].find(t=>MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(t))||"";
+    CAM.rec=new MediaRecorder(CAM.stream,{...(CAM.type?{mimeType:CAM.type}:{}),videoBitsPerSecond:2.5e6});
+    CAM.key="video:"+uid();CAM.n=0;CAM.writes=[];
+    // write chunks to storage as they arrive so long drives don't fill memory
+    CAM.rec.ondataavailable=e=>{if(e.data&&e.data.size)CAM.writes.push(photos.put(CAM.key+":"+(CAM.n++),e.data,true))};
+    CAM.rec.onstart=()=>{CAM.t0=Date.now()};
+    CAM.rec.start(4000);CAM.t0=Date.now();
+    const cp=$("#cam-prev");if(cp){cp.srcObject=CAM.stream;cp.play().catch(()=>{})}else if(current==="record")viewRecord();
+  }catch(e){CAM.stream=null;toast("Camera unavailable, recording data only.")}
+}
+async function stopCam(discard){
+  const r=CAM.rec,st=CAM.stream,out=r&&!discard?{key:CAM.key,t0:CAM.t0,type:(r.mimeType||CAM.type||"video/mp4").split(";")[0]}:null;
+  CAM.rec=null;CAM.stream=null;
+  if(r&&r.state!=="inactive"){await new Promise(res=>{r.onstop=res;try{r.stop()}catch(e){res()}})}
+  if(st)st.getTracks().forEach(t=>t.stop());
+  await Promise.all(CAM.writes);CAM.writes=[];
+  return out&&CAM.n?out:null;
+}
+async function driveVideo(v){const parts=[];for(let i=0;;i++){const b=await photos.get(v.key+":"+i);if(!b)break;parts.push(b)}return parts.length?new Blob(parts,{type:v.type}):null}
+async function delDriveVideo(v){for(let i=0;;i++){const k=v.key+":"+i;const b=await photos.get(k);if(!b)break;await photos.del(k,true)}}
 function startRec(sim){
   const src=S.settings.source;
   if(!sim&&src!=="phone"&&!(DEV.device&&DEV.device.gatt&&DEV.device.gatt.connected)){toast(`Connect your ${SOURCES[src].name} first, or switch to Phone GPS.`);return}
@@ -846,6 +877,7 @@ function startRec(sim){
   }else setGps("ok","Recording from "+REC.source);
   REC.tick=setInterval(updateLive,1000);
   viewRecord();
+  if(S.settings.film&&!sim)startCam();
 }
 function ingest(f){
   if(!REC.on||!isFinite(f.lat)||!isFinite(f.lon))return;
@@ -903,7 +935,7 @@ function updateLive(){
   set("g-dist",`${fDist(dist).toFixed(2)}<small>${dLabel()}</small>`);set("g-time",fDur(el));set("g-alt",alt==null?"–":`${alt}<small>${aLabel()}</small>`);
   const c=$("#live-route");if(c)drawRoute(c,thinLive(pts),{live:true,noEnds:n<2});
   const moving=REC.on&&n>2&&pts[n-1][3]>4;const dm=$("#drivemode");
-  if(moving&&dm.hidden&&!REC.dismissed){dm.hidden=false;dm.innerHTML=`<div class="road">Eyes on the road</div>
+  if(moving&&dm.hidden&&!REC.dismissed){dm.hidden=false;dm.innerHTML=`<div class="road">Eyes on the road${CAM.rec?' <span class="rec-dot">● REC</span>':""}</div>
     <div class="stack" style="align-items:center;text-align:center"><div class="gauge big"><div class="k">Distance</div><div class="v num" id="dm-dist"></div></div><div class="gauge"><div class="k">Time</div><div class="v num" id="dm-time"></div></div></div>
     <div class="stack"><button class="rec-btn stop" id="dm-btn" type="button"><span class="fill"></span><span class="lbl">Hold to finish</span></button><button class="btn ghost" id="dm-x" type="button" style="justify-content:center">I'm a passenger, show full screen</button></div>`;
     bindHold($("#dm-btn"));$("#dm-x").onclick=()=>{REC.dismissed=true;dm.hidden=true}}
@@ -915,11 +947,12 @@ function stopSensors(){if(REC.watch!=null)navigator.geolocation.clearWatch(REC.w
 function finishRec(){
   stopSensors();REC.on=false;REC.dismissed=false;$("#drivemode").hidden=true;
   const raw=REC.pts;REC.pts=[];
-  if(raw.length<5||pathLen(raw)<100){toast("That drive was too short to save.");viewRecord();return}
+  if(raw.length<5||pathLen(raw)<100){stopCam(true).then(v=>{});if(CAM.key)delDriveVideo({key:CAM.key});toast("That drive was too short to save.");viewRecord();return}
   const h=new Date(raw[0][2]).getHours();
   const title=h<11?"Morning drive":h<14?"Midday drive":h<18?"Afternoon drive":"Evening drive";
   const d={id:uid(),who:"me",title,vehicle:S.settings.vehicle,source:REC.source,start:raw[0][2],pts:thin(raw),stats:analyze(raw)};
   S.drives.push(d);save();
+  if(CAM.rec||CAM.stream)stopCam().then(v=>{if(v){d.video=v;save();if(SHEET&&SHEET.kind==="drive"&&SHEET.id===d.id)openDrive(d.id,true)}});
   if(location.hash==="#feed"){render();openDrive(d.id,true)}else{pendingOpen=d.id;location.hash="#feed"}
 }
 
@@ -939,7 +972,7 @@ function openDrive(id,fresh){
   const p=person(d.who),s=d.stats,mine=d.who==="me";
   const hasAlt=d.pts.some(q=>q[4]!=null);const hasGG=d.pts.some(q=>q[5]!=null);
   const sh=$("#sheet");
-  sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span>${d.sample?'<span class="chip example">Example</span>':""}<button class="btn primary" id="d-share" type="button">Share</button></div></div>
+  sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span>${d.sample?'<span class="chip example">Example</span>':""}<button class="btn" id="d-video" type="button">Video</button><button class="btn primary" id="d-share" type="button">Share</button></div></div>
   <div class="wrap body stack">
     <div class="row">${avatar(p)}<div><div style="font-weight:600">${esc(p.name)}</div><div class="muted small">${new Date(d.start).toLocaleString(undefined,{weekday:"short",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})} · ${esc(d.vehicle)} · ${esc(d.source||"Phone GPS")}</div></div></div>
     ${mine?`<input type="text" id="title-in" value="${esc(d.title)}" aria-label="Drive title" style="font-family:var(--display);font-size:26px;font-weight:700">`:`<h1 style="text-transform:none">${esc(d.title)}</h1>`}
@@ -973,6 +1006,7 @@ function openDrive(id,fresh){
   if(hasGG)drawGG($("#d-gg"),d.pts);
   $("#sh-x").onclick=closeSheet;
   $("#d-share").onclick=()=>openShare(d.id);
+  $("#d-video").onclick=()=>openVideo(d.id);
   const k=$("#d-kudos");k.onclick=()=>{S.kudos[d.id]=!S.kudos[d.id];save();k.setAttribute("aria-pressed",!!S.kudos[d.id]);k.querySelector("span").textContent=kudosCount(d)};
   $("#c-form").onsubmit=e=>{e.preventDefault();const v=$("#c-in").value.trim();if(!v)return;(S.comments[d.id]=S.comments[d.id]||[]).push({who:"me",text:v,t:Date.now()});save();openDrive(d.id);toast("Comment posted")};
   if(mine){$("#title-in").onchange=e=>{d.title=e.target.value.trim()||d.title;save()};
@@ -980,7 +1014,7 @@ function openDrive(id,fresh){
     const rm=$("#rm-photo");if(rm)rm.onclick=async()=>{await photos.del(d.id);d.photo=false;save();openDrive(d.id);toast("Photo removed")}}
   const g=$("#gpx");if(g)g.onclick=()=>exportGpx(d);
   $("#del").onclick=()=>{$("#del-confirm").hidden=false};$("#del-no").onclick=()=>{$("#del-confirm").hidden=true};
-  $("#del-yes").onclick=()=>{S.drives=S.drives.filter(x=>x.id!==d.id);(S.deleted=S.deleted||[]).push(d.id);photos.del(d.id);save();closeSheet();toast("Drive deleted")};
+  $("#del-yes").onclick=()=>{if(d.video)delDriveVideo(d.video);S.drives=S.drives.filter(x=>x.id!==d.id);(S.deleted=S.deleted||[]).push(d.id);photos.del(d.id);save();closeSheet();toast("Drive deleted")};
 }
 function closeSheet(){if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET=null;$("#sheet").hidden=true;document.body.style.overflow="";render()}
 function pickPhoto(d){
@@ -1100,6 +1134,125 @@ async function openShare(id,back){
   const sb=$("#card-share");
   if(file&&navigator.canShare&&(()=>{try{return navigator.canShare({files:[file]})}catch(e){return false}})()){sb.hidden=false;sb.onclick=async()=>{try{await navigator.share({files:[file],title:d.title,text:`${d.title} on Dragon Drive`})}catch(e){}}}
   const sv=$("#card-save");sv.disabled=false;sv.onclick=()=>saveFile(blob,name);
+}
+
+/* ================= overlay video ================= */
+// Pick a clip filmed during the drive, line it up with the GPS timeline, and burn in speed, g, route and runs.
+function telemetry(d){
+  const P=d.pts,n=P.length,t0=P[0][2];const T=P.map(p=>(p[2]-t0)/1000);
+  // g per point: sensor values when recorded, otherwise estimated from speed change and heading change
+  const G=P.map((p,i)=>{if(p[5]!=null&&p[6]!=null)return[p[5],p[6]];const a=P[Math.max(0,i-1)],b=P[Math.min(n-1,i+1)];const dt=(b[2]-a[2])/1000||1;
+    const lon=(b[3]-a[3])/dt/9.81;let lat=0;if(i>0&&i<n-1){const h1=Math.atan2(p[1]-a[1],p[0]-a[0]),h2=Math.atan2(b[1]-p[1],b[0]-p[0]);let dh=h2-h1;while(dh>Math.PI)dh-=2*Math.PI;while(dh<-Math.PI)dh+=2*Math.PI;lat=p[3]*dh/dt/9.81}
+    return[Math.max(-1.6,Math.min(1.6,lon)),Math.max(-1.6,Math.min(1.6,lat))]});
+  const runs=[];for(const r of RUN_DEFS){const v=d.stats.runs&&d.stats.runs[r.k];if(v)for(const a of (v.all||[v]))runs.push({label:r.label,at:a.at,t:a.t,best:a.t===v.t})}
+  return{d,T,G,runs,dur:T[n-1],
+    at(t){t=Math.max(0,Math.min(T[n-1],t));let lo=0,hi=n-1;while(hi-lo>1){const m=(lo+hi)>>1;if(T[m]<=t)lo=m;else hi=m}
+      const f=T[hi]>T[lo]?(t-T[lo])/(T[hi]-T[lo]):0,L=(a,b)=>a+(b-a)*f,A=P[lo],B=P[hi];
+      return{i:lo,f,lat:L(A[0],B[0]),lon:L(A[1],B[1]),v:L(A[3],B[3]),gx:L(G[lo][1],G[hi][1]),gy:L(G[lo][0],G[hi][0])}}};
+}
+function drawOverlay(g,W,H,tl,t,box){
+  const u=Math.min(W,H)/1080,k=tl.at(t),F='"Barlow Condensed","Arial Narrow",sans-serif',inDrive=t>=0&&t<=tl.dur;
+  const panel=(x,y,w,h)=>{g.fillStyle="rgba(10,14,13,.55)";roundRect(g,x,y,w,h,22*u);g.fill()};
+  g.save();g.textBaseline="alphabetic";
+  // speed, bottom left
+  const sp=inDrive?Math.round(fSpeed(k.v)):0;
+  g.font=`700 ${150*u}px ${F}`;const wide=g.measureText("188").width;g.font=`600 ${42*u}px ${F}`;const pw=Math.max(330*u,wide+g.measureText(sLabel()).width+70*u);
+  panel(36*u,H-236*u,pw,200*u);
+  g.fillStyle="#fff";g.font=`700 ${150*u}px ${F}`;g.textAlign="left";g.fillText(String(sp),62*u,H-80*u);
+  const sw=g.measureText(String(sp)).width;g.fillStyle="#9fb0a9";g.font=`600 ${42*u}px ${F}`;g.fillText(sLabel(),70*u+sw,H-80*u);
+  const top=Math.max(1,fSpeed(tl.d.stats.max)),bw=pw-52*u;g.fillStyle="rgba(255,255,255,.15)";g.fillRect(62*u,H-66*u,bw,10*u);g.fillStyle="#0a84ff";g.fillRect(62*u,H-66*u,bw*Math.min(1,sp/top),10*u);
+  // g ball, bottom right
+  const R=88*u,cx=W-36*u-R-22*u,cy=H-36*u-R-22*u;panel(cx-R-22*u,cy-R-22*u,2*R+44*u,2*R+44*u);
+  g.strokeStyle="rgba(255,255,255,.25)";g.lineWidth=2*u;for(const r of [.5,1])  {g.beginPath();g.arc(cx,cy,R*r/1.2,0,7);g.stroke()}
+  g.beginPath();g.moveTo(cx-R,cy);g.lineTo(cx+R,cy);g.moveTo(cx,cy-R);g.lineTo(cx,cy+R);g.stroke();
+  const gx=inDrive?k.gx:0,gy=inDrive?k.gy:0,gm=Math.hypot(gx,gy),cl=Math.min(1,1.2/Math.max(gm,1e-6));
+  g.fillStyle="#ff7a45";g.beginPath();g.arc(cx+gx*cl*R/1.2,cy-gy*cl*R/1.2,13*u,0,7);g.fill();
+  g.fillStyle="#fff";g.font=`700 ${34*u}px ${F}`;g.textAlign="center";g.fillText(gm.toFixed(2)+" g",cx,cy+R+8*u);
+  // mini route, top right
+  if(box){const bw=260*u,bx=W-36*u-bw,by=36*u;panel(bx,by,bw,bw);const Pj=box.P,ofs=p=>{const[a,b]=Pj(p);return[bx+a*u,by+b*u]};
+    g.globalAlpha=.4;strokePath(g,ofs,tl.d.pts,"#ffffff",6*u);g.globalAlpha=1;
+    if(inDrive){const done=tl.d.pts.slice(0,k.i+1).concat([[k.lat,k.lon]]);strokePath(g,ofs,done,"#0a84ff",7*u);const[x,y]=ofs([k.lat,k.lon]);g.fillStyle="#fff";g.beginPath();g.arc(x,y,11*u,0,7);g.fill();g.fillStyle="#0a84ff";g.beginPath();g.arc(x,y,7*u,0,7);g.fill()}}
+  // title + elapsed, top left
+  g.textAlign="left";g.fillStyle="#fff";g.shadowColor="rgba(0,0,0,.6)";g.shadowBlur=8*u;
+  g.font=`italic 900 ${34*u}px "Exo 2",${F}`;g.fillText("DRAGON DRIVE",40*u,76*u);
+  g.font=`600 ${40*u}px ${F}`;const el=Math.max(0,Math.min(tl.dur,t));g.fillText(`${Math.floor(el/60)}:${String(Math.floor(el%60)).padStart(2,"0")}.${Math.floor(el*10%10)}`,40*u,124*u);g.shadowBlur=0;
+  // timed run banner, top centre
+  const cand=tl.runs.filter(r=>t>=r.at&&t<=r.at+r.t+4),fin=cand.filter(r=>t>=r.at+r.t&&t<=r.at+r.t+2.5).sort((a,b)=>(b.at+b.t)-(a.at+a.t)),liv=cand.filter(r=>t<r.at+r.t).sort((a,b)=>b.t-a.t);
+  const r=fin[0]||liv[0]||cand.sort((a,b)=>(b.at+b.t)-(a.at+a.t))[0];
+  if(r){const live=t<r.at+r.t,txt=`${r.label}  ${live?(t-r.at).toFixed(1):r.t.toFixed(2)} s${!live&&r.best?"  ★":""}`;g.font=`700 ${54*u}px ${F}`;const tw=g.measureText(txt).width+60*u;
+    g.fillStyle=live?"rgba(10,14,13,.7)":"#f2a93b";roundRect(g,(W-tw)/2,36*u,tw,84*u,42*u);g.fill();g.fillStyle=live?"#fff":"#111";g.textAlign="center";g.fillText(txt,W/2,96*u)}
+  g.restore();
+}
+async function openVideo(id){
+  const d=S.drives.find(x=>x.id===id);if(!d)return;if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET={kind:"video",id};
+  const sh=$("#sheet");const tl=telemetry(d);
+  sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span><h3>Drive video</h3></div></div>
+    <div class="wrap body stack">
+      <p class="muted" style="margin:0">Pick a clip you filmed during this drive. We line it up with your GPS and add speed, g-force, the route and any timed runs.</p>
+      <div class="row">${d.video?`<button class="btn primary" id="v-own" type="button">Use the video from this drive</button><button class="btn" id="v-pick" type="button">Choose another</button>`:`<button class="btn primary" id="v-pick" type="button">Choose video</button>`}</div>
+      <input type="file" id="v-in" accept="video/*" class="sr" tabindex="-1" aria-hidden="true">
+      <div id="v-ui" hidden class="stack">
+        <canvas id="v-cv" class="share-preview" style="max-width:100%;background:#000"></canvas>
+        <label class="field">Preview position<input type="range" id="v-pos" min="0" max="1000" value="0"></label>
+        <div class="panel stack" style="gap:8px"><h3>Line it up</h3>
+          <p class="muted small" style="margin:0">Slide until the speed matches the video. Tip: find the moment the car starts moving.</p>
+          <input type="range" id="v-off" step="0.1" aria-label="Video start within the drive">
+          <div class="row"><button class="btn ghost" data-nudge="-1" type="button">−1 s</button><button class="btn ghost" data-nudge="-0.1" type="button">−0.1</button><span class="spacer" style="text-align:center" id="v-offlab"></span><button class="btn ghost" data-nudge="0.1" type="button">+0.1</button><button class="btn ghost" data-nudge="1" type="button">+1 s</button></div>
+        </div>
+        <div class="row" style="justify-content:center"><button class="btn primary" id="v-make" type="button">Make video</button></div>
+        <div id="v-prog" hidden class="stack" style="gap:6px"><div class="muted small" id="v-proglab">Rendering…</div><progress id="v-bar" max="1" value="0" style="width:100%"></progress><p class="muted small" style="margin:0">This plays the clip through once, so it takes as long as the video. Keep the app open.</p></div>
+        <div class="row" style="justify-content:center"><button class="btn primary" id="v-share" type="button" hidden>Share</button><button class="btn" id="v-save" type="button" hidden>Save video</button></div>
+      </div>
+    </div>`;
+  sh.hidden=false;sh.scrollTop=0;document.body.style.overflow="hidden";
+  $("#sh-x").onclick=()=>{cleanup();openDrive(d.id)};
+  const vid=document.createElement("video");vid.playsInline=true;vid.muted=true;vid.preload="auto";vid.setAttribute("playsinline","");
+  let off=0,url=null,cv=null,g=null,box=null,busy=false,file=null;
+  function cleanup(){busy=false;try{vid.pause()}catch(e){}if(url)URL.revokeObjectURL(url);url=null}
+  const tOf=vt=>vt+off;
+  function paint(){if(!g)return;g.drawImage(vid,0,0,cv.width,cv.height);drawOverlay(g,cv.width,cv.height,tl,tOf(vid.currentTime),box)}
+  const fmt=x=>`${x<0?"−":""}${Math.floor(Math.abs(x)/60)}:${(Math.abs(x)%60).toFixed(1).padStart(4,"0")}`;
+  function setOff(x){off=Math.round(x*10)/10;$("#v-off").value=off;$("#v-offlab").textContent=`Clip starts ${fmt(off)} into the drive`;paint()}
+  const own=$("#v-own");if(own)own.onclick=async()=>{own.disabled=true;const b=await driveVideo(d.video);own.disabled=false;if(!b){toast("The video for this drive is missing on this device.");return}await load(b,(d.video.t0-d.pts[0][2])/1000)};
+  $("#v-pick").onclick=()=>{const inp=$("#v-in");inp.value="";inp.onchange=()=>{file=inp.files&&inp.files[0];if(file)load(file)};inp.click()};
+  async function load(f,exact){
+    if(url)URL.revokeObjectURL(url);url=URL.createObjectURL(f);vid.src=url;
+    await new Promise((res,rej)=>{vid.onloadedmetadata=res;vid.onerror=()=>rej(new Error("bad"))}).catch(()=>null);
+    if(!vid.videoWidth){toast("That video couldn't be opened on this device.");return}
+    if(!isFinite(vid.duration)){vid.currentTime=1e7;await new Promise(r=>{vid.ondurationchange=()=>{if(isFinite(vid.duration))r()};setTimeout(r,3000)});vid.ondurationchange=null}
+    const sc=Math.min(1,1920/Math.max(vid.videoWidth,vid.videoHeight));cv=$("#v-cv");cv.width=Math.round(vid.videoWidth*sc/2)*2;cv.height=Math.round(vid.videoHeight*sc/2)*2;g=cv.getContext("2d");
+    const u=Math.min(cv.width,cv.height)/1080;box={P:projector(d.pts,260,260,26)};
+    const o=$("#v-off");o.min=Math.floor(-vid.duration);o.max=Math.ceil(tl.dur);
+    // guess: phones stamp the file when recording stops
+    const guess=exact!=null?exact:(f.lastModified-d.pts[0][2])/1000-vid.duration;
+    $("#v-ui").hidden=false;setOff(guess>-vid.duration&&guess<tl.dur?guess:0);
+    vid.currentTime=Math.min(vid.duration-0.05,Math.max(0,-off+0.01));
+    vid.onseeked=paint;$("#v-pos").value=vid.duration?vid.currentTime/vid.duration*1000:0;
+  }
+  $("#v-pos").oninput=e=>{if(vid.duration&&!busy)vid.currentTime=e.target.value/1000*vid.duration};
+  $("#v-off").oninput=e=>setOff(+e.target.value);
+  sh.querySelectorAll("[data-nudge]").forEach(b=>b.onclick=()=>setOff(off+ +b.dataset.nudge));
+  $("#v-make").onclick=async()=>{
+    if(busy||!g)return;if(typeof MediaRecorder==="undefined"||!cv.captureStream){toast("This browser can't record video. Try Safari or Chrome.");return}
+    busy=true;$("#v-make").disabled=true;$("#v-prog").hidden=false;$("#v-share").hidden=$("#v-save").hidden=true;
+    const stream=cv.captureStream(30);let actx=null;
+    try{actx=new (window.AudioContext||window.webkitAudioContext)();const src=actx.createMediaElementSource(vid);const dst=actx.createMediaStreamDestination();src.connect(dst);dst.stream.getAudioTracks().forEach(t=>stream.addTrack(t));vid.muted=false}catch(e){vid.muted=true}
+    const type=["video/mp4;codecs=avc1.42E01E,mp4a.40.2","video/mp4","video/webm;codecs=vp9,opus","video/webm"].find(t=>MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(t))||"";
+    const rec=new MediaRecorder(stream,{...(type?{mimeType:type}:{}),videoBitsPerSecond:8e6});const chunks=[];rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
+    const done=new Promise(r=>rec.onstop=r);
+    vid.currentTime=0;await new Promise(r=>{vid.onseeked=r});vid.onseeked=null;
+    let raf;const loop=()=>{paint();$("#v-bar").value=vid.currentTime/vid.duration;$("#v-proglab").textContent=`Rendering… ${Math.round(vid.currentTime/vid.duration*100)}%`;if(busy&&!vid.ended)raf=requestAnimationFrame(loop)};
+    rec.start(1000);try{await vid.play()}catch(e){busy=false}loop();
+    await new Promise(r=>{vid.onended=r;const chk=setInterval(()=>{if(!busy){clearInterval(chk);r()}},300)});
+    cancelAnimationFrame(raf);paint();rec.stop();await done;vid.pause();vid.muted=true;try{actx&&actx.close()}catch(e){}
+    if(!document.body.contains(cv))return;
+    busy=false;$("#v-make").disabled=false;$("#v-prog").hidden=true;
+    const ext=(rec.mimeType||type).includes("mp4")?"mp4":"webm";const blob=new Blob(chunks,{type:(rec.mimeType||type||"video/webm").split(";")[0]});
+    const name=(d.title.replace(/[^\w]+/g,"-")||"drive")+"."+ext;const fileOut=typeof File!=="undefined"?new File([blob],name,{type:blob.type}):null;
+    const sv=$("#v-save");sv.hidden=false;sv.onclick=()=>saveFile(blob,name);
+    const sb=$("#v-share");if(fileOut&&navigator.canShare&&(()=>{try{return navigator.canShare({files:[fileOut]})}catch(e){return false}})()){sb.hidden=false;sb.onclick=async()=>{try{await navigator.share({files:[fileOut],title:d.title})}catch(e){}}}
+    toast("Video ready");
+  };
 }
 
 /* ================= routes view ================= */
@@ -1232,7 +1385,7 @@ document.addEventListener("click",e=>{
 document.addEventListener("change",e=>{if(e.target.id==="solid-color"){S.settings.solidColor=e.target.value;save();rerender()}});
 // Re-draw after a setting change without losing the reader's place.
 function rerender(){const sh=$("#sheet");
-  if(SHEET&&!sh.hidden){const y=sh.scrollTop;if(SHEET.kind==="share")openShare(SHEET.id,SHEET.back);else openDrive(SHEET.id);sh.scrollTop=y}
+  if(SHEET&&!sh.hidden){if(SHEET.kind==="video")return;const y=sh.scrollTop;if(SHEET.kind==="share")openShare(SHEET.id,SHEET.back);else openDrive(SHEET.id);sh.scrollTop=y}
   else{const y=window.scrollY;render();window.scrollTo(0,y)}}
 window.addEventListener("hashchange",()=>{if(!$("#sheet").hidden){if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET=null;$("#sheet").hidden=true;document.body.style.overflow=""}render();if(pendingOpen){const id=pendingOpen;pendingOpen=null;openDrive(id,true)}});
 let rz,lastW=window.innerWidth;window.addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(()=>{if(window.innerWidth===lastW)return;lastW=window.innerWidth;if($("#sheet").hidden)render()},200)});
