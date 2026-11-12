@@ -1140,7 +1140,10 @@ document.addEventListener("click",e=>{
 });
 
 document.addEventListener("change",e=>{if(e.target.id==="solid-color"){S.settings.solidColor=e.target.value;save();rerender()}});
-function rerender(){if(SHEET&&!$("#sheet").hidden){if(SHEET.kind==="share")openShare(SHEET.id,SHEET.back);else openDrive(SHEET.id)}else render()}
+// Re-draw after a setting change without losing the reader's place.
+function rerender(){const sh=$("#sheet");
+  if(SHEET&&!sh.hidden){const y=sh.scrollTop;if(SHEET.kind==="share")openShare(SHEET.id,SHEET.back);else openDrive(SHEET.id);sh.scrollTop=y}
+  else{const y=window.scrollY;render();window.scrollTo(0,y)}}
 window.addEventListener("hashchange",()=>{if(!$("#sheet").hidden){if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET=null;$("#sheet").hidden=true;document.body.style.overflow=""}render();if(pendingOpen){const id=pendingOpen;pendingOpen=null;openDrive(id,true)}});
 let rz,lastW=window.innerWidth;window.addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(()=>{if(window.innerWidth===lastW)return;lastW=window.innerWidth;if($("#sheet").hidden)render()},200)});
 render();loadAvatar();
