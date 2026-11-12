@@ -448,6 +448,9 @@ function vecStyle(c){
     {id:"park",type:"fill",source:"omt","source-layer":"park",paint:{"fill-color":c.park}},
     {id:"water",type:"fill",source:"omt","source-layer":"water",paint:{"fill-color":c.water}},
     {id:"building",type:"fill",source:"omt","source-layer":"building",minzoom:14,paint:{"fill-color":c.building}},
+    // optional wider lines under the bigger roads: printed-map outlines or a neon glow
+    ...(c.majorCase?[roads("major-case",["tertiary","secondary","primary","trunk"],1.4,22,c.majorCase)]:[]),
+    ...(c.motorwayCase?[roads("motorway-case",["motorway"],2,28,c.motorwayCase)]:[]),
     roads("minor",["minor","service","track"],.3,8,c.minor),
     roads("major",["tertiary","secondary","primary","trunk"],.6,14,c.major),
     roads("motorway",["motorway"],.9,18,c.motorway)]};
@@ -456,13 +459,13 @@ const BACKDROPS={
   streets:{label:"Streets",map:()=>OFM+"/styles/liberty",route:"#0a84ff",casing:"#ffffff"},
   light:{label:"Light",map:()=>OFM+"/styles/positron",route:"#0a84ff",casing:"#ffffff"},
   dark:{label:"Dark",map:()=>vecStyle({bg:"#12171a",park:"#16201b",water:"#0b1a24",building:"#1b2226",minor:"#263036",major:"#36434c",motorway:"#4a5963"}),route:"#0a84ff",casing:"#0b2a4d"},
-  mono:{label:"Monochrome",map:()=>vecStyle({bg:"#f3f3f1",park:"#e7e9e5",water:"#d6dbde",building:"#e3e3e0",minor:"#dadad6",major:"#c2c2bd",motorway:"#a9a9a3"}),route:"#0a84ff",casing:"#ffffff"},
-  blueprint:{label:"Blueprint",map:()=>vecStyle({bg:"#0d3b66",park:"#0f416f",water:"#0a2f52",building:"#124a7d",minor:"#2c6aa3",major:"#5b9bd5",motorway:"#8cc4f0"}),route:"#0a84ff",casing:"#ffffff"},
+  synthwave:{label:"Synthwave",map:()=>vecStyle({bg:"#1a0b2e",park:"#220f3d",water:"#0c1748",building:"#2a1450",minor:"#5b2a9e",major:"#00e5ff",majorCase:"rgba(0,229,255,.25)",motorway:"#ff2bd6",motorwayCase:"rgba(255,43,214,.3)"}),route:"#0a84ff",casing:"#ffffff"},
+  gameboy:{label:"Game Boy",map:()=>vecStyle({bg:"#9bbc0f",park:"#8bac0f",water:"#306230",building:"#8bac0f",minor:"#306230",major:"#0f380f",motorway:"#0f380f",motorwayCase:"#306230"}),route:"#0a84ff",casing:"#0f380f"},
   grid:{label:"Grid"},
   solid:{label:"Solid color"}};
 const mapsOK=()=>!IN_ARTIFACT&&(()=>{try{const c=document.createElement("canvas");return!!(c.getContext("webgl2")||c.getContext("webgl"))}catch(e){return false}})();
 let _mapsOK=null;const canMap=()=>_mapsOK==null?(_mapsOK=mapsOK()):_mapsOK;
-function backdrop(){let k=S.settings.mapStyle||"streets";if(!BACKDROPS[k]||(BACKDROPS[k].map&&!canMap()))k="grid";return k}
+function backdrop(){let k=S.settings.mapStyle||"streets";if(!BACKDROPS[k])k="streets";if(!BACKDROPS[k]||(BACKDROPS[k].map&&!canMap()))k="grid";return k}
 function lum(hex){const n=parseInt(hex.slice(1),16);const ch=[n>>16&255,n>>8&255,n&255].map(v=>{v/=255;return v<=.03928?v/12.92:((v+.055)/1.055)**2.4});return .2126*ch[0]+.7152*ch[1]+.0722*ch[2]}
 // colors for the route line on the current backdrop
 function routeInk(k){const b=BACKDROPS[k];if(b.map)return{route:b.route,casing:b.casing};
