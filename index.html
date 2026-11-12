@@ -14,7 +14,7 @@
 <title>Dragon Drive</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=Exo+2:ital,wght@1,900&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=UnifrakturCook:wght@700&display=swap">
 <style>
 /* Layout: one-column phone app, sticky header, fixed bottom tab bar; road-sign green accent, amber for routes, red-orange for highlights */
 :root{
@@ -24,7 +24,7 @@
   --grid:rgba(22,32,28,.07);
   --display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
   --body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
-  --logo:"Exo 2","Barlow Condensed",system-ui,sans-serif;
+  --logo:"UnifrakturCook","Old English Text MT",serif;
   --tab-h:64px;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
@@ -47,7 +47,7 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .wrap{max-width:640px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
 header.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:10px}
-.brand{display:flex;align-items:center;gap:10px;font-family:var(--logo);font-style:italic;font-weight:900;font-size:22px;letter-spacing:.01em;text-transform:uppercase}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--logo);font-weight:700;font-size:27px;letter-spacing:.01em;line-height:1}
 .brand .logo{display:flex;flex:none}.brand .logo svg{display:block}
 .unit-toggle{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .unit-toggle button{border:0;background:transparent;padding:4px 10px;font-family:var(--display);font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
@@ -1059,7 +1059,7 @@ function exportGpx(d){
 
 /* ================= share card ================= */
 async function buildCard(d){
-  try{await document.fonts.load('italic 900 46px "Exo 2"');await document.fonts.load('700 64px "Barlow Condensed"');await document.fonts.load('500 28px "Barlow"')}catch(e){}
+  try{await document.fonts.load('700 64px "Barlow Condensed"');await document.fonts.load('500 28px "Barlow"')}catch(e){}
   const W=1080,H=1350,c=document.createElement("canvas");c.width=W;c.height=H;const g=c.getContext("2d");
   const BG="#0f1513",FG="#f2f5f3",MUTED="#9fb0a9",AMBER="#f2a93b",GREEN="#3fbf8a",BLUE="#0a84ff";
   const DF='"Barlow Condensed","Arial Narrow",sans-serif',BF='"Barlow",system-ui,sans-serif';
@@ -1187,7 +1187,7 @@ function drawOverlay(g,W,H,tl,t,box){
     if(inDrive){const done=tl.d.pts.slice(0,k.i+1).concat([[k.lat,k.lon]]);strokePath(g,ofs,done,"#0a84ff",7*u);const[x,y]=ofs([k.lat,k.lon]);g.fillStyle="#fff";g.beginPath();g.arc(x,y,11*u,0,7);g.fill();g.fillStyle="#0a84ff";g.beginPath();g.arc(x,y,7*u,0,7);g.fill()}}
   // title + elapsed, top left
   g.textAlign="left";g.fillStyle="#fff";g.shadowColor="rgba(0,0,0,.6)";g.shadowBlur=8*u;
-  g.font=`italic 900 ${34*u}px "Exo 2",${F}`;g.fillText("DRAGON DRIVE",40*u,76*u);
+  g.font=`700 ${44*u}px "UnifrakturCook",serif`;g.fillText("Dragon Drive",40*u,78*u);
   g.font=`600 ${40*u}px ${F}`;const el=Math.max(0,Math.min(tl.dur,t));g.fillText(`${Math.floor(el/60)}:${String(Math.floor(el%60)).padStart(2,"0")}.${Math.floor(el*10%10)}`,40*u,124*u);g.shadowBlur=0;
   // timed run banner, top centre
   const cand=tl.runs.filter(r=>t>=r.at&&t<=r.at+r.t+4),fin=cand.filter(r=>t>=r.at+r.t&&t<=r.at+r.t+2.5).sort((a,b)=>(b.at+b.t)-(a.at+a.t)),liv=cand.filter(r=>t<r.at+r.t).sort((a,b)=>b.t-a.t);
@@ -1219,6 +1219,7 @@ async function openVideo(id){
     </div>`;
   sh.hidden=false;sh.scrollTop=0;document.body.style.overflow="hidden";
   $("#sh-x").onclick=()=>{cleanup();openDrive(d.id)};
+  try{document.fonts.load('700 44px "UnifrakturCook"')}catch(e){}
   const vid=document.createElement("video");vid.playsInline=true;vid.muted=true;vid.preload="auto";vid.setAttribute("playsinline","");
   let off=0,url=null,cv=null,g=null,box=null,busy=false,file=null;
   function cleanup(){busy=false;try{vid.pause()}catch(e){}if(url)URL.revokeObjectURL(url);url=null}
