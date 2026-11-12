@@ -9,7 +9,26 @@ create table if not exists public.profiles (
   avatar_url text,
   created_at timestamptz not null default now()
 );
+alter table public.profiles add column if not exists verified boolean not null default false;
 alter table public.profiles enable row level security;
+
+-- Official names (Burnout, Dragon Drive, staff words) can't be claimed from the app, including
+-- look-alikes such as burn0ut or b_u_r_n_o_u_t. Only the project owner can create them from this
+-- SQL editor, and only the editor can set the verified badge.
+create or replace function public.guard_profile() returns trigger language plpgsql as $$
+declare n text;
+begin
+  if auth.uid() is null then return new; end if; -- SQL editor / dashboard
+  n := regexp_replace(translate(lower(new.handle), '0134578', 'oieastb'), '[^a-z]', '', 'g');
+  if n ~ '(burnout|dragondrive|dragon(drive)?team|admin|support|official|staff|moderator)' then
+    if tg_op = 'UPDATE' and old.handle = new.handle then null;
+    else raise exception 'That handle is reserved' using errcode = '23505'; end if;
+  end if;
+  if tg_op = 'INSERT' then new.verified := false; else new.verified := old.verified; end if;
+  return new;
+end $$;
+drop trigger if exists guard_profile on public.profiles;
+create trigger guard_profile before insert or update on public.profiles for each row execute function public.guard_profile();
 drop policy if exists "profiles readable" on public.profiles;
 create policy "profiles readable" on public.profiles for select to authenticated using (true);
 drop policy if exists "own profile" on public.profiles;

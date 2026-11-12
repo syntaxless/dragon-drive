@@ -34,7 +34,7 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .wrap{max-width:640px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
 header.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:10px}
-.brand{display:flex;align-items:center;gap:10px;font-family:var(--logo);font-weight:700;font-size:27px;letter-spacing:.01em;line-height:1}
+.brand{color:inherit;text-decoration:none;display:flex;align-items:center;gap:10px;font-family:var(--logo);font-weight:700;font-size:27px;letter-spacing:.01em;line-height:1}
 .brand .logo{display:flex;flex:none}.brand .logo svg{display:block}
 .unit-toggle{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .unit-toggle button{border:0;background:transparent;padding:4px 10px;font-family:var(--display);font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
@@ -64,6 +64,7 @@ h3{font-size:18px}
 .garage-grid figure{margin:0;border-radius:12px;overflow:hidden;background:var(--surface-2)}
 .garage-grid img,.garage-grid .ph{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--surface-2)}
 .garage-grid figcaption{padding:6px 10px;font-weight:600;font-size:14px}
+.verified{display:inline-grid;place-items:center;width:1.05em;height:1.05em;border-radius:50%;background:#f2a93b;color:#111;font-size:.7em;font-weight:900;vertical-align:.1em;margin-left:2px}
 .cruise-dot{width:10px;height:10px;border-radius:50%;flex:none}
 .cruise-badge{background:var(--hl,#f2a93b);color:#111;font-weight:800}
 .head-tags{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px;flex:none;max-width:45%}
@@ -191,10 +192,10 @@ input[type=range]{width:100%;accent-color:var(--hl)}
 </style>
 
 <header class="top"><div class="wrap">
-  <div class="brand">
+  <a class="brand" href="#feed" id="brand" aria-label="Dragon Drive, go to feed">
     <span class="logo" aria-hidden="true"><svg width="34" height="34" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#fff4d6"/><path d="M43 33q5-4 10-3q-2 2 0 3q4 1 9-1q-1 5-6 6q3 2 3 5q-6 0-9-3q-3 1-7-1z" fill="#ff8a1f" stroke="#b8400c" stroke-width="1.6" stroke-linejoin="round"/><path d="M48 34q3-1 6 0q-2 2-6 1z" fill="#ffd23f"/><path d="M9 60q-2-14 2-24q3-10 11-15q8-5 16-2q6 2 8 7q5 1 6 5q1 5-4 6q-3 1-6 0q-1 4-6 6q-5 2-10 1q-3 5-2 16z" fill="#61c24a" stroke="#1e2a1c" stroke-width="2.4" stroke-linejoin="round"/><path d="M12 36l-5-3l4-2l-5-5l6 0l-3-6l7 3" fill="none" stroke="#1e2a1c" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/><path d="M27 19l-3-9l6 6M35 17l2-10l2 9" fill="#61c24a" stroke="#1e2a1c" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="33" cy="26" r="5" fill="#fff" stroke="#1e2a1c" stroke-width="1.8"/><circle cx="35" cy="25" r="2" fill="#1e2a1c"/><path d="M47 30l2 0" stroke="#1e2a1c" stroke-width="2" stroke-linecap="round"/><path d="M40 37q-4 2-9 1" fill="none" stroke="#1e2a1c" stroke-width="1.8" stroke-linecap="round"/><path d="M33 38l1 3l2-3" fill="#fff" stroke="#1e2a1c" stroke-width="1.2" stroke-linejoin="round"/></svg></span>
     Dragon Drive
-  </div>
+  </a>
   <a href="#you" class="me-btn" id="me-btn" aria-label="You: profile, stats and settings"></a>
 </div></header>
 
@@ -533,11 +534,11 @@ const Social=(()=>{
   return{
     SOC,ok,ready,hue,trimEnds,refresh,push,loadMe,
     get me(){return SOC.me},
-    person(id){const p=SOC.profiles.get(id.slice(2));return p?{id,name:p.name||"@"+p.handle,handle:p.handle,color:hue(p.id),avatarUrl:p.avatar_url}:{id,name:"Driver",color:"#666"}},
+    person(id){const p=SOC.profiles.get(id.slice(2));return p?{id,name:p.name||"@"+p.handle,handle:p.handle,color:hue(p.id),avatarUrl:p.avatar_url,verified:!!p.verified}:{id,name:"Driver",color:"#666"}},
     published:d=>!!(d.remote||(S.pub&&S.pub[d.id])),
     kudos:id=>SOC.kudos.get(id),comments:id=>SOC.comments.get(id),
     async claim(handle){handle=handle.toLowerCase();const u=Sync.user;
-      await J("/rest/v1/profiles",{method:"POST",headers:{Prefer:"return=representation"},body:JSON.stringify({id:u.uid,handle,name:(S.settings.name||"").slice(0,40)})}).then(r=>{SOC.me=r[0]}).catch(e=>{if(e.code==="23505"||e.status===409)throw new Error("That handle is taken. Try another.");throw e});
+      await J("/rest/v1/profiles",{method:"POST",headers:{Prefer:"return=representation"},body:JSON.stringify({id:u.uid,handle,name:(S.settings.name||"").slice(0,40)})}).then(r=>{SOC.me=r[0]}).catch(e=>{if(/reserved/i.test(e.message))throw new Error("That handle is reserved. Try another.");if(e.code==="23505"||e.status===409)throw new Error("That handle is taken. Try another.");throw e});
       addProfiles([SOC.me]);S.pubAvatar="";await push();await refresh()},
     async toggleKudos(id){const e=SOC.kudos.get(id)||{n:0,mine:false};const u=Sync.user;
       if(e.mine){await J("/rest/v1/kudos?drive_id=eq."+encodeURIComponent(id)+"&user_id=eq."+u.uid,{method:"DELETE"});e.n--;e.mine=false}
@@ -569,6 +570,7 @@ function dropExamples(){if(!S.drives.some(d=>d.sample)||!S.drives.some(isReal))r
   for(const id of gone){delete S.kudos[id];delete S.comments[id];if(S.kudosFrom)delete S.kudosFrom[id]}return true}
 if(dropExamples())save();
 const person=id=>typeof id==="string"&&id.startsWith("u:")?Social.person(id):id==="me"?{id:"me",name:"You",color:"var(--accent)"}:(S.people.find(p=>p.id===id)||{name:"Driver",color:"#666"});
+const nameHtml=p=>esc(p.name)+(p.verified?' <span class="verified" title="Official Dragon Drive account" aria-label="Official">✓</span>':"");
 const initials=n=>n==="You"?"ME":n.split(/\s+/).map(x=>x[0]).join("").slice(0,2).toUpperCase();
 
 
@@ -782,7 +784,7 @@ function feedCard(d){
   const p=person(d.who),s=d.stats;
   return `<article class="card">
     <button class="open-link" data-open="${d.id}" aria-label="Open ${esc(d.title)}">
-      <div class="card-head">${avatar(p)}<div style="min-width:0"><div style="font-weight:600">${p.handle?`<span data-user="${esc(p.handle)}">${esc(p.name)}</span>`:esc(p.name)}</div><div class="muted small">${ago(d.start)}${d.vehicle?" · "+esc(d.vehicle):""}</div></div><span class="spacer"></span><span class="head-tags">${d.sample?'<span class="chip example">Example</span>':""}<span class="chip">${esc(d.source||"Phone GPS")}</span></span></div>
+      <div class="card-head">${avatar(p)}<div style="min-width:0"><div style="font-weight:600">${p.handle?`<span data-user="${esc(p.handle)}">${nameHtml(p)}</span>`:esc(p.name)}</div><div class="muted small">${ago(d.start)}${d.vehicle?" · "+esc(d.vehicle):""}</div></div><span class="spacer"></span><span class="head-tags">${d.sample?'<span class="chip example">Example</span>':""}<span class="chip">${esc(d.source||"Phone GPS")}</span></span></div>
       <div class="card-title"><h3>${esc(d.title)}</h3></div>
       <div class="stats">${statBlock("Distance",fDist(s.dist).toFixed(fDist(s.dist)<10?2:1),dLabel())}${statBlock("Moving time",fDur(s.moving))}${statBlock("Top speed",Math.round(fSpeed(s.max)),sLabel())}</div>
       <div class="chips">${driveChips(d)}</div>
@@ -1102,7 +1104,7 @@ function openDrive(id,fresh){
   const sh=$("#sheet");
   sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span>${d.sample?'<span class="chip example">Example</span>':""}${d.remote?"":'<button class="btn" id="d-video" type="button">Video</button>'}<button class="btn primary" id="d-share" type="button">Share</button></div></div>
   <div class="wrap body stack">
-    <div class="row">${avatar(p)}<div><div style="font-weight:600">${p.handle?`<a href="#u/${esc(p.handle)}" style="color:inherit">${esc(p.name)}</a> <span class="muted small">@${esc(p.handle)}</span>`:esc(p.name)}</div><div class="muted small">${new Date(d.start).toLocaleString(undefined,{weekday:"short",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})} · ${esc(d.vehicle)} · ${esc(d.source||"Phone GPS")}</div></div></div>
+    <div class="row">${avatar(p)}<div><div style="font-weight:600">${p.handle?`<a href="#u/${esc(p.handle)}" style="color:inherit">${nameHtml(p)}</a> <span class="muted small">@${esc(p.handle)}</span>`:esc(p.name)}</div><div class="muted small">${new Date(d.start).toLocaleString(undefined,{weekday:"short",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})} · ${esc(d.vehicle)} · ${esc(d.source||"Phone GPS")}</div></div></div>
     ${mine?`<input type="text" id="title-in" value="${esc(d.title)}" aria-label="Drive title" style="font-family:var(--display);font-size:26px;font-weight:700">`:`<h1 style="text-transform:none">${esc(d.title)}</h1>`}
     ${mine&&Social.ready()&&isReal(d)?`<label class="row muted small" style="gap:8px">Who can see this<select id="d-vis" style="flex:none"><option value="followers" ${(d.vis||S.settings.defaultVis||"followers")==="followers"?"selected":""}>Followers</option><option value="public" ${(d.vis||S.settings.defaultVis)==="public"?"selected":""}>Everyone</option><option value="private" ${(d.vis||S.settings.defaultVis)==="private"?"selected":""}>Only me</option></select></label>`:""}
     ${(()=>{const g=cruiseOf(d);return g?`<button class="notice open-link" data-cruise="${g.id}" style="text-align:left;width:100%"><b>Cruise:</b> ${esc(cruiseTitle(g))} drove this together. See everyone →</button>`:""})()}
@@ -1456,7 +1458,7 @@ async function viewProfile(handle){
   const ds=data.drives,dist=ds.reduce((a,d)=>a+d.stats.dist,0),top=ds.reduce((a,d)=>Math.max(a,d.stats.max),0);
   v.innerHTML=`<div class="stack">
     <div class="panel"><div class="profile">${avatar(pp,84)}<div class="stack" style="flex:1;min-width:180px;gap:6px">
-      <div><h1 style="text-transform:none;margin:0">${esc(pp.name)}</h1><div class="muted">@${esc(p.handle)}</div></div>
+      <div><h1 style="text-transform:none;margin:0">${nameHtml(pp)}</h1><div class="muted">@${esc(p.handle)}</div></div>
       <div class="muted small">${data.followers} follower${data.followers===1?"":"s"} · ${data.following} following</div>
       ${me?`<div class="row"><a class="btn" href="#you">Edit profile</a></div>`:Social.ready()?`<div class="row"><button class="btn ${fol?"":"primary"}" id="fol" type="button">${fol?"Following":"Follow"}</button></div>`:`<div class="notice">Pick your own @handle on your <a href="#you">profile page</a> to follow people.</div>`}
     </div></div></div>
@@ -1600,7 +1602,7 @@ function viewYou(){
   const inv=$("#inv");if(inv)inv.onclick=async()=>{const url=location.origin+location.pathname+"#u/"+Social.me.handle,text=`Follow me on Dragon Drive: ${url}`;
     try{if(navigator.share){await navigator.share({title:"Dragon Drive",text,url});return}await navigator.clipboard.writeText(url);toast("Invite link copied")}catch(e){}};
   const ff=$("#f-form");if(ff)ff.onsubmit=async e=>{e.preventDefault();const box=$("#f-res");box.innerHTML='<p class="muted small" style="margin:0">Searching…</p>';
-    try{const r=await Social.search($("#f-in").value);box.innerHTML=r.length?r.map(p=>{const pp=Social.person("u:"+p.id);return `<a class="effort" href="#u/${esc(p.handle)}" style="display:flex;text-decoration:none;color:inherit">${avatar(pp,32)}<div style="flex:1;min-width:0"><div style="font-weight:600">${esc(pp.name)}</div><div class="muted small">@${esc(p.handle)}${Social.SOC.following.has(p.id)?" · Following":""}</div></div></a>`}).join(""):'<p class="muted small" style="margin:0">Nobody by that handle yet.</p>'}catch(err){box.innerHTML='<p class="muted small" style="margin:0">Search failed. Check your connection.</p>'}};
+    try{const r=await Social.search($("#f-in").value);box.innerHTML=r.length?r.map(p=>{const pp=Social.person("u:"+p.id);return `<a class="effort" href="#u/${esc(p.handle)}" style="display:flex;text-decoration:none;color:inherit">${avatar(pp,32)}<div style="flex:1;min-width:0"><div style="font-weight:600">${nameHtml(pp)}</div><div class="muted small">@${esc(p.handle)}${Social.SOC.following.has(p.id)?" · Following":""}</div></div></a>`}).join(""):'<p class="muted small" style="margin:0">Nobody by that handle yet.</p>'}catch(err){box.innerHTML='<p class="muted small" style="margin:0">Search failed. Check your connection.</p>'}};
   const dvs=$("#def-vis");if(dvs)dvs.onchange=e=>{S.settings.defaultVis=e.target.value;save();toast("Saved")};
   const he=$("#hide-ends");if(he)he.onchange=e=>{S.settings.hideEnds=e.target.checked;save()};
   $("#bk-save").onclick=async()=>{try{const blob=await makeBackup();await saveFile(blob,`dragon-drive-backup-${new Date().toISOString().slice(0,10)}.json`)}catch(e){toast("Couldn't build the backup.")}};
@@ -1611,6 +1613,7 @@ function viewYou(){
 
 /* ================= global events ================= */
 document.addEventListener("click",e=>{
+  const br=e.target.closest("#brand");if(br){if(location.hash==="#feed"||location.hash===""){e.preventDefault();if(!$("#sheet").hidden)closeSheet();else window.scrollTo({top:0,behavior:"smooth"})}return}
   const us=e.target.closest("[data-user]");if(us){e.preventDefault();e.stopPropagation();location.hash="#u/"+us.dataset.user;return}
   const k=e.target.closest("[data-kudos]");if(k&&!k.disabled){e.preventDefault();const id=k.dataset.kudos;const d=findDrive(id);
     (async()=>{if(Social.ok()&&Social.published(d)){try{await Social.toggleKudos(id)}catch(err){toast("Couldn't reach the server");return}}else{S.kudos[id]=!S.kudos[id];save()}
