@@ -566,11 +566,16 @@ const Social=(()=>{
       else{await J("/rest/v1/follows?follower=eq."+u.uid+"&followee=eq."+id,{method:"DELETE"});SOC.following.delete(id);SOC.drives=SOC.drives.filter(d=>d.who!=="u:"+id)}refresh()},
     async photoUrl(d){if(SOC.photoUrls.has(d.id))return SOC.photoUrls.get(d.id);const uid=d.who.slice(2);const r=await Sync.api("/storage/v1/object/authenticated/drive-photos/"+uid+"/"+encodeURIComponent(d.id)).catch(()=>null);
       const u=r&&r.ok?URL.createObjectURL(await r.blob()):null;SOC.photoUrls.set(d.id,u);return u},
-    reset(){SOC.me=undefined;SOC.profiles.clear();SOC.following.clear();SOC.drives=[];SOC.kudos.clear();SOC.comments.clear();SOC.loaded=false}
+    // Public ("Everyone") drives from people you don't follow yet, for discovery.
+    async nearby(){const u=Sync.user;if(SOC.nearAt&&Date.now()-SOC.nearAt<120000)return SOC.near;
+      const r=await J("/rest/v1/drives?select=*&visibility=eq.public&user_id=neq."+u.uid+"&order=start.desc&limit=300");
+      const need=[...new Set(r.map(x=>x.user_id))].filter(id=>!SOC.profiles.has(id));if(need.length)addProfiles(await J("/rest/v1/profiles?select=*&id="+inList(need)));
+      SOC.near=r.map(toLocal);SOC.nearAt=Date.now();await loadReactions(SOC.near.map(d=>d.id)).catch(()=>{});return SOC.near},
+    reset(){SOC.near=[];SOC.nearAt=0;SOC.me=undefined;SOC.profiles.clear();SOC.following.clear();SOC.drives=[];SOC.kudos.clear();SOC.comments.clear();SOC.loaded=false}
   };
 })();
 function allDrives(){return Social.ok()?[...S.drives,...Social.SOC.drives.filter(r=>!S.drives.some(d=>d.id===r.id))]:S.drives}
-function findDrive(id){return S.drives.find(x=>x.id===id)||Social.SOC.drives.find(x=>x.id===id)}
+function findDrive(id){return S.drives.find(x=>x.id===id)||Social.SOC.drives.find(x=>x.id===id)||(Social.SOC.near||[]).find(x=>x.id===id)}
 
 let S=load();
 if(!S||S.v!==2){S=seed();save()}
@@ -1475,21 +1480,45 @@ function drawHeat(c,drives){
   g.globalAlpha=1;
 }
 let routeWho="me";
+function routeRow(d){const p=person(d.who);return `<button class="effort open-link" data-open="${d.id}" style="display:flex">${p.handle&&d.who!=="me"?`<span data-user="${esc(p.handle)}" class="user-link">${avatar(p,30)}</span>`:avatar(p,30)}<div style="flex:1;min-width:0"><div style="font-weight:600">${esc(d.title)}</div><div class="muted small">${d.who!=="me"?(p.handle?`<span data-user="${esc(p.handle)}">${nameHtml(p)}</span>`:esc(p.name))+" · ":""}${ago(d.start)} · ${fDist(d.stats.dist).toFixed(1)} ${dLabel()}</div></div>${d.sample?'<span class="chip example">Example</span>':""}</button>`}
+function areaCards(ar){return ar.map((a,i)=>`<section class="card"><canvas class="route" data-area="${i}" style="aspect-ratio:4/3"></canvas>
+      <div style="padding:6px 14px 10px">${a.drives.sort((x,y)=>y.start-x.start).map(routeRow).join("")}</div></section>`).join("")}
+function routeToggle(){return `<div class="unit-toggle" role="group" aria-label="Whose routes"><button type="button" data-who="me" aria-pressed="${routeWho==="me"}">Mine</button><button type="button" data-who="all" aria-pressed="${routeWho==="all"}">Friends</button><button type="button" data-who="near" aria-pressed="${routeWho==="near"}">Nearby</button></div>`}
+function bindRoutes(ar){document.querySelectorAll("canvas[data-area]").forEach(c=>drawHeat(c,ar[+c.dataset.area].drives));document.querySelectorAll("[data-who]").forEach(b=>b.onclick=()=>{routeWho=b.dataset.who;viewRoutes()})}
 function viewRoutes(){
+  if(routeWho==="near")return viewNearby();
   const drives=allDrives().filter(d=>routeWho==="all"||d.who==="me");
   const ar=areas(drives);
   const total=drives.reduce((a,d)=>a+d.stats.dist,0);
   $("#view").innerHTML=`<div class="stack">
-    <div class="row"><div><div class="eyebrow">Where you've been</div><h1>Routes</h1></div><span class="spacer"></span>
-      <div class="unit-toggle" role="group" aria-label="Whose routes"><button type="button" data-who="me" aria-pressed="${routeWho==="me"}">Mine</button><button type="button" data-who="all" aria-pressed="${routeWho==="all"}">Everyone</button></div></div>
+    <div class="row"><div><div class="eyebrow">Where you've been</div><h1>Routes</h1></div><span class="spacer"></span>${routeToggle()}</div>
     <p class="muted" style="margin:0">${drives.length} ${drives.length===1?"drive":"drives"} · ${fDist(total).toFixed(0)} ${dLabel()} on the road. Roads you drive often show brighter.</p>
     ${stylePicker()}
-    ${ar.map((a,i)=>`<section class="card"><canvas class="route" data-area="${i}" style="aspect-ratio:4/3"></canvas>
-      <div style="padding:6px 14px 10px">${a.drives.sort((x,y)=>y.start-x.start).map(d=>`<button class="effort open-link" data-open="${d.id}" style="display:flex">${avatar(person(d.who),30)}<div style="flex:1;min-width:0"><div style="font-weight:600">${esc(d.title)}</div><div class="muted small">${routeWho==="all"?esc(person(d.who).name)+" · ":""}${ago(d.start)} · ${fDist(d.stats.dist).toFixed(1)} ${dLabel()}</div></div>${d.sample?'<span class="chip example">Example</span>':""}</button>`).join("")}</div>
-    </section>`).join("")||`<div class="empty">No routes yet. Tap <b>Drive</b> to record your first one.</div>`}
+    ${areaCards(ar)||`<div class="empty">No routes yet. Tap <b>Drive</b> to record your first one.</div>`}
   </div>`;
-  document.querySelectorAll("canvas[data-area]").forEach(c=>drawHeat(c,ar[+c.dataset.area].drives));
-  document.querySelectorAll("[data-who]").forEach(b=>b.onclick=()=>{routeWho=b.dataset.who;viewRoutes()});
+  bindRoutes(ar);
+}
+// Nearby: drives people shared with Everyone, in the areas where you drive. No live location is used.
+async function viewNearby(){
+  const head=`<div class="row"><div><div class="eyebrow">Drivers around you</div><h1>Routes</h1></div><span class="spacer"></span>${routeToggle()}</div>`;
+  const v=$("#view");
+  if(!Social.ready()){v.innerHTML=`<div class="stack">${head}<div class="notice">${Social.ok()?"Pick your @handle on your <a href=\"#you\">profile page</a>":"Sign in on your <a href=\"#you\">profile page</a>"} to see drivers near you.</div></div>`;bindRoutes([]);return}
+  v.innerHTML=`<div class="stack">${head}<div class="empty">Looking for drivers near you…</div></div>`;bindRoutes([]);
+  let pub;try{pub=await Social.nearby()}catch(e){if(routeWho==="near"&&current==="routes")v.innerHTML=`<div class="stack">${head}<div class="empty">Couldn't reach the server. Check your connection.</div></div>`;bindRoutes([]);return}
+  if(routeWho!=="near"||current!=="routes"||location.hash.slice(1)!=="routes")return;
+  const homes=areas(S.drives.filter(isReal)).map(a=>a.center);
+  const mid=d=>d.pts[Math.floor(d.pts.length/2)];
+  const near=homes.length?pub.filter(d=>d.pts.length>1&&homes.some(c=>hav(c,mid(d))<50000)):pub.filter(d=>d.pts.length>1);
+  const fol=Social.SOC.following;const people=[];for(const d of near){const id=d.who.slice(2);if(!people.includes(id))people.push(id)}
+  const newPeople=people.filter(id=>!fol.has(id)).slice(0,12);
+  const ar=areas(near.slice(0,60));
+  v.innerHTML=`<div class="stack">${head}
+    <p class="muted" style="margin:0">${homes.length?"Drives shared with Everyone in the areas where you drive.":"Recent drives shared with Everyone. Record a drive to see the ones near you."} Only drives people made public show here, with the start and end of each route hidden.</p>
+    ${newPeople.length?`<div class="panel"><h3>Drivers to follow</h3><div class="stack" style="gap:0">${newPeople.map(id=>{const pp=Social.person("u:"+id),n=near.filter(d=>d.who==="u:"+id).length;return `<div class="effort" style="display:flex;align-items:center"><a href="#u/${esc(pp.handle)}" style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;text-decoration:none;color:inherit">${avatar(pp,36)}<div style="min-width:0"><div style="font-weight:600">${nameHtml(pp)}</div><div class="muted small">@${esc(pp.handle)} · ${n} ${n===1?"drive":"drives"}${homes.length?" nearby":""}</div></div></a><button class="btn" data-follow="${id}" type="button">Follow</button></div>`}).join("")}</div></div>`:""}
+    ${near.length?stylePicker()+areaCards(ar):`<div class="empty">No public drives ${homes.length?"near you ":""}yet. When people share drives with Everyone, they'll show up here.</div>`}
+  </div>`;
+  bindRoutes(ar);
+  document.querySelectorAll("[data-follow]").forEach(b=>b.onclick=async()=>{b.disabled=true;try{await Social.follow(b.dataset.follow,true);b.textContent="Following";toast("Following @"+Social.person("u:"+b.dataset.follow).handle)}catch(e){b.disabled=false;toast("Couldn't reach the server")}});
 }
 
 /* ================= you ================= */
