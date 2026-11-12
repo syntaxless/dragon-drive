@@ -442,7 +442,11 @@ const Sync=(()=>{
   function merge(local,remote){
     const gone=new Set([...(local.deleted||[]),...(remote.deleted||[])]);const by=new Map();
     for(const d of [...remote.drives,...local.drives.filter(d=>d.who==="me"&&!d.sample)]){if(gone.has(d.id))continue;const o=by.get(d.id);by.set(d.id,o?{...o,...d,photo:o.photo||d.photo}:d)}
-    const newer=(remote.settingsAt||0)>(local.settingsAt||0)?remote:local;
+    // Newest settings win, except a blank copy (a fresh device: no name, photo or garage) never
+    // replaces a filled-in profile.
+    const blank=st=>{const x=st.settings||{};return !x.name&&!x.avatar&&!Object.values(x.garage||{}).some(g=>g&&g.photoAt)&&(x.vehicles||[]).filter(v=>v!=="My vehicle").length===0};
+    let newer=(remote.settingsAt||0)>(local.settingsAt||0)?remote:local;const older=newer===remote?local:remote;
+    if(blank(newer)&&!blank(older))newer=older;
     // the most recently edited garage wins, so removing a vehicle on one device sticks everywhere
     const vehicles=[...(newer.settings.vehicles&&newer.settings.vehicles.length?newer.settings.vehicles:local.settings.vehicles)];
     return{...local,settingsAt:newer.settingsAt||0,settings:{...local.settings,...newer.settings,vehicles},deleted:[...gone],drives:[...local.drives.filter(d=>d.who!=="me"||d.sample),...by.values()].sort((a,b)=>b.start-a.start)};
@@ -467,8 +471,8 @@ const Sync=(()=>{
     run,
     async sendCode(email){const back=location.origin+location.pathname;const r=await fetch(CLOUD.url+"/auth/v1/otp?redirect_to="+encodeURIComponent(back),{method:"POST",headers:{apikey:CLOUD.anonKey,"Content-Type":"application/json"},body:JSON.stringify({email,create_user:true})});if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.msg||j.message||"Couldn't send the email")}},
     async fromLink(hash){const h=new URLSearchParams(hash.slice(1));if(!on()||!h.get("access_token"))return false;
-      try{const j={access_token:h.get("access_token"),refresh_token:h.get("refresh_token"),expires_in:+h.get("expires_in")||3600};const r=await fetch(CLOUD.url+"/auth/v1/user",{headers:{apikey:CLOUD.anonKey,Authorization:"Bearer "+j.access_token}});j.user=await r.json();if(!r.ok||!j.user.id)throw 0;keep(fromAuth(j));this.adopt();loadAvatar();await this.uploadAll();await run();toast("Signed in, syncing")}catch(e){toast("That sign-in link has expired. Request a new one.")}return true},
-    async verify(email,code){const j=await auth("verify",{type:"email",email,token:code});keep(fromAuth(j));this.adopt();loadAvatar();await this.uploadAll();await run();await Social.refresh()},
+      try{const j={access_token:h.get("access_token"),refresh_token:h.get("refresh_token"),expires_in:+h.get("expires_in")||3600};const r=await fetch(CLOUD.url+"/auth/v1/user",{headers:{apikey:CLOUD.anonKey,Authorization:"Bearer "+j.access_token}});j.user=await r.json();if(!r.ok||!j.user.id)throw 0;keep(fromAuth(j));this.adopt();S.settingsAt=0;loadAvatar();await this.uploadAll();await run();toast("Signed in, syncing")}catch(e){toast("That sign-in link has expired. Request a new one.")}return true},
+    async verify(email,code){const j=await auth("verify",{type:"email",email,token:code});keep(fromAuth(j));this.adopt();S.settingsAt=0;loadAvatar();await this.uploadAll();await run();await Social.refresh()},
     // Each account keeps its own copy of its data on this phone, so switching accounts never mixes them.
     async signOut(){if(!ses)return;await run();const uid=ses.uid;try{localStorage.setItem(KEY+":"+uid,JSON.stringify(S))}catch(e){}
       await photos.del("avatar:me",true);for(const n of Object.keys(S.settings.garage||{}))await photos.del("veh:"+n,true);AV.url=null;
@@ -527,6 +531,7 @@ const Social=(()=>{
     if(!ok())return;if(SOC.me===undefined)await loadMe();if(!SOC.me)return;
     const u=Sync.user;S.pub=S.pub||{};let changed=false;
     // profile name and avatar
+    if(!S.settings.name&&SOC.me.name){S.settings.name=SOC.me.name;lastSJ=JSON.stringify(S.settings);changed=true}
     const nm=(S.settings.name||"").slice(0,40);if(nm!==SOC.me.name){await J("/rest/v1/profiles?id=eq."+u.uid,{method:"PATCH",body:JSON.stringify({name:nm})});SOC.me.name=nm}
     const avSig=S.settings.avatar?String(S.settings.avatarAt||1):"";if(avSig!==(S.pubAvatar||"")){let url=null;
       if(S.settings.avatar){const b=await photos.get("avatar:me");if(b){const path=`avatars/${u.uid}/avatar.jpg`;const r=await Sync.api("/storage/v1/object/"+path,{method:"POST",headers:{"Content-Type":b.type||"image/jpeg","x-upsert":"true"},body:b});if(r.ok)url=CLOUD.url+"/storage/v1/object/public/"+path+"?v="+Date.now()}}
