@@ -74,6 +74,7 @@ h3{font-size:18px}
 .veh-thumb{width:64px;height:48px;border-radius:10px;border:1px dashed var(--line);background:var(--surface-2);color:var(--muted);display:grid;place-items:center;overflow:hidden;flex:none;padding:0;cursor:pointer}
 .veh-thumb img{width:100%;height:100%;object-fit:cover}
 .user-link{display:contents;cursor:pointer;color:inherit}.link-btn{background:none;border:0;padding:0;font:inherit;color:inherit;text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+.notice.signup{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .garage-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
 .garage-grid figure{margin:0;border-radius:12px;overflow:hidden;background:var(--surface-2)}
 .garage-grid img,.garage-grid .ph{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--surface-2)}
@@ -798,7 +799,7 @@ function statBlock(k,v,u){return `<div class="stat"><div class="k">${k}</div><di
 function fillPhotos(root){(root||document).querySelectorAll("img[data-photo]").forEach(async img=>{const rd=findDrive(img.dataset.photo);const u=rd&&rd.remote?await Social.photoUrl(rd):await photos.url(img.dataset.photo);if(u)img.src=u;else img.hidden=true})}
 
 /* ================= views ================= */
-let current="feed";
+let current="feed",signinIntent=null;
 function render(){
   const tab=(location.hash||"#feed").slice(1);
   if(tab.startsWith("u/")){current="profile";document.querySelectorAll("nav.tabs a").forEach(a=>a.setAttribute("aria-current","false"));$("#me-btn").innerHTML=avatar(person("me"),36,"color:var(--accent-fg);font-size:14px");viewProfile(decodeURIComponent(tab.slice(2)));window.scrollTo(0,0);return}
@@ -836,7 +837,7 @@ function viewFeed(){
   const all=allDrives(),groups=cruises(all),inCruise=new Set(groups.flatMap(g=>g.drives.map(d=>d.id)));
   const items=[...all.filter(d=>!inCruise.has(d.id)).map(d=>({t:d.start,h:()=>feedCard(d)})),...groups.map(g=>({t:g.start,h:()=>cruiseCard(g)}))].sort((a,b)=>b.t-a.t);
   const drives=all;
-  const nudge=Social.ok()&&Social.SOC.loaded&&!Social.me?`<a class="notice" href="#you" style="display:block;text-decoration:none;color:inherit"><b>Pick your @handle</b> so friends can find and follow you.</a>`:Social.ready()&&!Social.SOC.following.size?`<a class="notice" href="#you" style="display:block;text-decoration:none;color:inherit"><b>Follow your friends</b> to see their drives here. Find them by @handle or send your invite link.</a>`:"";
+  const nudge=Sync.on()&&!Sync.user?`<div class="notice signup"><div style="flex:1;min-width:180px"><b>Join Dragon Drive</b> to follow friends, share your drives and keep them on all your devices.</div><div class="row" style="gap:8px"><a class="btn" href="#you" data-signin="in" style="color:var(--fg)">Sign in</a><a class="btn primary" href="#you" data-signin="new" style="color:var(--accent-fg)">Create an account</a></div></div>`:Social.ok()&&Social.SOC.loaded&&!Social.me?`<a class="notice" href="#you" style="display:block;text-decoration:none;color:inherit"><b>Pick your @handle</b> so friends can find and follow you.</a>`:Social.ready()&&!Social.SOC.following.size?`<a class="notice" href="#you" style="display:block;text-decoration:none;color:inherit"><b>Follow your friends</b> to see their drives here. Find them by @handle or send your invite link.</a>`:"";
   $("#view").innerHTML=`<div class="stack">
     <div class="row"><div><div class="eyebrow">Your road crew</div><h1>Feed</h1></div><span class="spacer"></span><a class="btn primary" href="#record">Start a drive</a></div>
     ${nudge}
@@ -1555,7 +1556,7 @@ function viewYou(){
         <label class="field">Name on share cards<input type="text" id="me-name" value="${esc(S.settings.name||"")}" placeholder="Your name or handle" maxlength="40"></label>
         <div class="row"><button class="btn" id="av-pick" type="button">${S.settings.avatar?"Change photo":"Add a profile photo"}</button>${S.settings.avatar?`<button class="btn ghost" id="av-rm" type="button">Remove</button>`:""}</div>
       </div></div></div>
-    ${Sync.on()?`<div class="panel"><h3>Account</h3>${Sync.user?`<p style="margin:0">Signed in as <b>${esc(Sync.user.email||"")}</b>${Social.me?` · <a href="#u/${esc(Social.me.handle)}">@${esc(Social.me.handle)}</a>`:""}. Your profile, garage, drives and photos sync to every device you sign in on.</p>
+    ${Sync.on()?`<div class="panel"><h3>${Sync.user?"Account":signinIntent==="new"?"Create an account":signinIntent==="in"?"Sign in":"Sign in or create an account"}</h3>${Sync.user?`<p style="margin:0">Signed in as <b>${esc(Sync.user.email||"")}</b>${Social.me?` · <a href="#u/${esc(Social.me.handle)}">@${esc(Social.me.handle)}</a>`:""}. Your profile, garage, drives and photos sync to every device you sign in on.</p>
       <div class="row"><span class="muted small" id="sync-status" style="flex:1">${esc(Sync.status)}</span><button class="btn" id="sync-now" type="button">Sync now</button><button class="btn ghost" id="sync-out" type="button">Sign out</button></div>`
       :`<p class="muted" style="margin:0">Sign in or create an account to follow friends and keep your profile, garage, drives and photos on all your devices. We email you a sign-in link, no password needed.</p>
       <form class="row" id="sync-form"><input type="email" id="sync-email" placeholder="you@example.com" autocomplete="email" style="flex:1;min-width:0" required><button class="btn primary" type="submit">Email me a link</button></form>
@@ -1596,6 +1597,7 @@ function viewYou(){
   document.querySelectorAll("img[data-vehimg]").forEach(async im=>{const u=await photos.url("veh:"+im.dataset.vehimg);if(u)im.src=u});
   $("#veh-form").onsubmit=e=>{e.preventDefault();const v=$("#veh-in").value.trim();if(!v)return;if(!S.settings.vehicles.includes(v))S.settings.vehicles.push(v);S.settings.vehicle=v;save();viewYou();toast("Vehicle added")};
   if(Sync.on()){
+    if(signinIntent&&$("#sync-email")){const em=$("#sync-email");em.closest(".panel").scrollIntoView({block:"center"});em.focus();signinIntent=null}
     const sf=$("#sync-form");if(sf)sf.onsubmit=async e=>{e.preventDefault();const em=$("#sync-email").value.trim();const b=sf.querySelector("button");b.disabled=true;try{await Sync.sendCode(em);sf.hidden=true;$("#sync-sent").hidden=false;$("#sync-code-form").hidden=false;toast("Sign-in email sent")}catch(err){toast(err.message)}b.disabled=false};
     const cf=$("#sync-code-form");if(cf)cf.onsubmit=async e=>{e.preventDefault();const b=cf.querySelector("button");b.disabled=true;try{await Sync.verify($("#sync-email").value.trim(),$("#sync-code").value.replace(/\D/g,""));toast("Signed in, syncing");viewYou()}catch(err){toast(err.message)}b.disabled=false};
     const sn=$("#sync-now");if(sn)sn.onclick=()=>Sync.run();
@@ -1613,6 +1615,7 @@ function viewYou(){
 /* ================= global events ================= */
 document.addEventListener("click",e=>{
   const br=e.target.closest("#brand");if(br){if(location.hash==="#feed"||location.hash===""){e.preventDefault();if(!$("#sheet").hidden)closeSheet();else window.scrollTo({top:0,behavior:"smooth"})}return}
+  const si=e.target.closest("[data-signin]");if(si){signinIntent=si.dataset.signin;if(location.hash==="#you"){e.preventDefault();render()}}
   const us=e.target.closest("[data-user]");if(us){e.preventDefault();e.stopPropagation();location.hash="#u/"+us.dataset.user;return}
   const k=e.target.closest("[data-kudos]");if(k&&!k.disabled){e.preventDefault();const id=k.dataset.kudos;const d=findDrive(id);
     (async()=>{if(Social.ok()&&Social.published(d)){try{await Social.toggleKudos(id)}catch(err){toast("Couldn't reach the server");return}}else{S.kudos[id]=!S.kudos[id];save()}
