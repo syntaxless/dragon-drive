@@ -1239,11 +1239,15 @@ document.addEventListener("visibilitychange",()=>{if(!REC.on)return;
   wakeLock(true);const away=REC.hiddenAt?Date.now()-REC.hiddenAt:0;REC.hiddenAt=null;
   if(away>5000){(REC.gaps=REC.gaps||[]).push([Date.now()-away,Date.now()]);const m=Math.round(away/60000);
     toast(`GPS was paused for ${m<1?"under a minute":m===1?"1 minute":m+" minutes"} while Dragon Drive was closed. Keep it open with the screen on.`)}});
-const CAM={stream:null,rec:null,key:null,t0:0,n:0,type:"",writes:[]};
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden"&&!REC.on&&CAM.keep){CAM.keep.getTracks().forEach(t=>t.stop());CAM.keep=null}});
+const CAM={keep:null,stream:null,rec:null,key:null,t0:0,n:0,type:"",writes:[]};
 async function startCam(){
   try{
     if(!navigator.mediaDevices||typeof MediaRecorder==="undefined")throw new Error("unsupported");
-    CAM.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30}},audio:true}).catch(()=>navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false}));
+    // Reuse the camera from an earlier drive in this session so iPhone only asks for camera and mic once.
+    const kept=CAM.keep;CAM.keep=null;
+    if(kept&&kept.getTracks().some(t=>t.readyState==="live")){kept.getTracks().forEach(t=>t.enabled=true);CAM.stream=kept}
+    else CAM.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30}},audio:true}).catch(()=>navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false}));
     if(!REC.on){stopCam(true);return}
     CAM.type=["video/mp4;codecs=avc1","video/mp4","video/webm;codecs=vp9","video/webm"].find(t=>MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(t))||"";
     CAM.rec=new MediaRecorder(CAM.stream,{...(CAM.type?{mimeType:CAM.type}:{}),videoBitsPerSecond:2.5e6});
@@ -1259,7 +1263,8 @@ async function stopCam(discard){
   const r=CAM.rec,st=CAM.stream,out=r&&!discard?{key:CAM.key,t0:CAM.t0,type:(r.mimeType||CAM.type||"video/mp4").split(";")[0]}:null;
   CAM.rec=null;CAM.stream=null;
   if(r&&r.state!=="inactive"){await new Promise(res=>{r.onstop=res;try{r.stop()}catch(e){res()}})}
-  if(st)st.getTracks().forEach(t=>t.stop());
+  // Pause rather than close the camera between drives (see startCam); it's closed when the app goes to the background.
+  if(st){st.getTracks().forEach(t=>t.enabled=false);if(CAM.keep&&CAM.keep!==st)CAM.keep.getTracks().forEach(t=>t.stop());CAM.keep=st}
   await Promise.all(CAM.writes);CAM.writes=[];
   return out&&CAM.n?out:null;
 }
