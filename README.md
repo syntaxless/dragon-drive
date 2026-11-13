@@ -12,7 +12,7 @@ Live at https://dragondrive.turboloser.co
 - **Map styles:** routes are drawn over vector street maps (MapLibre GL with free OpenFreeMap tiles, no API key) in Streets, Light, Dark, Synthwave or Game Boy styles, or over a plain grid or solid color. The choice applies to drive pages, the feed, the Routes tab and share cards. Inside the Claude preview only grid and solid color are available.
 - **Planned routes:** on the Routes tab, tap stops on a map to plan a route. Roads mode snaps each leg to streets with the free OSRM router (OpenStreetMap data); Straight mode joins stops directly for water, trails or tracks. Share a route by link or to followers, and anyone can tap Follow to get the same line on their driving screen.
 - **Photos and share cards:** attach a photo to a drive, then export a 1080 × 1350 card with the photo, route, your avatar and key numbers.
-- **Drive videos:** film the road while recording (exact sync), or import any clip and line it up; Dragon Drive burns in speed, g-force, the route and timed runs and exports an MP4.
+- **Drive videos:** film the road while recording (exact sync), or import any clip and line it up; Dragon Drive burns in speed, g-force, the route, elevation, compass heading and timed runs and exports an MP4. Two looks (Dragon Drive and Retro HUD), four speed styles (bar, ring, needle, digital), and each widget can be turned off. The widgets come from [Video Overlay](https://github.com/syntaxless/video-overlay). Where the browser has WebCodecs (recent Safari, Chrome, Edge), export re-encodes the clip frame by frame, faster than real time and with the original audio; otherwise it plays the clip once and records it.
 - **Accounts:** email sign-in syncs profile, garage, drives and photos across devices and unlocks following friends. Sign out and in to switch accounts; each account's data stays separate on the phone.
 
 ## Data sources
@@ -47,6 +47,7 @@ It's a static, installable web app with no build tools.
 | `icon-256.png` | PNG of the icon for emails. |
 | `supabase/` | Database setup and Burnout's sign-in email template. |
 | `vendor/maplibre/` | MapLibre GL JS 4.7.1 (BSD-3-Clause), served locally so it works offline. |
+| `vendor/mediabunny/` | Mediabunny 1.61.3 (MPL-2.0), unmodified, loaded only when a video is exported. |
 | `CNAME` | Custom domain for GitHub Pages. |
 
 ## Current limits

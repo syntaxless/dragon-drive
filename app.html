@@ -1,7 +1,7 @@
 <title>Dragon Drive</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=UnifrakturCook:wght@700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=UnifrakturCook:wght@700&family=Orbitron:wght@700;900&family=Share+Tech+Mono&display=swap">
 <style>
 /* Layout: one-column phone app, sticky header, fixed bottom tab bar; road-sign green accent, amber for routes, red-orange for highlights */
 :root{
@@ -1720,98 +1720,318 @@ async function openShare(id,back){
 }
 
 /* ================= overlay video ================= */
-// Pick a clip filmed during the drive, line it up with the GPS timeline, and burn in speed, g, route and runs.
+// Pick a clip filmed during the drive, line it up with the GPS timeline, and burn in live data.
+// Widget looks (ring, needle and digital speed, compass, elevation, Retro HUD) come from syntaxless/video-overlay.
+// Export re-encodes frame by frame with Mediabunny (vendor/mediabunny, MPL-2.0) where the browser has WebCodecs,
+// so it runs faster than real time and keeps audio; otherwise it records the preview in real time with MediaRecorder.
+const OV_THEMES=[["dd","Dragon Drive"],["retro","Retro HUD"]];
+const OV_SPEEDS=[["bar","Bar"],["ring","Ring"],["needle","Needle"],["digital","Digital"]];
+const OV_WIDGETS=[["speed","Speed"],["g","G-force"],["map","Route map"],["elev","Elevation"],["compass","Compass"],["runs","Timed runs"],["title","Title & time"]];
+function ovStyle(){const o=S.settings.overlay||{};return{theme:o.theme==="retro"?"retro":"dd",speed:OV_SPEEDS.some(s=>s[0]===o.speed)?o.speed:"bar",hide:Array.isArray(o.hide)?o.hide:[]}}
+function setOv(k,v){S.settings.overlay={...ovStyle(),[k]:v};save()}
 function telemetry(d){
   const P=d.pts,n=P.length,t0=P[0][2];const T=P.map(p=>(p[2]-t0)/1000);
   // g per point: sensor values when recorded, otherwise estimated from speed change and heading change
   const G=P.map((p,i)=>{if(p[5]!=null&&p[6]!=null)return[p[5],p[6]];const a=P[Math.max(0,i-1)],b=P[Math.min(n-1,i+1)];const dt=(b[2]-a[2])/1000||1;
     const lon=(b[3]-a[3])/dt/9.81;let lat=0;if(i>0&&i<n-1){const h1=Math.atan2(p[1]-a[1],p[0]-a[0]),h2=Math.atan2(b[1]-p[1],b[0]-p[0]);let dh=h2-h1;while(dh>Math.PI)dh-=2*Math.PI;while(dh<-Math.PI)dh+=2*Math.PI;lat=p[3]*dh/dt/9.81}
     return[Math.max(-1.6,Math.min(1.6,lon)),Math.max(-1.6,Math.min(1.6,lat))]});
+  // heading per point: bearing to the first point at least 10 m ahead, held while stopped so it doesn't spin
+  const Hd=new Array(n).fill(null);let j=0,last=null;
+  for(let i=0;i<n;i++){if(j<i)j=i;while(j<n-1&&hav(P[i],P[j])<10)j++;
+    if(P[i][3]>1&&hav(P[i],P[j])>=10){const k=Math.cos(rad(P[i][0]));last=(Math.atan2((P[j][1]-P[i][1])*k,P[j][0]-P[i][0])*180/Math.PI+360)%360}Hd[i]=last}
+  for(let i=n-2;i>=0;i--)if(Hd[i]==null)Hd[i]=Hd[i+1];
+  // elevation profile, at most 600 points
+  const E=[];P.forEach((p,i)=>{if(p[4]!=null)E.push([T[i],p[4]])});const step=Math.max(1,Math.ceil(E.length/600));
+  const prof=E.length>1?E.filter((e,i)=>i%step===0||i===E.length-1):null;
+  const elev=prof&&{pts:prof,min:Math.min(...prof.map(e=>e[1])),max:Math.max(...prof.map(e=>e[1]))};
   const runs=[];for(const r of RUN_DEFS){const v=d.stats.runs&&d.stats.runs[r.k];if(v)for(const a of (v.all||[v]))runs.push({label:r.label,at:a.at,t:a.t,best:a.t===v.t})}
-  return{d,T,G,runs,dur:T[n-1],
+  return{d,T,G,runs,elev,dur:T[n-1],
     at(t){t=Math.max(0,Math.min(T[n-1],t));let lo=0,hi=n-1;while(hi-lo>1){const m=(lo+hi)>>1;if(T[m]<=t)lo=m;else hi=m}
       const f=T[hi]>T[lo]?(t-T[lo])/(T[hi]-T[lo]):0,L=(a,b)=>a+(b-a)*f,A=P[lo],B=P[hi];
-      return{i:lo,f,lat:L(A[0],B[0]),lon:L(A[1],B[1]),v:L(A[3],B[3]),gx:L(G[lo][1],G[hi][1]),gy:L(G[lo][0],G[hi][0])}}};
+      let hd=Hd[lo];if(hd!=null&&Hd[hi]!=null){let dh=Hd[hi]-hd;if(dh>180)dh-=360;if(dh<-180)dh+=360;hd=(hd+dh*f+360)%360}
+      const alt=A[4]!=null&&B[4]!=null?L(A[4],B[4]):A[4]!=null?A[4]:B[4];
+      return{i:lo,f,lat:L(A[0],B[0]),lon:L(A[1],B[1]),v:L(A[3],B[3]),alt,hd,gx:L(G[lo][1],G[hi][1]),gy:L(G[lo][0],G[hi][0])}}};
 }
-function drawOverlay(g,W,H,tl,t,box){
-  const u=Math.min(W,H)/1080,k=tl.at(t),F='"Barlow Condensed","Arial Narrow",sans-serif',inDrive=t>=0&&t<=tl.dur;
-  const panel=(x,y,w,h)=>{g.fillStyle="rgba(10,14,13,.55)";roundRect(g,x,y,w,h,22*u);g.fill()};
-  g.save();g.textBaseline="alphabetic";
-  // speed, bottom left
-  const sp=inDrive?Math.round(fSpeed(k.v)):0;
-  g.font=`700 ${150*u}px ${F}`;const wide=g.measureText("188").width;g.font=`600 ${42*u}px ${F}`;const pw=Math.max(330*u,wide+g.measureText(sLabel()).width+70*u);
-  panel(36*u,H-236*u,pw,200*u);
-  g.fillStyle="#fff";g.font=`700 ${150*u}px ${F}`;g.textAlign="left";g.fillText(String(sp),62*u,H-80*u);
-  const sw=g.measureText(String(sp)).width;g.fillStyle="#9fb0a9";g.font=`600 ${42*u}px ${F}`;g.fillText(sLabel(),70*u+sw,H-80*u);
-  const top=Math.max(1,fSpeed(tl.d.stats.max)),bw=pw-52*u;g.fillStyle="rgba(255,255,255,.15)";g.fillRect(62*u,H-66*u,bw,10*u);g.fillStyle="#0a84ff";g.fillRect(62*u,H-66*u,bw*Math.min(1,sp/top),10*u);
-  // g ball, bottom right
-  const R=88*u,cx=W-36*u-R-22*u,cy=H-36*u-R-22*u;panel(cx-R-22*u,cy-R-22*u,2*R+44*u,2*R+44*u);
-  g.strokeStyle="rgba(255,255,255,.25)";g.lineWidth=2*u;for(const r of [.5,1])  {g.beginPath();g.arc(cx,cy,R*r/1.2,0,7);g.stroke()}
-  g.beginPath();g.moveTo(cx-R,cy);g.lineTo(cx+R,cy);g.moveTo(cx,cy-R);g.lineTo(cx,cy+R);g.stroke();
-  const gx=inDrive?k.gx:0,gy=inDrive?k.gy:0,gm=Math.hypot(gx,gy),cl=Math.min(1,1.2/Math.max(gm,1e-6));
-  g.fillStyle="#ff7a45";g.beginPath();g.arc(cx+gx*cl*R/1.2,cy-gy*cl*R/1.2,13*u,0,7);g.fill();
-  g.fillStyle="#fff";g.font=`700 ${34*u}px ${F}`;g.textAlign="center";g.fillText(gm.toFixed(2)+" g",cx,cy+R+8*u);
-  // mini route, top right
-  if(box){const bw=260*u,bx=W-36*u-bw,by=36*u;panel(bx,by,bw,bw);const Pj=box.P,ofs=p=>{const[a,b]=Pj(p);return[bx+a*u,by+b*u]};
-    g.globalAlpha=.4;strokePath(g,ofs,tl.d.pts,"#ffffff",6*u);g.globalAlpha=1;
-    if(inDrive){const done=tl.d.pts.slice(0,k.i+1).concat([[k.lat,k.lon]]);strokePath(g,ofs,done,"#0a84ff",7*u);const[x,y]=ofs([k.lat,k.lon]);g.fillStyle="#fff";g.beginPath();g.arc(x,y,11*u,0,7);g.fill();g.fillStyle="#0a84ff";g.beginPath();g.arc(x,y,7*u,0,7);g.fill()}}
-  // title + elapsed, top left
-  g.textAlign="left";g.fillStyle="#fff";g.shadowColor="rgba(0,0,0,.6)";g.shadowBlur=8*u;
-  g.font=`700 ${44*u}px "UnifrakturCook",serif`;g.fillText("Dragon Drive",40*u,78*u);
-  g.font=`600 ${40*u}px ${F}`;const el=Math.max(0,Math.min(tl.dur,t));g.fillText(`${Math.floor(el/60)}:${String(Math.floor(el%60)).padStart(2,"0")}.${Math.floor(el*10%10)}`,40*u,124*u);g.shadowBlur=0;
-  // timed run banner, top centre
-  const cand=tl.runs.filter(r=>t>=r.at&&t<=r.at+r.t+4),fin=cand.filter(r=>t>=r.at+r.t&&t<=r.at+r.t+2.5).sort((a,b)=>(b.at+b.t)-(a.at+a.t)),liv=cand.filter(r=>t<r.at+r.t).sort((a,b)=>b.t-a.t);
-  const r=fin[0]||liv[0]||cand.sort((a,b)=>(b.at+b.t)-(a.at+a.t))[0];
-  if(r){const live=t<r.at+r.t,txt=`${r.label}  ${live?(t-r.at).toFixed(1):r.t.toFixed(2)} s${!live&&r.best?"  ★":""}`;g.font=`700 ${54*u}px ${F}`;const tw=g.measureText(txt).width+60*u;
-    g.fillStyle=live?"rgba(10,14,13,.7)":"#f2a93b";roundRect(g,(W-tw)/2,36*u,tw,84*u,42*u);g.fill();g.fillStyle=live?"#fff":"#111";g.textAlign="center";g.fillText(txt,W/2,96*u)}
+const OV_F='"Barlow Condensed","Arial Narrow",sans-serif';
+const OV_BLUE="#0a84ff",OV_PANEL="rgba(10,14,13,.55)";
+const COMPASS_PTS=["N","NE","E","SE","S","SW","W","NW"];
+const compassPoint=deg=>COMPASS_PTS[Math.round((((deg%360)+360)%360)/45)%8];
+// Everything the widgets need for frame time t (seconds since the drive started).
+function ovFrame(W,H,tl,t,box,st){
+  const u=Math.min(W,H)/1080,k=tl.at(t),inDrive=t>=0&&t<=tl.dur,on=w=>!st.hide.includes(w);
+  const top=fSpeed(tl.d.stats.max||0);
+  return{W,H,u,k,t,inDrive,on,tl,box,st,
+    sp:inDrive?fSpeed(k.v):0,top:Math.max(1,top),dialMax:Math.max(60,Math.ceil(top*1.1/20)*20),
+    gx:inDrive?k.gx:0,gy:inDrive?k.gy:0,hd:inDrive?k.hd:null,alt:inDrive?k.alt:null,el:Math.max(0,Math.min(tl.dur,t))};
+}
+const fmtElapsed=el=>`${Math.floor(el/60)}:${String(Math.floor(el%60)).padStart(2,"0")}.${Math.floor(el*10%10)}`;
+// Which timed run to show: one that just finished, else one in progress.
+function ovRun(tl,t){const cand=tl.runs.filter(r=>t>=r.at&&t<=r.at+r.t+4),fin=cand.filter(r=>t>=r.at+r.t&&t<=r.at+r.t+2.5).sort((a,b)=>(b.at+b.t)-(a.at+a.t)),liv=cand.filter(r=>t<r.at+r.t).sort((a,b)=>b.t-a.t);
+  return fin[0]||liv[0]||cand.sort((a,b)=>(b.at+b.t)-(a.at+a.t))[0]}
+// Corners: speed bottom left, g-force bottom right, map top right, title + compass top left, runs top centre.
+// Elevation sits left of the g-force box, or above it when the frame is too narrow (portrait clips).
+function ovLayout(f,speedW){
+  const{W,H,u,on}=f,m=36*u,gS=220*u,eW=380*u,eH=150*u;
+  const g={x:W-m-gS,y:H-m-gS,w:gS,h:gS};
+  let e={x:on("g")?g.x-20*u-eW:W-m-eW,y:H-m-eH,w:eW,h:eH};
+  if(on("speed")&&e.x<m+speedW+20*u)e={x:W-m-eW,y:on("g")?g.y-20*u-eH:H-m-eH,w:eW,h:eH};
+  return{m,g,e};
+}
+function drawOverlay(g,W,H,tl,t,box,st){
+  st=st||ovStyle();const f=ovFrame(W,H,tl,t,box,st);
+  g.save();g.textBaseline="alphabetic";g.textAlign="left";
+  if(st.theme==="retro")drawRetro(g,f);else drawStandard(g,f);
   g.restore();
+}
+
+/* ---- Dragon Drive look ---- */
+function ovPanel(g,x,y,w,h,r){g.fillStyle=OV_PANEL;roundRect(g,x,y,w,h,r);g.fill()}
+function drawStandard(g,f){
+  const{W,H,u,on,tl,k,box,inDrive}=f,F=OV_F;
+  let speedW=0;
+  if(on("speed"))speedW=drawSpeedStd(g,f);
+  const L=ovLayout(f,speedW);
+  if(on("g")){const R=88*u,cx=L.g.x+L.g.w/2,cy=L.g.y+L.g.h/2;ovPanel(g,L.g.x,L.g.y,L.g.w,L.g.h,22*u);
+    g.strokeStyle="rgba(255,255,255,.25)";g.lineWidth=2*u;for(const r of [.5,1]){g.beginPath();g.arc(cx,cy,R*r/1.2,0,7);g.stroke()}
+    g.beginPath();g.moveTo(cx-R,cy);g.lineTo(cx+R,cy);g.moveTo(cx,cy-R);g.lineTo(cx,cy+R);g.stroke();
+    const gm=Math.hypot(f.gx,f.gy),cl=Math.min(1,1.2/Math.max(gm,1e-6));
+    g.fillStyle="#ff7a45";g.beginPath();g.arc(cx+f.gx*cl*R/1.2,cy-f.gy*cl*R/1.2,13*u,0,7);g.fill();
+    g.fillStyle="#fff";g.font=`700 ${34*u}px ${F}`;g.textAlign="center";g.fillText(gm.toFixed(2)+" g",cx,cy+R+8*u);g.textAlign="left"}
+  if(on("elev")&&tl.elev)drawElevStd(g,f,L.e);
+  if(on("map")&&box){const bw=260*u,bx=W-36*u-bw,by=36*u;ovPanel(g,bx,by,bw,bw,22*u);const ofs=p=>{const[a,b]=box.P(p);return[bx+a*u,by+b*u]};
+    g.globalAlpha=.4;strokePath(g,ofs,tl.d.pts,"#ffffff",6*u);g.globalAlpha=1;
+    if(inDrive){const done=tl.d.pts.slice(0,k.i+1).concat([[k.lat,k.lon]]);strokePath(g,ofs,done,OV_BLUE,7*u);const[x,y]=ofs([k.lat,k.lon]);g.fillStyle="#fff";g.beginPath();g.arc(x,y,11*u,0,7);g.fill();g.fillStyle=OV_BLUE;g.beginPath();g.arc(x,y,7*u,0,7);g.fill()}}
+  let ty=36*u;
+  if(on("title")){g.fillStyle="#fff";g.shadowColor="rgba(0,0,0,.6)";g.shadowBlur=8*u;
+    g.font=`700 ${44*u}px "UnifrakturCook",serif`;g.fillText("Dragon Drive",40*u,78*u);
+    g.font=`600 ${40*u}px ${F}`;g.fillText(fmtElapsed(f.el),40*u,124*u);g.shadowBlur=0;ty=150*u}
+  if(on("compass")){const x=36*u,h=76*u,w=150*u;ovPanel(g,x,ty,w,h,18*u);const cx=x+40*u,cy=ty+h/2;
+    g.strokeStyle="rgba(255,255,255,.35)";g.lineWidth=3*u;g.beginPath();g.arc(cx,cy,24*u,0,7);g.stroke();
+    if(f.hd!=null){g.save();g.translate(cx,cy);g.rotate(f.hd*Math.PI/180);g.beginPath();g.moveTo(0,-20*u);g.lineTo(11*u,12*u);g.lineTo(0,6*u);g.lineTo(-11*u,12*u);g.closePath();g.fillStyle="#fff";g.fill();g.restore()}
+    g.fillStyle="#fff";g.textBaseline="middle";g.font=`700 ${38*u}px ${F}`;g.fillText(f.hd==null?"--":compassPoint(f.hd),x+76*u,cy+2*u);g.textBaseline="alphabetic"}
+  const r=on("runs")&&ovRun(tl,f.t);
+  if(r){const live=f.t<r.at+r.t,txt=`${r.label}  ${live?(f.t-r.at).toFixed(1):r.t.toFixed(2)} s${!live&&r.best?"  ★":""}`;g.font=`700 ${54*u}px ${F}`;const tw=g.measureText(txt).width+60*u;
+    g.fillStyle=live?"rgba(10,14,13,.7)":"#f2a93b";roundRect(g,(W-tw)/2,36*u,tw,84*u,42*u);g.fill();g.fillStyle=live?"#fff":"#111";g.textAlign="center";g.fillText(txt,W/2,96*u);g.textAlign="left"}
+}
+// Returns the width it used so elevation can avoid it.
+function drawSpeedStd(g,f){
+  const{H,u,st}=f,F=OV_F,text=String(Math.round(f.sp)),unit=sLabel(),frac=Math.min(1,Math.max(0,f.sp/f.dialMax));
+  if(st.speed==="ring"){const r=120*u,cx=60*u+r,cy=H-60*u-r;
+    g.beginPath();g.arc(cx,cy,r+18*u,0,7);g.fillStyle=OV_PANEL;g.fill();
+    g.lineCap="round";g.lineWidth=14*u;g.beginPath();g.arc(cx,cy,r,Math.PI*.75,Math.PI*2.25);g.strokeStyle="rgba(255,255,255,.18)";g.stroke();
+    if(frac>0){g.beginPath();g.arc(cx,cy,r,Math.PI*.75,Math.PI*.75+Math.PI*1.5*frac);g.strokeStyle=OV_BLUE;g.stroke()}
+    g.lineCap="butt";g.fillStyle="#fff";g.textAlign="center";g.font=`700 ${96*u}px ${F}`;g.fillText(text,cx,cy+28*u);
+    g.font=`600 ${28*u}px ${F}`;g.fillStyle="rgba(255,255,255,.75)";g.fillText(unit.toUpperCase(),cx,cy+66*u);g.textAlign="left";return 2*r+78*u-36*u}
+  if(st.speed==="needle"){const r=128*u,cx=(42+138)*u,cy=H-(42+138)*u,ang=x=>Math.PI*.75+Math.PI*1.5*x;
+    g.beginPath();g.arc(cx,cy,r+10*u,0,7);g.fillStyle=OV_PANEL;g.fill();g.lineWidth=3*u;g.strokeStyle="rgba(255,255,255,.35)";g.stroke();
+    const major=f.dialMax<=160?20:40,minor=major/2;g.textAlign="center";g.textBaseline="middle";g.font=`600 ${22*u}px ${F}`;
+    for(let v=0;v<=f.dialMax+1e-6;v+=minor){const a=ang(v/f.dialMax),isM=Math.abs(v/major-Math.round(v/major))<1e-6,o=r-6*u,i=o-(isM?18:9)*u;
+      g.beginPath();g.moveTo(cx+Math.cos(a)*i,cy+Math.sin(a)*i);g.lineTo(cx+Math.cos(a)*o,cy+Math.sin(a)*o);g.lineWidth=(isM?4:2)*u;g.strokeStyle=isM?"#fff":"rgba(255,255,255,.55)";g.stroke();
+      if(isM){const lr=r-42*u;g.fillStyle="rgba(255,255,255,.85)";g.fillText(String(v),cx+Math.cos(a)*lr,cy+Math.sin(a)*lr)}}
+    g.textBaseline="alphabetic";g.fillStyle="#fff";g.font=`700 ${44*u}px ${F}`;g.fillText(text,cx,cy+84*u);g.fillStyle="rgba(255,255,255,.7)";g.font=`600 ${18*u}px ${F}`;g.fillText(unit.toUpperCase(),cx,cy+106*u);
+    const a=ang(frac),tip=r-14*u,tail=18*u,half=5*u,nx=Math.cos(a),ny=Math.sin(a);
+    g.beginPath();g.moveTo(cx+nx*tip,cy+ny*tip);g.lineTo(cx-ny*half-nx*tail,cy+nx*half-ny*tail);g.lineTo(cx+ny*half-nx*tail,cy-nx*half-ny*tail);g.closePath();g.fillStyle=OV_BLUE;g.fill();
+    g.beginPath();g.arc(cx,cy,11*u,0,7);g.fillStyle="#1b1e24";g.fill();g.lineWidth=3*u;g.strokeStyle=OV_BLUE;g.stroke();g.textAlign="left";return 276*u+6*u}
+  if(st.speed==="digital"){const w=276*u,h=156*u,x=36*u,y=H-36*u-h,pad=22*u;ovPanel(g,x,y,w,h,16*u);
+    g.textAlign="right";g.fillStyle="#fff";g.font=`700 ${110*u}px ${F}`;const nr=x+w-92*u;g.fillText(text,nr,y+104*u);
+    g.textAlign="left";g.fillStyle=OV_BLUE;g.font=`700 ${28*u}px ${F}`;g.fillText(unit.toUpperCase(),nr+12*u,y+104*u);
+    const segs=20,gap=4*u,by=y+h-pad-14*u,sw=(w-pad*2-gap*(segs-1))/segs,lit=Math.round(frac*segs);
+    for(let i=0;i<segs;i++){const p=i/segs;g.fillStyle=i<lit?(p<.6?"#3ddc84":p<.85?"#ffb020":"#ff4d3d"):"rgba(255,255,255,.14)";g.fillRect(x+pad+i*(sw+gap),by,sw,14*u)}
+    return w}
+  // bar: big number with a bar that fills towards the drive's top speed
+  g.font=`700 ${150*u}px ${F}`;const wide=g.measureText("188").width;g.font=`600 ${42*u}px ${F}`;const pw=Math.max(330*u,wide+g.measureText(unit).width+70*u);
+  ovPanel(g,36*u,H-236*u,pw,200*u,22*u);
+  g.fillStyle="#fff";g.font=`700 ${150*u}px ${F}`;g.fillText(text,62*u,H-80*u);
+  const sw=g.measureText(text).width;g.fillStyle="#9fb0a9";g.font=`600 ${42*u}px ${F}`;g.fillText(unit,70*u+sw,H-80*u);
+  const bw=pw-52*u;g.fillStyle="rgba(255,255,255,.15)";g.fillRect(62*u,H-66*u,bw,10*u);g.fillStyle=OV_BLUE;g.fillRect(62*u,H-66*u,bw*Math.min(1,f.sp/f.top),10*u);
+  return pw;
+}
+function elevGeom(f,e){const{u,tl}=f,p=tl.elev,pad=20*u,gx=e.x+pad,gw=e.w-pad*2,gy=e.y+68*u,gh=e.h-68*u-pad,range=Math.max(p.max-p.min,30),mid=(p.max+p.min)/2,t0=p.pts[0][0],t1=p.pts[p.pts.length-1][0];
+  return{p,pad,gx,gw,gy,gh,t0,t1,X:tt=>gx+(tt-t0)/Math.max(t1-t0,1e-6)*gw,Y:a=>gy+gh/2-(a-mid)/range*gh}}
+function drawElevStd(g,f,e){
+  const{u}=f,G=elevGeom(f,e),F=OV_F;ovPanel(g,e.x,e.y,e.w,e.h,18*u);
+  const val=f.alt==null?"--":Math.round(fAlt(f.alt)).toLocaleString("en-US");
+  g.fillStyle="#fff";g.font=`700 ${46*u}px ${F}`;g.fillText(val,e.x+G.pad,e.y+54*u);const vw=g.measureText(val).width;
+  g.font=`600 ${24*u}px ${F}`;g.fillStyle="rgba(255,255,255,.75)";g.fillText(aLabel().toUpperCase(),e.x+G.pad+vw+8*u,e.y+54*u);
+  g.textAlign="right";g.fillText("ELEVATION",e.x+e.w-G.pad,e.y+50*u);g.textAlign="left";
+  g.beginPath();g.moveTo(G.gx,G.gy+G.gh);for(const[tt,a]of G.p.pts)g.lineTo(G.X(tt),G.Y(a));g.lineTo(G.gx+G.gw,G.gy+G.gh);g.closePath();g.fillStyle="rgba(255,255,255,.22)";g.fill();
+  if(f.alt!=null){const cx=G.X(Math.min(Math.max(f.t,G.t0),G.t1));g.strokeStyle="rgba(255,255,255,.6)";g.lineWidth=2*u;g.beginPath();g.moveTo(cx,G.gy);g.lineTo(cx,G.gy+G.gh);g.stroke();
+    g.beginPath();g.arc(cx,G.Y(f.alt),7*u,0,7);g.fillStyle=OV_BLUE;g.fill()}
+}
+
+/* ---- Retro HUD look: neon outlines, scanlines, segmented gauges and a heading tape ---- */
+const RX={display:'Orbitron,"Share Tech Mono",ui-monospace,monospace',mono:'"Share Tech Mono",ui-monospace,Menlo,monospace',cyan:"#2ef2ff",magenta:"#ff3df2",amber:"#ffc53d",green:"#3dff9a",red:"#ff3d5a",dim:"rgba(46,242,255,.16)",panel:"rgba(8,4,24,.62)"};
+const rGlow=(g,c,b)=>{g.shadowColor=c;g.shadowBlur=b},rNoGlow=g=>{g.shadowBlur=0;g.shadowColor="transparent"};
+function rChamfer(g,x,y,w,h,c){g.beginPath();g.moveTo(x+c,y);g.lineTo(x+w,y);g.lineTo(x+w,y+h-c);g.lineTo(x+w-c,y+h);g.lineTo(x,y+h);g.lineTo(x,y+c);g.closePath()}
+function rMix(a,b,f){const p=(s,i)=>parseInt(s.slice(i,i+2),16),ch=i=>Math.round(p(a,i)+(p(b,i)-p(a,i))*f);return `rgb(${ch(1)},${ch(3)},${ch(5)})`}
+function hudPanel(g,u,x,y,w,h,label){
+  const c=16*u;g.save();rChamfer(g,x,y,w,h,c);g.fillStyle=RX.panel;g.fill();
+  g.save();g.clip();g.fillStyle="rgba(46,242,255,.06)";for(let yy=y;yy<y+h;yy+=4*u)g.fillRect(x,yy,w,1.5*u);g.restore();
+  rGlow(g,RX.cyan,10*u);g.strokeStyle="rgba(46,242,255,.75)";g.lineWidth=2*u;rChamfer(g,x,y,w,h,c);g.stroke();
+  const k=14*u;g.strokeStyle=RX.cyan;g.lineWidth=4*u;g.beginPath();g.moveTo(x+w-k,y);g.lineTo(x+w,y);g.lineTo(x+w,y+k);g.moveTo(x,y+h-k);g.lineTo(x,y+h);g.lineTo(x+k,y+h);g.stroke();rNoGlow(g);
+  if(label){g.font=`400 ${14*u}px ${RX.mono}`;const tw=g.measureText(label).width,th=18*u,tx=x+c,ty=y-th;
+    g.beginPath();g.moveTo(tx,ty+th);g.lineTo(tx+th*.6,ty);g.lineTo(tx+tw+24*u,ty);g.lineTo(tx+tw+24*u+th*.6,ty+th);g.closePath();g.fillStyle=RX.cyan;g.fill();
+    g.fillStyle="#08041a";g.textAlign="left";g.textBaseline="middle";g.fillText(label,tx+12*u+th*.3,ty+th/2+u)}
+  g.restore();
+}
+function drawRetro(g,f){
+  const{W,H,u,on,tl,k,box,inDrive}=f,m=36*u;
+  let speedW=0;
+  if(on("speed")){const size=276*u,x=m,y=H-m-size;speedW=size;hudPanel(g,u,x,y,size,size,"VELOCITY");
+    const cx=x+size/2,cy=y+size/2+4*u,st=Math.PI*.75,sw=Math.PI*1.5,frac=Math.min(1,Math.max(0,f.sp/f.dialMax)),ro=116*u;
+    for(let v=0;v<=f.dialMax+1e-6;v+=10){const a=st+sw*(v/f.dialMax),maj=v%20===0,r0=ro-(maj?8:4)*u;
+      g.beginPath();g.moveTo(cx+Math.cos(a)*r0,cy+Math.sin(a)*r0);g.lineTo(cx+Math.cos(a)*ro,cy+Math.sin(a)*ro);g.strokeStyle=maj?"rgba(46,242,255,.8)":"rgba(46,242,255,.4)";g.lineWidth=(maj?2.5:1.5)*u;g.stroke()}
+    const segs=28,r1=102*u,r2=80*u,gap=.02,lit=Math.round(frac*segs);
+    for(let i=0;i<segs;i++){const a0=st+sw*i/segs+gap,a1=st+sw*(i+1)/segs-gap;g.beginPath();g.arc(cx,cy,r1,a0,a1);g.arc(cx,cy,r2,a1,a0,true);g.closePath();
+      const p=i/(segs-1);if(i<lit){const c=p<.85?rMix(RX.cyan,RX.magenta,p/.85):RX.red;g.fillStyle=c;rGlow(g,c,12*u);g.fill();rNoGlow(g)}else{g.fillStyle=RX.dim;g.fill()}}
+    g.textAlign="center";g.font=`900 ${70*u}px ${RX.display}`;const gr=g.createLinearGradient(0,cy-40*u,0,cy+24*u);gr.addColorStop(0,"#fff6c2");gr.addColorStop(.45,RX.amber);gr.addColorStop(1,RX.magenta);
+    rGlow(g,RX.magenta,18*u);g.fillStyle=gr;g.fillText(String(Math.round(f.sp)),cx,cy+24*u);rNoGlow(g);
+    g.font=`400 ${22*u}px ${RX.mono}`;g.fillStyle=RX.cyan;rGlow(g,RX.cyan,8*u);g.fillText(sLabel().toUpperCase(),cx,cy+100*u);rNoGlow(g);g.textAlign="left"}
+  const L=ovLayout(f,speedW);
+  if(on("g")){const b=L.g;hudPanel(g,u,b.x,b.y,b.w,b.h,"G-FORCE");const cx=b.x+b.w/2,cy=b.y+b.h/2-8*u,R=78*u;
+    g.strokeStyle="rgba(46,242,255,.35)";g.lineWidth=1.5*u;for(const r of [.5,1]){g.beginPath();g.arc(cx,cy,R*r,0,7);g.stroke()}
+    g.beginPath();g.moveTo(cx-R,cy);g.lineTo(cx+R,cy);g.moveTo(cx,cy-R);g.lineTo(cx,cy+R);g.stroke();
+    const gm=Math.hypot(f.gx,f.gy),cl=Math.min(1,1.2/Math.max(gm,1e-6)),x=cx+f.gx*cl*R/1.2,y=cy-f.gy*cl*R/1.2;
+    g.strokeStyle=RX.amber;rGlow(g,RX.amber,10*u);g.lineWidth=2.5*u;g.beginPath();g.arc(x,y,10*u,0,7);g.stroke();g.fillStyle="#fff";g.beginPath();g.arc(x,y,3.5*u,0,7);g.fill();rNoGlow(g);
+    g.textAlign="center";g.font=`700 ${24*u}px ${RX.display}`;g.fillStyle="#fff";rGlow(g,RX.cyan,10*u);g.fillText(gm.toFixed(2)+" G",cx,b.y+b.h-14*u);rNoGlow(g);g.textAlign="left"}
+  if(on("elev")&&tl.elev){const e=L.e,G=elevGeom(f,e);hudPanel(g,u,e.x,e.y,e.w,e.h,"ALTITUDE");
+    const val=f.alt==null?"----":String(Math.round(fAlt(f.alt)));g.font=`700 ${36*u}px ${RX.display}`;g.fillStyle="#fff";rGlow(g,RX.cyan,12*u);g.fillText(val,e.x+G.pad,e.y+52*u);rNoGlow(g);
+    const vw=g.measureText(val).width;g.font=`400 ${20*u}px ${RX.mono}`;g.fillStyle=RX.cyan;g.fillText(aLabel().toUpperCase(),e.x+G.pad+vw+10*u,e.y+52*u);
+    const nowX=G.X(Math.min(Math.max(f.t,G.t0),G.t1)),started=f.alt!=null;
+    const area=()=>{g.beginPath();g.moveTo(G.gx,G.gy+G.gh);for(const[tt,a]of G.p.pts)g.lineTo(G.X(tt),G.Y(a));g.lineTo(G.gx+G.gw,G.gy+G.gh);g.closePath()};
+    g.save();area();g.clip();g.lineWidth=1.5*u;for(let hx=G.gx;hx<=G.gx+G.gw;hx+=6*u){g.strokeStyle=started&&hx<=nowX?"rgba(255,61,242,.55)":"rgba(46,242,255,.35)";g.beginPath();g.moveTo(hx,G.gy);g.lineTo(hx,G.gy+G.gh);g.stroke()}g.restore();
+    g.strokeStyle=RX.cyan;g.lineWidth=2*u;g.lineJoin="round";rGlow(g,RX.cyan,8*u);g.beginPath();G.p.pts.forEach(([tt,a],i)=>i?g.lineTo(G.X(tt),G.Y(a)):g.moveTo(G.X(tt),G.Y(a)));g.stroke();rNoGlow(g);
+    if(started){const my=G.Y(f.alt),d=7*u;g.strokeStyle=RX.amber;g.lineWidth=2*u;g.setLineDash([4*u,4*u]);g.beginPath();g.moveTo(nowX,G.gy);g.lineTo(nowX,G.gy+G.gh);g.stroke();g.setLineDash([]);
+      g.fillStyle=RX.amber;rGlow(g,RX.amber,10*u);g.beginPath();g.moveTo(nowX,my-d);g.lineTo(nowX+d,my);g.lineTo(nowX,my+d);g.lineTo(nowX-d,my);g.closePath();g.fill();rNoGlow(g)}}
+  if(on("map")&&box){const bw=260*u,bx=W-m-bw,by=m;hudPanel(g,u,bx,by,bw,bw,"NAV");
+    g.save();rChamfer(g,bx,by,bw,bw,16*u);g.clip();g.strokeStyle="rgba(46,242,255,.12)";g.lineWidth=u;g.beginPath();for(let x=bx+30*u;x<bx+bw;x+=30*u){g.moveTo(x,by);g.lineTo(x,by+bw)}for(let y=by+30*u;y<by+bw;y+=30*u){g.moveTo(bx,y);g.lineTo(bx+bw,y)}g.stroke();g.restore();
+    const ofs=p=>{const[a,b]=box.P(p);return[bx+a*u,by+b*u]};strokePath(g,ofs,tl.d.pts,"rgba(46,242,255,.45)",3*u);
+    if(inDrive){const done=tl.d.pts.slice(0,k.i+1).concat([[k.lat,k.lon]]);rGlow(g,RX.magenta,12*u);strokePath(g,ofs,done,RX.magenta,4*u);
+      const[x,y]=ofs([k.lat,k.lon]),r=(12+3*Math.sin(f.t*Math.PI*2))*u;g.strokeStyle=RX.amber;rGlow(g,RX.amber,10*u);g.lineWidth=2.5*u;g.beginPath();g.arc(x,y,r,0,7);
+      for(const[ax,ay]of[[1,0],[-1,0],[0,1],[0,-1]]){g.moveTo(x+ax*(r+3*u),y+ay*(r+3*u));g.lineTo(x+ax*(r+11*u),y+ay*(r+11*u))}g.stroke();g.fillStyle="#fff";g.beginPath();g.arc(x,y,3.5*u,0,7);g.fill();rNoGlow(g)}}
+  let tx=m;const ty=m+18*u,th=84*u;
+  if(on("title")){const w=230*u;hudPanel(g,u,tx,ty,w,th,"DRAGON DRIVE");g.font=`700 ${34*u}px ${RX.display}`;g.fillStyle="#fff";rGlow(g,RX.cyan,12*u);g.textBaseline="middle";
+    g.fillText(fmtElapsed(f.el),tx+22*u,ty+th/2+2*u);g.textBaseline="alphabetic";rNoGlow(g);tx+=w+20*u}
+  if(on("compass")){const w=340*u,cx=tx+w/2;hudPanel(g,u,tx,ty,w,th,"HEADING");
+    if(f.hd!=null){const span=50,ppd=(w/2-22*u)/span;g.save();rChamfer(g,tx,ty,w,th,16*u);g.clip();g.textAlign="center";g.font=`400 ${16*u}px ${RX.mono}`;
+      for(let d=Math.ceil((f.hd-span)/5)*5;d<=f.hd+span;d+=5){const off=d-f.hd,x=cx+off*ppd,maj=d%30===0,mid=!maj&&d%15===0;g.globalAlpha=Math.max(0,1-(Math.abs(off)/span)**2);
+        g.strokeStyle=RX.cyan;g.lineWidth=(maj?2.5:1.5)*u;g.beginPath();g.moveTo(x,ty+12*u);g.lineTo(x,ty+12*u+(maj?14:mid?9:5)*u);g.stroke();
+        if(maj){const nn=((d%360)+360)%360,card=["N","E","S","W"][nn/90];g.fillStyle=card?RX.amber:RX.cyan;g.fillText(nn%90===0?card:String(nn).padStart(3,"0"),x,ty+46*u)}}
+      g.restore()}
+    g.fillStyle=RX.magenta;rGlow(g,RX.magenta,8*u);g.beginPath();g.moveTo(cx-7*u,ty+4*u);g.lineTo(cx+7*u,ty+4*u);g.lineTo(cx,ty+14*u);g.closePath();g.fill();
+    const val=f.hd==null?"---":`${String(Math.round(f.hd)%360).padStart(3,"0")} ${compassPoint(f.hd)}`;g.font=`700 ${20*u}px ${RX.display}`;const bw=g.measureText(val).width+24*u,bh=28*u,bxl=cx-bw/2,byt=ty+th-bh-6*u;
+    g.fillStyle="rgba(8,4,24,.9)";g.fillRect(bxl,byt,bw,bh);g.strokeStyle=RX.magenta;g.lineWidth=2*u;g.strokeRect(bxl,byt,bw,bh);g.fillStyle="#fff";g.textAlign="center";g.textBaseline="middle";g.fillText(val,cx,byt+bh/2+u);
+    g.textBaseline="alphabetic";g.textAlign="left";rNoGlow(g)}
+  const r=on("runs")&&ovRun(tl,f.t);
+  if(r){const live=f.t<r.at+r.t,txt=`${r.label.toUpperCase()}  ${live?(f.t-r.at).toFixed(1):r.t.toFixed(2)} S${!live&&r.best?"  ★":""}`;g.font=`700 ${40*u}px ${RX.display}`;
+    const tw=g.measureText(txt).width+60*u,bh=72*u,bx=(W-tw)/2,by=on("title")||on("compass")?ty+th+40*u:m+18*u;hudPanel(g,u,bx,by,tw,bh,live?"TIMED RUN":"COMPLETE");
+    g.fillStyle=live?"#fff":RX.amber;rGlow(g,live?RX.cyan:RX.amber,14*u);g.textAlign="center";g.textBaseline="middle";g.fillText(txt,W/2,by+bh/2+2*u);g.textBaseline="alphabetic";g.textAlign="left";rNoGlow(g)}
+}
+function loadOverlayFonts(){try{return Promise.all(['700 44px "UnifrakturCook"','700 16px "Barlow Condensed"','700 16px Orbitron','900 16px Orbitron','400 16px "Share Tech Mono"'].map(x=>document.fonts.load(x))).catch(()=>{})}catch(e){return Promise.resolve()}}
+
+/* ---- export ---- */
+// Frame-accurate export: decodes every frame, draws the overlay and re-encodes to MP4 (audio copied through).
+// Returns null when this browser can't do it, so the caller falls back to real-time recording.
+async function exportFrames(file,tl,off,box,st,onProgress,signal){
+  if(typeof VideoEncoder==="undefined"||typeof VideoDecoder==="undefined"||typeof OffscreenCanvas==="undefined")return null;
+  let MB;try{MB=await import("./vendor/mediabunny/mediabunny.min.mjs")}catch(e){return null}
+  const input=new MB.Input({source:new MB.BlobSource(file),formats:MB.ALL_FORMATS});
+  const vt=await input.getPrimaryVideoTrack();if(!vt)return null;
+  const sc=Math.min(1,1920/Math.max(vt.displayWidth,vt.displayHeight)),even=x=>Math.max(2,Math.floor(x*sc/2)*2),W=even(vt.displayWidth),H=even(vt.displayHeight);
+  let fps;try{const s=await vt.computePacketStats(120);if(s.averagePacketRate>61)fps=60}catch(e){}
+  const t0=await vt.getFirstTimestamp().catch(()=>0);
+  const tries=[{preferBitrate:false,hw:"no-preference"},{preferBitrate:true,hw:"no-preference"},{preferBitrate:true,hw:"prefer-software"}];
+  for(const a of tries){
+    if(signal.aborted)throw new DOMException("cancelled","AbortError");
+    const target=new MB.BufferTarget(),output=new MB.Output({format:new MB.Mp4OutputFormat({fastStart:"in-memory"}),target});
+    const cv=new OffscreenCanvas(W,H),g=cv.getContext("2d");
+    try{
+      const conv=await MB.Conversion.init({input,output,video:{forceTranscode:true,quality:new MB.Quality({quality:"high",preferBitrate:a.preferBitrate}),hardwareAcceleration:a.hw,frameRate:fps,processedWidth:W,processedHeight:H,
+        process:s=>{s.draw(g,0,0,W,H);drawOverlay(g,W,H,tl,s.timestamp-t0+off,box,st);return cv}}});
+      if(!conv.isValid){if(conv.discardedTracks.some(x=>x.track===vt&&x.reason==="no_encodable_target_codec"))continue;return null}
+      conv.onProgress=p=>onProgress(p);const cancel=()=>conv.cancel();signal.addEventListener("abort",cancel);
+      try{await conv.execute()}finally{signal.removeEventListener("abort",cancel)}
+      return new Blob([target.buffer],{type:"video/mp4"});
+    }catch(e){
+      if(signal.aborted)throw new DOMException("cancelled","AbortError");
+      if(e&&(e.name==="NotSupportedError"||/unsupported configuration|encoder configuration|not supported|encoder (creation|initialization)/i.test(e.message||""))){console.warn("Encoder rejected settings, trying safer ones",a,e);continue}
+      throw e;
+    }
+  }
+  return null;
+}
+// Real-time fallback: plays the clip once and records the canvas.
+async function exportRealtime(vid,cv,paint,onProgress,signal){
+  if(typeof MediaRecorder==="undefined"||!cv.captureStream)return null;
+  const stream=cv.captureStream(30);let actx=null;
+  try{actx=new (window.AudioContext||window.webkitAudioContext)();const src=actx.createMediaElementSource(vid);const dst=actx.createMediaStreamDestination();src.connect(dst);dst.stream.getAudioTracks().forEach(t=>stream.addTrack(t));vid.muted=false}catch(e){vid.muted=true}
+  const type=["video/mp4;codecs=avc1.42E01E,mp4a.40.2","video/mp4","video/webm;codecs=vp9,opus","video/webm"].find(t=>MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(t))||"";
+  const rec=new MediaRecorder(stream,{...(type?{mimeType:type}:{}),videoBitsPerSecond:8e6});const chunks=[];rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
+  const done=new Promise(r=>rec.onstop=r);
+  vid.currentTime=0;await new Promise(r=>{vid.onseeked=r});vid.onseeked=null;
+  let raf;const loop=()=>{paint();onProgress(vid.currentTime/vid.duration);if(!signal.aborted&&!vid.ended)raf=requestAnimationFrame(loop)};
+  rec.start(1000);try{await vid.play()}catch(e){}loop();
+  await new Promise(r=>{vid.onended=r;signal.addEventListener("abort",r);if(vid.paused)setTimeout(()=>vid.paused&&r(),1000)});
+  cancelAnimationFrame(raf);paint();rec.stop();await done;vid.pause();vid.muted=true;try{actx&&actx.close()}catch(e){}
+  if(signal.aborted)throw new DOMException("cancelled","AbortError");
+  const mt=(rec.mimeType||type||"video/webm").split(";")[0];return new Blob(chunks,{type:mt});
+}
+function overlayLookPanel(){
+  const st=ovStyle();
+  return `<div class="panel stack" style="gap:10px" id="v-look"><h3>Look</h3>
+    <div class="unit-toggle" role="group" aria-label="Overlay theme">${OV_THEMES.map(([k,l])=>`<button type="button" data-ovtheme="${k}" aria-pressed="${st.theme===k}">${l}</button>`).join("")}</div>
+    <div class="row style-pick" role="group" aria-label="Speed style" ${st.theme==="retro"?"hidden":""}><span class="muted small" style="width:100%">Speed</span>${OV_SPEEDS.map(([k,l])=>`<button type="button" class="chip pick" data-ovspeed="${k}" aria-pressed="${st.speed===k}">${l}</button>`).join("")}</div>
+    <div class="row style-pick" role="group" aria-label="Widgets"><span class="muted small" style="width:100%">Show</span>${OV_WIDGETS.map(([k,l])=>`<button type="button" class="chip pick" data-ovw="${k}" aria-pressed="${!st.hide.includes(k)}">${l}</button>`).join("")}</div>
+  </div>`;
 }
 async function openVideo(id){
   const d=findDrive(id);if(!d)return;if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET={kind:"video",id};
   const sh=$("#sheet");const tl=telemetry(d);
   sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span><h3>Drive video</h3></div></div>
     <div class="wrap body stack">
-      <p class="muted" style="margin:0">Pick a clip you filmed during this drive. We line it up with your GPS and add speed, g-force, the route and any timed runs.</p>
+      <p class="muted" style="margin:0">Pick a clip you filmed during this drive. We line it up with your GPS and add speed, g-force, the route, elevation and any timed runs.</p>
       <div class="row">${d.video&&!d.video.gopro?`<button class="btn primary" id="v-own" type="button">Use the video from this drive</button><button class="btn" id="v-pick" type="button">Choose another</button>`:`<button class="btn primary" id="v-pick" type="button">${d.video&&d.video.gopro?"Choose the GoPro clip":"Choose video"}</button>`}</div>
       <input type="file" id="v-in" accept="video/*" class="sr" tabindex="-1" aria-hidden="true">
       <div id="v-ui" hidden class="stack">
         <canvas id="v-cv" class="share-preview" style="max-width:100%;background:#000"></canvas>
         <label class="field">Preview position<input type="range" id="v-pos" min="0" max="1000" value="0"></label>
+        ${overlayLookPanel()}
         <div class="panel stack" style="gap:8px"><h3>Line it up</h3>
           <p class="muted small" style="margin:0">Slide until the speed matches the video. Tip: find the moment you start moving.</p>
           <input type="range" id="v-off" step="0.1" aria-label="Video start within the drive">
           <div class="row"><button class="btn ghost" data-nudge="-1" type="button">−1 s</button><button class="btn ghost" data-nudge="-0.1" type="button">−0.1</button><span class="spacer" style="text-align:center" id="v-offlab"></span><button class="btn ghost" data-nudge="0.1" type="button">+0.1</button><button class="btn ghost" data-nudge="1" type="button">+1 s</button></div>
         </div>
         <div class="row" style="justify-content:center"><button class="btn primary" id="v-make" type="button">Make video</button></div>
-        <div id="v-prog" hidden class="stack" style="gap:6px"><div class="muted small" id="v-proglab">Rendering…</div><progress id="v-bar" max="1" value="0" style="width:100%"></progress><p class="muted small" style="margin:0">This plays the clip through once, so it takes as long as the video. Keep the app open.</p></div>
+        <div id="v-prog" hidden class="stack" style="gap:6px"><div class="muted small" id="v-proglab">Rendering…</div><progress id="v-bar" max="1" value="0" style="width:100%"></progress><p class="muted small" style="margin:0" id="v-prognote">Keep the app open until it finishes.</p></div>
         <div class="row" style="justify-content:center"><button class="btn primary" id="v-share" type="button" hidden>Share</button><button class="btn" id="v-save" type="button" hidden>Save video</button></div>
       </div>
     </div>`;
   sh.hidden=false;sh.scrollTop=0;document.body.style.overflow="hidden";
+  let abort=null;
   $("#sh-x").onclick=()=>{cleanup();openDrive(d.id)};
-  try{document.fonts.load('700 44px "UnifrakturCook"')}catch(e){}
+  loadOverlayFonts().then(()=>paint());
   const vid=document.createElement("video");vid.playsInline=true;vid.muted=true;vid.preload="auto";vid.setAttribute("playsinline","");
-  let off=0,url=null,cv=null,g=null,box=null,busy=false,file=null;
-  function cleanup(){busy=false;try{vid.pause()}catch(e){}if(url)URL.revokeObjectURL(url);url=null}
+  let off=0,url=null,cv=null,g=null,box=null,busy=false,src=null;
+  function cleanup(){if(abort)abort.abort();busy=false;try{vid.pause()}catch(e){}if(url)URL.revokeObjectURL(url);url=null}
   const tOf=vt=>vt+off;
   function paint(){if(!g)return;g.drawImage(vid,0,0,cv.width,cv.height);drawOverlay(g,cv.width,cv.height,tl,tOf(vid.currentTime),box)}
   const fmt=x=>`${x<0?"−":""}${Math.floor(Math.abs(x)/60)}:${(Math.abs(x)%60).toFixed(1).padStart(4,"0")}`;
   function setOff(x){off=Math.round(x*10)/10;$("#v-off").value=off;$("#v-offlab").textContent=`Clip starts ${fmt(off)} into the drive`;paint()}
   const own=$("#v-own");if(own)own.onclick=async()=>{own.disabled=true;const b=await driveVideo(d.video);own.disabled=false;if(!b){toast("The video for this drive is missing on this device.");return}await load(b,(d.video.t0-d.pts[0][2])/1000)};
-  $("#v-pick").onclick=()=>{const inp=$("#v-in");inp.value="";inp.onchange=async()=>{file=inp.files&&inp.files[0];if(!file)return;
+  $("#v-pick").onclick=()=>{const inp=$("#v-in");inp.value="";inp.onchange=async()=>{const file=inp.files&&inp.files[0];if(!file)return;
     // GoPro clips carry their own clock, so they line up exactly
     let exact;try{const t=await goproTrack(file);if(t&&t.start!=null)exact=(t.start-d.pts[0][2])/1000}catch(e){}
     await load(file,exact);if(exact!=null)toast("Lined up using the GoPro's GPS clock")};inp.click()};
   async function load(f,exact){
-    if(url)URL.revokeObjectURL(url);url=URL.createObjectURL(f);vid.src=url;
+    if(url)URL.revokeObjectURL(url);url=URL.createObjectURL(f);src=f;vid.src=url;
     await new Promise((res,rej)=>{vid.onloadedmetadata=res;vid.onerror=()=>rej(new Error("bad"))}).catch(()=>null);
     if(!vid.videoWidth){toast("That video couldn't be opened on this device.");return}
     if(!isFinite(vid.duration)){vid.currentTime=1e7;await new Promise(r=>{vid.ondurationchange=()=>{if(isFinite(vid.duration))r()};setTimeout(r,3000)});vid.ondurationchange=null}
     const sc=Math.min(1,1920/Math.max(vid.videoWidth,vid.videoHeight));cv=$("#v-cv");cv.width=Math.round(vid.videoWidth*sc/2)*2;cv.height=Math.round(vid.videoHeight*sc/2)*2;g=cv.getContext("2d");
-    const u=Math.min(cv.width,cv.height)/1080;box={P:projector(d.pts,260,260,26)};
+    box={P:projector(d.pts,260,260,26)};
     const o=$("#v-off");o.min=Math.floor(-vid.duration);o.max=Math.ceil(tl.dur);
     // guess: phones stamp the file when recording stops
-    const guess=exact!=null?exact:(f.lastModified-d.pts[0][2])/1000-vid.duration;
+    const guess=exact!=null?exact:((f.lastModified||Date.now())-d.pts[0][2])/1000-vid.duration;
     $("#v-ui").hidden=false;setOff(guess>-vid.duration&&guess<tl.dur?guess:0);
     vid.currentTime=Math.min(vid.duration-0.05,Math.max(0,-off+0.01));
     vid.onseeked=paint;$("#v-pos").value=vid.duration?vid.currentTime/vid.duration*1000:0;
@@ -1819,22 +2039,25 @@ async function openVideo(id){
   $("#v-pos").oninput=e=>{if(vid.duration&&!busy)vid.currentTime=e.target.value/1000*vid.duration};
   $("#v-off").oninput=e=>setOff(+e.target.value);
   sh.querySelectorAll("[data-nudge]").forEach(b=>b.onclick=()=>setOff(off+ +b.dataset.nudge));
+  (function bindLook(){$("#v-look").onclick=e=>{if(busy)return;
+    const th=e.target.closest("[data-ovtheme]"),sp=e.target.closest("[data-ovspeed]"),w=e.target.closest("[data-ovw]");
+    if(th)setOv("theme",th.dataset.ovtheme);else if(sp)setOv("speed",sp.dataset.ovspeed);
+    else if(w){const h=ovStyle().hide,k=w.dataset.ovw;setOv("hide",h.includes(k)?h.filter(x=>x!==k):[...h,k])}else return;
+    $("#v-look").outerHTML=overlayLookPanel();bindLook();paint()}})();
   $("#v-make").onclick=async()=>{
-    if(busy||!g)return;if(typeof MediaRecorder==="undefined"||!cv.captureStream){toast("This browser can't record video. Try Safari or Chrome.");return}
-    busy=true;$("#v-make").disabled=true;$("#v-prog").hidden=false;$("#v-share").hidden=$("#v-save").hidden=true;
-    const stream=cv.captureStream(30);let actx=null;
-    try{actx=new (window.AudioContext||window.webkitAudioContext)();const src=actx.createMediaElementSource(vid);const dst=actx.createMediaStreamDestination();src.connect(dst);dst.stream.getAudioTracks().forEach(t=>stream.addTrack(t));vid.muted=false}catch(e){vid.muted=true}
-    const type=["video/mp4;codecs=avc1.42E01E,mp4a.40.2","video/mp4","video/webm;codecs=vp9,opus","video/webm"].find(t=>MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(t))||"";
-    const rec=new MediaRecorder(stream,{...(type?{mimeType:type}:{}),videoBitsPerSecond:8e6});const chunks=[];rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
-    const done=new Promise(r=>rec.onstop=r);
-    vid.currentTime=0;await new Promise(r=>{vid.onseeked=r});vid.onseeked=null;
-    let raf;const loop=()=>{paint();$("#v-bar").value=vid.currentTime/vid.duration;$("#v-proglab").textContent=`Rendering… ${Math.round(vid.currentTime/vid.duration*100)}%`;if(busy&&!vid.ended)raf=requestAnimationFrame(loop)};
-    rec.start(1000);try{await vid.play()}catch(e){busy=false}loop();
-    await new Promise(r=>{vid.onended=r;const chk=setInterval(()=>{if(!busy){clearInterval(chk);r()}},300)});
-    cancelAnimationFrame(raf);paint();rec.stop();await done;vid.pause();vid.muted=true;try{actx&&actx.close()}catch(e){}
-    if(!document.body.contains(cv))return;
-    busy=false;$("#v-make").disabled=false;$("#v-prog").hidden=true;
-    const ext=(rec.mimeType||type).includes("mp4")?"mp4":"webm";const blob=new Blob(chunks,{type:(rec.mimeType||type||"video/webm").split(";")[0]});
+    if(busy||!g)return;busy=true;abort=new AbortController();const signal=abort.signal;
+    $("#v-make").disabled=true;$("#v-prog").hidden=false;$("#v-share").hidden=$("#v-save").hidden=true;
+    const prog=p=>{$("#v-bar").value=p;$("#v-proglab").textContent=`Rendering… ${Math.round(p*100)}%`};
+    const st=ovStyle();let blob=null;
+    try{
+      $("#v-prognote").textContent="Keep the app open until it finishes.";
+      blob=await exportFrames(src,tl,off,box,st,prog,signal);
+      if(!blob&&!signal.aborted){$("#v-prognote").textContent="This plays the clip through once, so it takes as long as the video. Keep the app open.";
+        blob=await exportRealtime(vid,cv,paint,prog,signal);if(!blob)toast("This browser can't make videos. Try Safari or Chrome.")}
+    }catch(e){if(!signal.aborted){console.error(e);toast("Couldn't make the video on this device.")}}
+    abort=null;vid.onseeked=paint;if(!document.body.contains(cv))return;
+    busy=false;$("#v-make").disabled=false;$("#v-prog").hidden=true;if(!blob)return;
+    const ext=blob.type.includes("mp4")?"mp4":"webm";
     const name=(d.title.replace(/[^\w]+/g,"-")||"drive")+"."+ext;const fileOut=typeof File!=="undefined"?new File([blob],name,{type:blob.type}):null;
     const sv=$("#v-save");sv.hidden=false;sv.onclick=()=>saveFile(blob,name);
     const sb=$("#v-share");if(fileOut&&navigator.canShare&&(()=>{try{return navigator.canShare({files:[fileOut]})}catch(e){return false}})()){sb.hidden=false;sb.onclick=async()=>{try{await navigator.share({files:[fileOut],title:d.title})}catch(e){}}}
