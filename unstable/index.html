@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<!-- unstable preview of branch claude/project-thread-0u4za4 @ 62e147c -->
+<!-- unstable preview of branch claude/project-thread-0u4za4 @ be024b5 -->
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#0b6e4f">
 <link rel="manifest" href="manifest.webmanifest">
@@ -224,6 +224,7 @@ input[type=range]{width:100%;accent-color:var(--hl)}
 .chip.pick{border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:5px 11px;font-size:13px;cursor:pointer}
 .chip.pick[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
 .chip.pick input[type=color]{width:22px;height:22px;border:0;padding:0;background:none;cursor:pointer}
+.dm-cam{display:block;width:100%;max-height:22vh;object-fit:cover;border-radius:12px;background:#000}
 .cam-prev{display:block;width:100%;max-height:220px;object-fit:cover;border-radius:12px;background:#000;margin-top:10px}.rec-dot{color:#ff453a;font-weight:700;margin-left:8px}
 .share-preview{display:block;width:100%;max-width:420px;margin:0 auto;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.18)}
 .photo-edit{position:relative}
@@ -1331,10 +1332,10 @@ function updateLive(){
   const moving=REC.on&&n>2&&pts[n-1][3]>4;const dm=$("#drivemode");
   if(moving&&dm.hidden&&!REC.dismissed){dm.hidden=false;dm.innerHTML=`<div class="road">Eyes on the road${CAM.rec?' <span class="rec-dot">● REC</span>':""}</div>
     <div class="dm-mid"><div class="dm-speed"><div class="speedo"><div><div class="v num" id="dm-speed">–</div><div class="k">${sLabel()}</div></div><div id="dm-limit"></div></div><div class="dm-warn" id="dm-warn" role="alert"></div></div>
-      <div class="dm-info">${FOLLOW?`<div class="dm-mapw"><canvas class="route" id="dm-map"></canvas><span class="chip off-route" id="dm-off"></span></div>`:""}
+      <div class="dm-info">${CAM.stream?`<video id="dm-cam" class="dm-cam" muted playsinline autoplay aria-label="What the camera is filming"></video>`:""}${FOLLOW?`<div class="dm-mapw"><canvas class="route" id="dm-map"></canvas><span class="chip off-route" id="dm-off"></span></div>`:""}
       <div class="row dm-gauges"><div class="gauge"><div class="k">Distance</div><div class="v num" id="dm-dist"></div></div><div class="gauge"><div class="k">Time</div><div class="v num" id="dm-time"></div></div></div></div></div>
     <div class="stack dm-ctl"><button class="rec-btn stop" id="dm-btn" type="button"><span class="fill"></span><span class="lbl">Hold to finish</span></button><button class="btn ghost" id="dm-x" type="button" style="justify-content:center">I'm a passenger, show full screen</button><p class="muted small dm-note" style="margin:0;text-align:center">Leave this screen open. GPS pauses if the phone locks or you switch apps.</p></div>`;
-    bindHold($("#dm-btn"));$("#dm-x").onclick=()=>{REC.dismissed=true;dm.hidden=true}}
+    const dc=$("#dm-cam");if(dc){dc.srcObject=CAM.stream;dc.play().catch(()=>{})}bindHold($("#dm-btn"));$("#dm-x").onclick=()=>{REC.dismissed=true;dm.hidden=true}}
   set("dm-dist",`${fDist(dist).toFixed(1)}<small>${dLabel()}</small>`);set("dm-time",fDur(el));
   const b=$("#rec-btn");if(b){b.classList.toggle("stop",REC.on);b.querySelector(".lbl").textContent=REC.on?"Hold to finish":"Start drive"}
 }
@@ -2019,7 +2020,7 @@ function loadOverlayFonts(){try{return Promise.all(['700 44px "UnifrakturCook"',
 /* ---- export ---- */
 // Frame-accurate export: decodes every frame, draws the overlay and re-encodes to MP4 (audio copied through).
 // Returns null when this browser can't do it, so the caller falls back to real-time recording.
-async function exportFrames(file,tl,off,box,st,onProgress,signal){
+async function exportFrames(file,tl,off,box,st,onProgress,signal,onFrame){
   if(typeof VideoEncoder==="undefined"||typeof VideoDecoder==="undefined"||typeof OffscreenCanvas==="undefined")return null;
   let MB;try{MB=await import("./vendor/mediabunny/mediabunny.min.mjs")}catch(e){return null}
   const input=new MB.Input({source:new MB.BlobSource(file),formats:MB.ALL_FORMATS});
@@ -2031,10 +2032,12 @@ async function exportFrames(file,tl,off,box,st,onProgress,signal){
   for(const a of tries){
     if(signal.aborted)throw new DOMException("cancelled","AbortError");
     const target=new MB.BufferTarget(),output=new MB.Output({format:new MB.Mp4OutputFormat({fastStart:"in-memory"}),target});
-    const cv=new OffscreenCanvas(W,H),g=cv.getContext("2d");
+    const cv=new OffscreenCanvas(W,H),g=cv.getContext("2d");let shown=0;
     try{
       const conv=await MB.Conversion.init({input,output,video:{forceTranscode:true,quality:new MB.Quality({quality:"high",preferBitrate:a.preferBitrate}),hardwareAcceleration:a.hw,frameRate:fps,processedWidth:W,processedHeight:H,
-        process:s=>{s.draw(g,0,0,W,H);drawOverlay(g,W,H,tl,s.timestamp-t0+off,box,st);return cv}}});
+        process:s=>{s.draw(g,0,0,W,H);drawOverlay(g,W,H,tl,s.timestamp-t0+off,box,st);
+          // show roughly 8 frames a second on screen so you can watch it being made
+          const now=performance.now();if(onFrame&&now-shown>120){shown=now;onFrame(cv)}return cv}}});
       if(!conv.isValid){if(conv.discardedTracks.some(x=>x.track===vt&&x.reason==="no_encodable_target_codec"))continue;return null}
       conv.onProgress=p=>onProgress(p);const cancel=()=>conv.cancel();signal.addEventListener("abort",cancel);
       try{await conv.execute()}finally{signal.removeEventListener("abort",cancel)}
@@ -2139,7 +2142,7 @@ async function openVideo(id){
     const st=ovStyle();let blob=null;
     try{
       $("#v-prognote").textContent="Keep the app open until it finishes.";
-      blob=await exportFrames(src,tl,off,box,st,prog,signal);
+      blob=await exportFrames(src,tl,off,box,st,prog,signal,fr=>{if(g)g.drawImage(fr,0,0,cv.width,cv.height)});
       if(!blob&&!signal.aborted){$("#v-prognote").textContent="This plays the clip through once, so it takes as long as the video. Keep the app open.";
         blob=await exportRealtime(vid,cv,paint,prog,signal);if(!blob)toast("This browser can't make videos. Try Safari or Chrome.")}
     }catch(e){if(!signal.aborted){console.error(e);toast("Couldn't make the video on this device.")}}
