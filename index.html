@@ -1415,7 +1415,7 @@ async function shareRoute(r){const url=location.origin+location.pathname+"#r/"+e
   if(r.who==="me"&&(r.vis||"public")==="private"){toast("This route is set to Only me. Change who can see it to share it.");return}
   if(r.who==="me"&&!Social.ready()){toast("Sign in and pick a @handle to share routes");return}
   if(r.who==="me"&&!(S.pubR&&S.pubR[r.id])){await Sync.run()}
-  const text=`Follow my route "${r.title}" on Dragon Drive: ${url}`;try{if(navigator.share){await shareSheet({title:r.title,text:`Follow my route "${r.title}" on Dragon Drive`,url});return}await navigator.clipboard.writeText(url);toast("Route link copied")}catch(e){}}
+  try{if(navigator.share){await shareSheet({url});return}await navigator.clipboard.writeText(url);toast("Route link copied")}catch(e){}}
 async function openRouteById(id){let r=findRoute(id);if(!r&&Social.ok()){try{r=await Social.routeById(id)}catch(e){}}
   if(!r){toast(Social.ok()?"That route isn't available. It may be private or deleted.":"Sign in to open shared routes");return}openRoute(r.id)}
 function openRoute(id){const r=findRoute(id);if(!r)return;if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET={kind:"route",id};const sh=$("#sheet");const p=person(r.who),mine=r.who==="me";
@@ -1802,7 +1802,7 @@ async function openShare(id,back){
   const name=(d.title.replace(/[^\w]+/g,"-")||"drive")+".png";
   const file=typeof File!=="undefined"?new File([blob],name,{type:"image/png"}):null;
   const sb=$("#card-share");
-  if(file&&navigator.canShare&&(()=>{try{return navigator.canShare({files:[file]})}catch(e){return false}})()){sb.hidden=false;sb.onclick=async()=>{try{await shareSheet({files:[file],title:d.title,text:`${d.title} on Dragon Drive`})}catch(e){}}}
+  if(file&&navigator.canShare&&(()=>{try{return navigator.canShare({files:[file]})}catch(e){return false}})()){sb.hidden=false;sb.onclick=async()=>{try{await shareSheet({files:[file]})}catch(e){}}}
   const sv=$("#card-save");sv.disabled=false;sv.onclick=()=>saveFile(blob,name);
 }
 
@@ -2366,8 +2366,8 @@ function viewYou(){
     const so=$("#sync-out");if(so)so.onclick=async()=>{so.disabled=true;so.textContent="Signing out…";await Sync.signOut();render();toast("Signed out")};
   }
   const hf=$("#h-form");if(hf)hf.onsubmit=async e=>{e.preventDefault();const h=$("#h-in").value.trim().toLowerCase();if(!/^[a-z0-9_]{3,20}$/.test(h)){toast("Use 3–20 lowercase letters, numbers or _");return}const b=hf.querySelector("button");b.disabled=true;try{await Social.claim(h);toast("You're @"+h);viewYou()}catch(err){toast(err.message)}b.disabled=false};
-  const inv=$("#inv");if(inv)inv.onclick=async()=>{const url=location.origin+location.pathname+"#u/"+Social.me.handle,text=`Follow me on Dragon Drive: ${url}`;
-    try{if(navigator.share){await shareSheet({title:"Dragon Drive",text:"Follow me on Dragon Drive",url});return}await navigator.clipboard.writeText(url);toast("Invite link copied")}catch(e){}};
+  const inv=$("#inv");if(inv)inv.onclick=async()=>{const url=location.origin+location.pathname+"#u/"+Social.me.handle;
+    try{if(navigator.share){await shareSheet({url});return}await navigator.clipboard.writeText(url);toast("Invite link copied")}catch(e){}};
   const ff=$("#f-form");if(ff)ff.onsubmit=async e=>{e.preventDefault();const box=$("#f-res");box.innerHTML='<p class="muted small" style="margin:0">Searching…</p>';
     try{const r=await Social.search($("#f-in").value);box.innerHTML=r.length?r.map(p=>{const pp=Social.person("u:"+p.id);return `<a class="effort" href="#u/${esc(p.handle)}" style="display:flex;text-decoration:none;color:inherit">${avatar(pp,32)}<div style="flex:1;min-width:0"><div style="font-weight:600">${nameHtml(pp)}</div><div class="muted small">@${esc(p.handle)}${Social.SOC.following.has(p.id)?" · Following":""}</div></div></a>`}).join(""):'<p class="muted small" style="margin:0">Nobody by that handle yet.</p>'}catch(err){box.innerHTML='<p class="muted small" style="margin:0">Search failed. Check your connection.</p>'}};
   const dvs=$("#def-vis");if(dvs)dvs.onchange=e=>{S.settings.defaultVis=e.target.value;save();toast("Saved")};
