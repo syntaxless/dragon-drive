@@ -217,20 +217,20 @@ input[type=range]{width:100%;accent-color:var(--hl)}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tab-h) + 16px + env(safe-area-inset-bottom,0px));z-index:40;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:600;max-width:calc(100% - 32px)}
 .empty{text-align:center;padding:30px 10px;color:var(--muted)}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
-/* landscape phones: tab bar becomes a side rail, compact header, two-column drive screens */
+/* landscape phones: tab bar becomes a right-hand side rail (easy reach for the right thumb, toward the driver in left-hand-drive cars), compact header, two-column drive screens */
 @media (orientation:landscape) and (max-height:520px){
   :root{--rail-w:84px;--tab-h:0px}
-  body{padding-left:calc(var(--rail-w) + env(safe-area-inset-left,0px))}
-  header.top .wrap,main>.wrap{padding-left:16px}
+  body{padding-right:calc(var(--rail-w) + env(safe-area-inset-right,0px))}
+  header.top .wrap,main>.wrap{padding-right:16px}
   header.top .wrap{padding-block:5px}
   .brand{font-size:22px}.brand .logo svg{width:28px;height:28px}
   main{padding-block:12px calc(20px + env(safe-area-inset-bottom,0px))}
-  nav.tabs{top:0;right:auto;width:calc(var(--rail-w) + env(safe-area-inset-left,0px));border-top:0;border-right:1px solid var(--line);padding-top:env(safe-area-inset-top,0px)}
+  nav.tabs{top:0;left:auto;width:calc(var(--rail-w) + env(safe-area-inset-right,0px));border-top:0;border-left:1px solid var(--line);padding-top:env(safe-area-inset-top,0px)}
   nav.tabs .in{height:100%;max-width:none;grid-template-columns:1fr;grid-template-rows:1fr 1.3fr 1fr}
   nav.tabs a.rec-tab{justify-content:center;padding-bottom:0}
   nav.tabs a.rec-tab span.ring{margin-top:0;width:54px;height:54px}
   nav.tabs a.rec-tab span.ring svg{width:46px;height:46px}
-  .toast,.ptr{left:calc(50% + var(--rail-w)/2 + env(safe-area-inset-left,0px)/2)}
+  .toast,.ptr{left:calc(50% - var(--rail-w)/2 - env(safe-area-inset-right,0px)/2)}
   .ptr{top:calc(env(safe-area-inset-top,0px) + 48px)}
   .card canvas.route,.card .photo{aspect-ratio:2/1}
   .media.two canvas.route,.media.two .photo{aspect-ratio:4/3}
