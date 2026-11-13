@@ -132,7 +132,8 @@ canvas.route{display:block;width:100%;aspect-ratio:16/9;max-width:100%;backgroun
 .gauge .v{font-family:var(--display);font-weight:700;font-size:44px;font-variant-numeric:tabular-nums;line-height:1}
 .gauge.big .v{font-size:84px}
 .gauge .v small{font-size:20px;color:var(--muted);font-weight:600;margin-left:4px}
-.rec-btn{width:100%;border:0;border-radius:16px;padding:22px;font-family:var(--display);font-weight:700;font-size:28px;letter-spacing:.06em;text-transform:uppercase;background:var(--accent);color:var(--accent-fg);position:relative;overflow:hidden;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+.rec-btn{width:100%;border:0;border-radius:16px;padding:22px;font-family:var(--display);font-weight:700;font-size:28px;letter-spacing:.06em;text-transform:uppercase;background:var(--accent);color:var(--accent-fg);position:relative;overflow:hidden;touch-action:manipulation;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+.rec-btn.stop{touch-action:none}.rec-btn *{user-select:none;-webkit-user-select:none;pointer-events:none}
 .rec-btn.stop{background:var(--bad);color:#fff}
 .rec-btn .fill{position:absolute;inset:0;background:rgba(0,0,0,.22);transform-origin:left;transform:scaleX(0)}
 .rec-btn .lbl{position:relative}
@@ -149,6 +150,11 @@ canvas.route{display:block;width:100%;aspect-ratio:16/9;max-width:100%;backgroun
 .src:disabled{opacity:.5}
 .dev{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;flex-wrap:wrap}
 .drive-mode{position:fixed;inset:0;z-index:30;background:var(--bg);display:flex;flex-direction:column;justify-content:space-between;padding:calc(24px + env(safe-area-inset-top,0px)) max(20px,env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) max(20px,env(safe-area-inset-left,0px))}
+.drive-mode{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.dm-mid{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px}
+.dm-speed,.dm-info{display:flex;flex-direction:column;align-items:center;gap:10px;width:100%}
+.dm-mapw{position:relative;width:100%}.dm-mapw canvas{border-radius:14px;aspect-ratio:4/3;max-height:34vh}
+.dm-gauges{gap:28px;justify-content:center}
 .drive-mode .road{font-family:var(--display);font-weight:700;font-size:26px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:center}
 
 /* tabs */
@@ -211,6 +217,42 @@ input[type=range]{width:100%;accent-color:var(--hl)}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tab-h) + 16px + env(safe-area-inset-bottom,0px));z-index:40;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:600;max-width:calc(100% - 32px)}
 .empty{text-align:center;padding:30px 10px;color:var(--muted)}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+/* landscape phones: tab bar becomes a side rail, compact header, two-column drive screens */
+@media (orientation:landscape) and (max-height:520px){
+  :root{--rail-w:84px;--tab-h:0px}
+  body{padding-left:calc(var(--rail-w) + env(safe-area-inset-left,0px))}
+  header.top .wrap,main>.wrap{padding-left:16px}
+  header.top .wrap{padding-block:5px}
+  .brand{font-size:22px}.brand .logo svg{width:28px;height:28px}
+  main{padding-block:12px calc(20px + env(safe-area-inset-bottom,0px))}
+  nav.tabs{top:0;right:auto;width:calc(var(--rail-w) + env(safe-area-inset-left,0px));border-top:0;border-right:1px solid var(--line);padding-top:env(safe-area-inset-top,0px)}
+  nav.tabs .in{height:100%;max-width:none;grid-template-columns:1fr;grid-template-rows:1fr 1.3fr 1fr}
+  nav.tabs a.rec-tab{justify-content:center;padding-bottom:0}
+  nav.tabs a.rec-tab span.ring{margin-top:0;width:54px;height:54px}
+  nav.tabs a.rec-tab span.ring svg{width:46px;height:46px}
+  .toast,.ptr{left:calc(50% + var(--rail-w)/2 + env(safe-area-inset-left,0px)/2)}
+  .ptr{top:calc(env(safe-area-inset-top,0px) + 48px)}
+  .card canvas.route,.card .photo{aspect-ratio:2/1}
+  .media.two canvas.route,.media.two .photo{aspect-ratio:4/3}
+  .plan-map{height:68vh;min-height:220px}
+  .map-box{aspect-ratio:auto;height:68vh;min-height:220px}
+  .rec-panel{display:grid;grid-template-columns:1fr 1fr;column-gap:18px;row-gap:12px;align-items:start}
+  .rec-panel>.gps,.rec-panel>.speed-row,.rec-panel>.dash{grid-column:1}
+  .rec-panel>#live-route{grid-column:2;grid-row:1/span 3;align-self:center}
+  .rec-panel>.field,.rec-panel>.rec-btn{grid-column:1/-1}
+  .rec-btn{padding:16px}
+  .drive-mode{display:grid;grid-template-columns:1.1fr 1fr;grid-template-rows:auto 1fr auto;column-gap:24px;row-gap:8px;padding-top:calc(12px + env(safe-area-inset-top,0px));padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
+  .drive-mode .road{grid-column:1/-1;font-size:18px}
+  .dm-mid{display:contents}
+  .dm-speed{grid-column:1;grid-row:2/span 2;justify-content:center;align-self:stretch}
+  .dm-info{grid-column:2;grid-row:2;justify-content:center;align-self:stretch;min-height:0}
+  .dm-mapw canvas{aspect-ratio:16/10;max-height:36vh;margin:0 auto}
+  .dm-info{overflow:hidden;gap:6px}.dm-info .gauge .v{font-size:32px}
+  .gauge.big .v{font-size:60px}
+  .dm-ctl{grid-column:2;grid-row:3;gap:6px}
+  .dm-ctl .btn{padding:6px 12px}
+  .dm-note{display:none}
+}
 @media (max-width:380px){.gauge.big .v{font-size:64px}.gauge .v{font-size:36px}.stat .v{font-size:19px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -1031,7 +1073,7 @@ async function startMotion(){
 function stopMotion(){if(MOT.handler)window.removeEventListener("devicemotion",MOT.handler);MOT.on=false;MOT.handler=null;MOT.peak=0}
 
 /* ================= recording ================= */
-const REC={on:false,pts:[],watch:null,start:0,wake:null,tick:null,lastStill:null,dismissed:false};
+const REC={on:false,pts:[],watch:null,start:0,wake:null,endedAt:0,tick:null,lastStill:null,dismissed:false};
 const AL=()=>({overOn:false,over:U()==="mi"?5:10,aboveOn:false,above:U()==="mi"?80:130,...(S.settings.alerts||{})});
 function viewRecord(){
   const src=S.settings.source;const geoOK="geolocation" in navigator;
@@ -1088,13 +1130,38 @@ function bindHold(btn){
   let t0=0,raf=0;const fill=btn.querySelector(".fill");
   const stopAnim=()=>{cancelAnimationFrame(raf);fill.style.transform="scaleX(0)"};
   const run=()=>{t0=performance.now();const step=()=>{const k=(performance.now()-t0)/1000;fill.style.transform=`scaleX(${Math.min(1,k)})`;if(k>=1){stopAnim();finishRec()}else raf=requestAnimationFrame(step)};raf=requestAnimationFrame(step)};
-  btn.onpointerdown=e=>{if(!REC.on){startRec();return}btn.setPointerCapture?.(e.pointerId);run()};
-  btn.onpointerup=btn.onpointercancel=btn.onpointerleave=stopAnim;
-  btn.onkeydown=e=>{if((e.key==="Enter"||e.key===" ")&&!e.repeat){e.preventDefault();if(REC.on)run();else startRec()}};
-  btn.onkeyup=stopAnim;
+  // Start on click (iPhone only treats a finished tap as a user gesture, which the wake lock and audio need);
+  // finish by holding. Block the long-press text selection and callout so the hold isn't cancelled.
+  btn.onclick=()=>{if(!REC.on&&Date.now()-REC.endedAt>1200)startRec()};
+  btn.onpointerdown=e=>{if(!REC.on)return;try{btn.setPointerCapture(e.pointerId)}catch(_){}run()};
+  btn.onpointerup=btn.onpointercancel=stopAnim;
+  btn.addEventListener("touchstart",e=>{if(REC.on)e.preventDefault()},{passive:false});
+  btn.oncontextmenu=e=>{e.preventDefault();return false};
+  btn.onkeydown=e=>{if(REC.on&&(e.key==="Enter"||e.key===" ")){e.preventDefault();if(!e.repeat)run()}};
+  btn.onkeyup=e=>{if(REC.on)stopAnim()};
 }
 function setGps(cls,txt){const d=document.querySelector("#gps .dot"),t=$("#gps-t");if(d)d.className="dot "+cls;if(t)t.textContent=txt}
-async function wakeLock(on){try{if(on&&navigator.wakeLock&&document.visibilityState==="visible"){if(REC.wake&&!REC.wake.released)return;REC.wake=await navigator.wakeLock.request("screen");REC.wake.addEventListener("release",()=>{if(REC.on&&document.visibilityState==="visible")setTimeout(()=>wakeLock(true),500)})}else if(!on&&REC.wake){const w=REC.wake;REC.wake=null;await w.release()}}catch(e){}}
+// Keep the screen on while recording. The Screen Wake Lock can be refused or dropped (for example while the
+// first drive's location and camera prompts are up), so keepAwake() re-requests it every second, and a tiny
+// silent looping video plays alongside as a fallback for iPhones where the lock doesn't hold.
+const KA_MP4="data:video/mp4;base64,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";
+let kaVid=null;
+function kaVideo(on){
+  if(on){if(!kaVid){kaVid=document.createElement("video");kaVid.src=KA_MP4;kaVid.muted=true;kaVid.loop=true;kaVid.playsInline=true;
+      ["muted","playsinline","webkit-playsinline"].forEach(a=>kaVid.setAttribute(a,""));kaVid.setAttribute("aria-hidden","true");
+      kaVid.style.cssText="position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;left:0;bottom:0";document.body.appendChild(kaVid)}
+    if(kaVid.paused)kaVid.play().catch(()=>{})}
+  else if(kaVid){kaVid.pause()}
+}
+async function wakeLock(on){try{
+  if(on){kaVideo(true);if(!navigator.wakeLock||document.visibilityState!=="visible"||REC.wakeBusy)return;if(REC.wake&&!REC.wake.released)return;
+    REC.wakeBusy=true;try{REC.wake=await navigator.wakeLock.request("screen")}finally{REC.wakeBusy=false}
+    if(!REC.on){const w=REC.wake;REC.wake=null;w.release().catch(()=>{});return}
+    REC.wake.addEventListener("release",()=>{if(REC.on&&document.visibilityState==="visible")setTimeout(()=>wakeLock(true),300)})}
+  else{kaVideo(false);if(REC.wake){const w=REC.wake;REC.wake=null;await w.release()}}
+}catch(e){}}
+function keepAwake(){if(REC.on&&document.visibilityState==="visible"&&(!REC.wake||REC.wake.released||(kaVid&&kaVid.paused)))wakeLock(true)}
+["focus","pageshow"].forEach(ev=>addEventListener(ev,keepAwake));
 // iPhone stops GPS for web apps whenever the screen locks or you switch apps. Keep the screen awake,
 // and if it happened anyway, note the gap and say so when the driver is back.
 document.addEventListener("visibilitychange",()=>{if(!REC.on)return;
@@ -1148,7 +1215,7 @@ function startRec(){
       else setGps("off","GPS signal lost");
     },{enableHighAccuracy:true,maximumAge:0,timeout:20000});
   }else setGps("ok","Recording from "+REC.source);
-  REC.tick=setInterval(updateLive,1000);
+  REC.tick=setInterval(()=>{keepAwake();updateLive()},1000);
   viewRecord();
   if(src==="phone")toast("Keep Dragon Drive open with the screen on. iPhone pauses GPS if it locks.");
   if(S.settings.film)startCam();
@@ -1180,10 +1247,10 @@ function updateLive(){
   const fm=$("#dm-map");if(fm&&n){const cur=pts[n-1];const near=windowPts(cur,FOLLOW?FOLLOW.pts:[],900);drawRoute(fm,thinLive(pts).filter(q=>hav(cur,q)<900),{live:true,noEnds:true,guide:FOLLOW&&FOLLOW.pts,context:[...near,cur,[cur[0]+.004,cur[1]],[cur[0]-.004,cur[1]]]});set("dm-off",FOLLOW&&offRoute(cur)?"Off route":"")}
   const moving=REC.on&&n>2&&pts[n-1][3]>4;const dm=$("#drivemode");
   if(moving&&dm.hidden&&!REC.dismissed){dm.hidden=false;dm.innerHTML=`<div class="road">Eyes on the road${CAM.rec?' <span class="rec-dot">● REC</span>':""}</div>
-    <div class="stack" style="align-items:center;text-align:center;gap:10px"><div class="speedo"><div><div class="v num" id="dm-speed">–</div><div class="k">${sLabel()}</div></div><div id="dm-limit"></div></div><div class="dm-warn" id="dm-warn" role="alert"></div>
-      ${FOLLOW?`<div style="position:relative;width:100%"><canvas class="route" id="dm-map" style="border-radius:14px;aspect-ratio:4/3;max-height:34vh"></canvas><span class="chip off-route" id="dm-off"></span></div>`:""}
-      <div class="row" style="gap:28px;justify-content:center"><div class="gauge"><div class="k">Distance</div><div class="v num" id="dm-dist"></div></div><div class="gauge"><div class="k">Time</div><div class="v num" id="dm-time"></div></div></div></div>
-    <div class="stack"><button class="rec-btn stop" id="dm-btn" type="button"><span class="fill"></span><span class="lbl">Hold to finish</span></button><button class="btn ghost" id="dm-x" type="button" style="justify-content:center">I'm a passenger, show full screen</button><p class="muted small" style="margin:0;text-align:center">Leave this screen open. GPS pauses if the phone locks or you switch apps.</p></div>`;
+    <div class="dm-mid"><div class="dm-speed"><div class="speedo"><div><div class="v num" id="dm-speed">–</div><div class="k">${sLabel()}</div></div><div id="dm-limit"></div></div><div class="dm-warn" id="dm-warn" role="alert"></div></div>
+      <div class="dm-info">${FOLLOW?`<div class="dm-mapw"><canvas class="route" id="dm-map"></canvas><span class="chip off-route" id="dm-off"></span></div>`:""}
+      <div class="row dm-gauges"><div class="gauge"><div class="k">Distance</div><div class="v num" id="dm-dist"></div></div><div class="gauge"><div class="k">Time</div><div class="v num" id="dm-time"></div></div></div></div></div>
+    <div class="stack dm-ctl"><button class="rec-btn stop" id="dm-btn" type="button"><span class="fill"></span><span class="lbl">Hold to finish</span></button><button class="btn ghost" id="dm-x" type="button" style="justify-content:center">I'm a passenger, show full screen</button><p class="muted small dm-note" style="margin:0;text-align:center">Leave this screen open. GPS pauses if the phone locks or you switch apps.</p></div>`;
     bindHold($("#dm-btn"));$("#dm-x").onclick=()=>{REC.dismissed=true;dm.hidden=true}}
   set("dm-dist",`${fDist(dist).toFixed(1)}<small>${dLabel()}</small>`);set("dm-time",fDur(el));
   const b=$("#rec-btn");if(b){b.classList.toggle("stop",REC.on);b.querySelector(".lbl").textContent=REC.on?"Hold to finish":"Start drive"}
@@ -1191,7 +1258,7 @@ function updateLive(){
 function thinLive(p){if(p.length<1500)return p;const k=Math.ceil(p.length/1500);return p.filter((_,i)=>i%k===0||i===p.length-1)}
 function stopSensors(){if(REC.watch!=null)navigator.geolocation.clearWatch(REC.watch);REC.watch=null;clearInterval(REC.tick);stopMotion();wakeLock(false)}
 function finishRec(){
-  stopSensors();REC.on=false;REC.dismissed=false;$("#drivemode").hidden=true;$("#drivemode").classList.remove("speeding");FOLLOW=null;
+  REC.endedAt=Date.now();stopSensors();REC.on=false;REC.dismissed=false;$("#drivemode").hidden=true;$("#drivemode").classList.remove("speeding");FOLLOW=null;
   const raw=REC.pts;REC.pts=[];
   if(raw.length<5||pathLen(raw)<100){stopCam(true).then(v=>{});if(CAM.key)delDriveVideo({key:CAM.key});toast("That drive was too short to save.");viewRecord();return}
   const h=new Date(raw[0][2]).getHours();
