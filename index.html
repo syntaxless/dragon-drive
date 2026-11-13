@@ -267,12 +267,64 @@ input[type=range]{width:100%;accent-color:var(--hl)}
   .dm-note{display:none}
 }
 @media (max-width:380px){.gauge.big .v{font-size:64px}.gauge .v{font-size:36px}.stat .v{font-size:19px}}
+/* motion: press feedback, screen and sheet transitions, kudos pop, stat count-up, Burnout's fire.
+   Everything here is switched off by the reduced-motion rule below, and none of it plays on the driving screen. */
+.btn,.kudos,.chip.pick,.src,.veh-row,.veh-thumb,.unit-toggle button,.me-btn,.open-link,.link-btn,nav.tabs a,nav.tabs a.rec-tab span.ring,.rec-btn{transition:transform .16s cubic-bezier(.3,.7,.4,1),background-color .15s,color .15s,box-shadow .15s,border-color .15s;-webkit-tap-highlight-color:transparent}
+.btn:active:not(:disabled),.kudos:active:not(:disabled),.chip.pick:active,.src:active:not(:disabled),.unit-toggle button:active,.me-btn:active,.veh-thumb:active{transform:scale(.94);transition-duration:.06s}
+.veh-row:active,.open-link:active{transform:scale(.985);transition-duration:.06s}
+nav.tabs a:not(.rec-tab):active{transform:scale(.88);transition-duration:.06s}
+nav.tabs a.rec-tab:active span.ring{transform:scale(.9);transition-duration:.06s}
+.rec-btn:not(.stop):active{transform:scale(.97);transition-duration:.06s}
+.drive-mode .btn,.drive-mode .rec-btn{transition:none!important;transform:none!important}
+/* tabs: the browser's View Transitions slide the page sideways in tab order; header and tab bar stay put */
+header.top{view-transition-name:dd-head}nav.tabs{view-transition-name:dd-tabs}main{view-transition-name:dd-main}
+::view-transition-group(dd-main){animation-duration:.26s}
+::view-transition-old(dd-main){animation:vtOut .2s cubic-bezier(.4,0,1,1) both}
+::view-transition-new(dd-main){animation:vtIn .26s cubic-bezier(.2,.8,.2,1) both}
+html[data-vt="back"]::view-transition-old(dd-main){animation-name:vtOutBack}
+html[data-vt="back"]::view-transition-new(dd-main){animation-name:vtInBack}
+@keyframes vtOut{to{opacity:0;transform:translateX(-24px)}}@keyframes vtIn{from{opacity:0;transform:translateX(32px)}}
+@keyframes vtOutBack{to{opacity:0;transform:translateX(24px)}}@keyframes vtInBack{from{opacity:0;transform:translateX(-32px)}}
+#view.view-in{animation:viewIn .24s cubic-bezier(.2,.8,.2,1)}
+@keyframes viewIn{from{opacity:0;transform:translateY(8px)}}
+/* sheets push in from the right (they have a Back button) and slide back out */
+.sheet.sheet-in{animation:sheetIn .3s cubic-bezier(.2,.85,.25,1)}
+.sheet.sheet-out{animation:sheetOut .2s cubic-bezier(.5,0,.9,.5) forwards;pointer-events:none}
+@keyframes sheetIn{from{opacity:0;transform:translateX(48px)}}
+@keyframes sheetOut{to{opacity:0;transform:translateX(48px)}}
+.toast:not([hidden]){animation:toastIn .3s cubic-bezier(.2,.9,.3,1.25)}
+@keyframes toastIn{from{opacity:0;transform:translate(-50%,14px) scale(.96)}}
+/* kudos: the thumb jumps, sparks fly, the count bumps */
+.kudos{position:relative}
+.kudos svg{transform-origin:45% 70%}
+.kudos.pop svg{animation:kudosPop .55s cubic-bezier(.3,1.5,.5,1)}
+.kudos.pop span{display:inline-block;animation:countBump .4s cubic-bezier(.3,1.6,.5,1)}
+@keyframes kudosPop{0%{transform:none}30%{transform:scale(1.5) rotate(-16deg)}60%{transform:scale(.9) rotate(5deg)}100%{transform:none}}
+@keyframes countBump{40%{transform:translateY(-4px) scale(1.2)}}
+.kudos .burst{position:absolute;left:18px;top:16px;width:0;height:0;pointer-events:none}
+.kudos .burst i{position:absolute;left:-2.5px;top:-2.5px;width:5px;height:5px;border-radius:50%;background:var(--route);animation:spark .55s cubic-bezier(.2,.7,.4,1) forwards}
+.kudos .burst i:nth-child(even){background:var(--hl);width:4px;height:4px}
+@keyframes spark{from{transform:rotate(var(--a)) translateY(-6px) scale(1);opacity:1}to{transform:rotate(var(--a)) translateY(-22px) scale(.2);opacity:0}}
+/* a fresh drive's numbers rise into place */
+.detail-stats.fresh .stat{animation:statIn .45s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i,0)*45ms)}
+@keyframes statIn{from{opacity:0;transform:translateY(10px)}}
+/* Burnout breathes fire when you tap him */
+.brand .logo{position:relative;z-index:1}.brand .logo svg{overflow:visible}
+.brand .fire{transform-box:fill-box;transform-origin:0% 55%}
+.brand .logo svg{transform-origin:40% 60%}
+.brand.flare .logo svg{animation:headBob .9s cubic-bezier(.3,1.4,.5,1)}
+.brand.flare .fire{animation:fireFlare .9s cubic-bezier(.2,.8,.3,1)}
+.brand.flare .fire-core{animation:fireCore .9s steps(1)}
+@keyframes headBob{0%{transform:none}12%{transform:rotate(-8deg) scale(1.06)}40%{transform:rotate(3deg)}100%{transform:none}}
+@keyframes fireFlare{0%{transform:none}14%{transform:scale(1.9,1.5)}26%{transform:scale(1.5,1.2)}40%{transform:scale(2,1.6)}55%{transform:scale(1.55,1.25)}72%{transform:scale(1.7,1.35)}100%{transform:none}}
+@keyframes fireCore{0%,26%,55%{fill:#fff6b0}14%,40%,72%{fill:#ffd23f}100%{fill:#ffd23f}}
+@media (prefers-reduced-motion:reduce){::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation:none!important}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 
 <header class="top"><div class="wrap">
   <a class="brand" href="#feed" id="brand" aria-label="Dragon Drive, go to feed">
-    <span class="logo" aria-hidden="true"><svg width="34" height="34" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#fff4d6"/><path d="M43 33q5-4 10-3q-2 2 0 3q4 1 9-1q-1 5-6 6q3 2 3 5q-6 0-9-3q-3 1-7-1z" fill="#ff8a1f" stroke="#b8400c" stroke-width="1.6" stroke-linejoin="round"/><path d="M48 34q3-1 6 0q-2 2-6 1z" fill="#ffd23f"/><path d="M9 60q-2-14 2-24q3-10 11-15q8-5 16-2q6 2 8 7q5 1 6 5q1 5-4 6q-3 1-6 0q-1 4-6 6q-5 2-10 1q-3 5-2 16z" fill="#61c24a" stroke="#1e2a1c" stroke-width="2.4" stroke-linejoin="round"/><path d="M12 36l-5-3l4-2l-5-5l6 0l-3-6l7 3" fill="none" stroke="#1e2a1c" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/><path d="M27 19l-3-9l6 6M35 17l2-10l2 9" fill="#61c24a" stroke="#1e2a1c" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="33" cy="26" r="5" fill="#fff" stroke="#1e2a1c" stroke-width="1.8"/><circle cx="35" cy="25" r="2" fill="#1e2a1c"/><path d="M47 30l2 0" stroke="#1e2a1c" stroke-width="2" stroke-linecap="round"/><path d="M40 37q-4 2-9 1" fill="none" stroke="#1e2a1c" stroke-width="1.8" stroke-linecap="round"/><path d="M33 38l1 3l2-3" fill="#fff" stroke="#1e2a1c" stroke-width="1.2" stroke-linejoin="round"/></svg></span>
+    <span class="logo" aria-hidden="true"><svg width="34" height="34" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#fff4d6"/><g class="fire"><path d="M43 33q5-4 10-3q-2 2 0 3q4 1 9-1q-1 5-6 6q3 2 3 5q-6 0-9-3q-3 1-7-1z" fill="#ff8a1f" stroke="#b8400c" stroke-width="1.6" stroke-linejoin="round"/><path class="fire-core" d="M48 34q3-1 6 0q-2 2-6 1z" fill="#ffd23f"/></g><path d="M9 60q-2-14 2-24q3-10 11-15q8-5 16-2q6 2 8 7q5 1 6 5q1 5-4 6q-3 1-6 0q-1 4-6 6q-5 2-10 1q-3 5-2 16z" fill="#61c24a" stroke="#1e2a1c" stroke-width="2.4" stroke-linejoin="round"/><path d="M12 36l-5-3l4-2l-5-5l6 0l-3-6l7 3" fill="none" stroke="#1e2a1c" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/><path d="M27 19l-3-9l6 6M35 17l2-10l2 9" fill="#61c24a" stroke="#1e2a1c" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="33" cy="26" r="5" fill="#fff" stroke="#1e2a1c" stroke-width="1.8"/><circle cx="35" cy="25" r="2" fill="#1e2a1c"/><path d="M47 30l2 0" stroke="#1e2a1c" stroke-width="2" stroke-linecap="round"/><path d="M40 37q-4 2-9 1" fill="none" stroke="#1e2a1c" stroke-width="1.8" stroke-linecap="round"/><path d="M33 38l1 3l2-3" fill="#fff" stroke="#1e2a1c" stroke-width="1.2" stroke-linejoin="round"/></svg></span>
     Dragon Drive
   </a>
   <a href="#you" class="me-btn" id="me-btn" aria-label="You: profile, stats and settings"></a>
@@ -878,6 +930,23 @@ function drawGG(c,pts){
 
 /* ================= UI helpers ================= */
 const $=s=>document.querySelector(s);
+const reducedMotion=()=>matchMedia("(prefers-reduced-motion: reduce)").matches;
+// restart a one-shot CSS animation class
+function replay(el,cls,ms){if(!el||reducedMotion())return;el.classList.remove(cls);void el.offsetWidth;el.classList.add(cls);clearTimeout(el["_t"+cls]);el["_t"+cls]=setTimeout(()=>el.classList.remove(cls),ms||1000)}
+function kudosPop(k){if(reducedMotion())return;replay(k,"pop",600);const b=document.createElement("span");b.className="burst";b.setAttribute("aria-hidden","true");
+  b.innerHTML=Array.from({length:8},(_,i)=>`<i style="--a:${i*45+(i%2?12:-8)}deg"></i>`).join("");k.appendChild(b);setTimeout(()=>b.remove(),650)}
+// Tap kudos: the button flips and pops straight away, then settles on what the server says.
+async function tapKudos(k,d){const was=k.getAttribute("aria-pressed")==="true",sp=k.querySelector("span"),n0=sp.textContent;
+  k.setAttribute("aria-pressed",String(!was));sp.textContent=Math.max(0,(+n0||0)+(was?-1:1));if(!was)kudosPop(k);
+  if(Social.ok()&&Social.published(d)){try{await Social.toggleKudos(d.id)}catch(err){k.setAttribute("aria-pressed",String(was));sp.textContent=n0;toast("Couldn't reach the server");return}}else{S.kudos[d.id]=!S.kudos[d.id];save()}
+  k.setAttribute("aria-pressed",kudosMine(d));sp.textContent=kudosCount(d)}
+// After a drive, its numbers count up from zero (once per drive).
+const COUNTED=new Set();
+function countUp(root,id){if(!root||COUNTED.has(id))return;COUNTED.add(id);if(reducedMotion())return;root.classList.add("fresh");
+  root.querySelectorAll(".stat").forEach((st,i)=>{st.style.setProperty("--i",i);const t=st.querySelector(".v").firstChild;if(!t||t.nodeType!==3)return;
+    const m=t.nodeValue.match(/^(\d+)(?:\.(\d+))?$/);if(!m)return;const end=parseFloat(t.nodeValue),dec=(m[2]||"").length;if(!end)return;
+    const dur=900,t0=performance.now()+i*45;t.nodeValue=(0).toFixed(dec);
+    const step=now=>{const x=Math.min(1,Math.max(0,(now-t0)/dur)),e=1-Math.pow(1-x,3);t.nodeValue=x>=1?m[0]:(end*e).toFixed(dec);if(x<1)requestAnimationFrame(step)};requestAnimationFrame(step)})}
 function toast(msg){const t=$("#toast");t.textContent=msg;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,2600)}
 // Your profile photo lives in IndexedDB next to drive photos.
 const AV={url:null};
@@ -1548,6 +1617,7 @@ function openDrive(id,fresh){
     <div id="del-confirm" hidden class="notice row"><span style="flex:1">Delete “${esc(d.title)}” for good?</span><button class="btn ghost" id="del-no" type="button">Keep</button><button class="btn danger" id="del-yes" type="button">Delete</button></div>
   </div>`;
   sh.hidden=false;sh.scrollTop=0;document.body.style.overflow="hidden";
+  if(fresh)countUp(sh.querySelector(".detail-stats"),d.id);
   fillPhotos(sh);
   if($("#d-map"))mountDetailMap($("#d-map"),d.pts);else paintRoute($("#d-route"),d.pts);
   const dfl=$("#d-follow");if(dfl)dfl.onclick=()=>{closeSheet();followRoute(d)};
@@ -1557,7 +1627,7 @@ function openDrive(id,fresh){
   $("#sh-x").onclick=closeSheet;
   $("#d-share").onclick=()=>openShare(d.id);
   const dv=$("#d-video");if(dv)dv.onclick=()=>openVideo(d.id);
-  const k=$("#d-kudos");k.onclick=async()=>{if(Social.ok()&&Social.published(d)){try{await Social.toggleKudos(d.id)}catch(e){toast("Couldn't reach the server");return}}else{S.kudos[d.id]=!S.kudos[d.id];save()}k.setAttribute("aria-pressed",kudosMine(d));k.querySelector("span").textContent=kudosCount(d)};
+  const k=$("#d-kudos");k.onclick=()=>tapKudos(k,d);
   $("#c-form").onsubmit=async e=>{e.preventDefault();const v=$("#c-in").value.trim();if(!v)return;
     if(Social.ok()&&Social.published(d)){try{await Social.comment(d.id,v)}catch(err){toast("Couldn't post the comment");return}}else{(S.comments[d.id]=S.comments[d.id]||[]).push({who:"me",text:v,t:Date.now()});save()}openDrive(d.id);toast("Comment posted")};
   const dvs=$("#d-vis");if(dvs)dvs.onchange=e=>{d.vis=e.target.value;save();toast(d.vis==="private"?"Only you can see this drive":d.vis==="public"?"Anyone on Dragon Drive can see this drive":"Your followers can see this drive")};
@@ -1612,7 +1682,10 @@ async function openVehicle(spec){
     S.settings.vehicles=S.settings.vehicles.filter(x=>x!==name);if(S.settings.vehicle===name)S.settings.vehicle=S.settings.vehicles[0];delete S.settings.garage[name];save();closeSheet();toast("Vehicle removed")};
 }
 function pickImages(cb){const inp=$("#photo-in");inp.value="";inp.multiple=true;inp.onchange=async()=>{inp.multiple=false;const fs=[...(inp.files||[])];if(fs.length)await cb(fs)};inp.click()}
-function closeSheet(){if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET=null;$("#sheet").hidden=true;document.body.style.overflow="";render()}
+function closeSheet(){const m=DETAIL_MAP;DETAIL_MAP=null;SHEET=null;document.body.style.overflow="";const sh=$("#sheet");
+  if(reducedMotion()||sh.hidden){if(m)m.remove();sh.hidden=true;render();return}
+  sh.classList.remove("sheet-in");sh.classList.add("sheet-out");render();
+  setTimeout(()=>{if(m)m.remove();if(!SHEET)sh.hidden=true;sh.classList.remove("sheet-out")},200)}
 function pickPhoto(d){
   const inp=$("#photo-in");inp.value="";
   inp.onchange=async()=>{const f=inp.files&&inp.files[0];if(!f)return;
@@ -2297,12 +2370,10 @@ function viewYou(){
 
 /* ================= global events ================= */
 document.addEventListener("click",e=>{
-  const br=e.target.closest("#brand");if(br){if(location.hash==="#feed"||location.hash===""){e.preventDefault();if(!$("#sheet").hidden)closeSheet();else window.scrollTo({top:0,behavior:"smooth"})}return}
+  const br=e.target.closest("#brand");if(br){replay(br,"flare",950);if(location.hash==="#feed"||location.hash===""){e.preventDefault();if(!$("#sheet").hidden)closeSheet();else window.scrollTo({top:0,behavior:"smooth"})}return}
   const si=e.target.closest("[data-signin]");if(si){signinIntent=si.dataset.signin;if(location.hash==="#you"){e.preventDefault();render()}}
   const us=e.target.closest("[data-user]");if(us){e.preventDefault();e.stopPropagation();location.hash="#u/"+us.dataset.user;return}
-  const k=e.target.closest("[data-kudos]");if(k&&!k.disabled){e.preventDefault();const id=k.dataset.kudos;const d=findDrive(id);
-    (async()=>{if(Social.ok()&&Social.published(d)){try{await Social.toggleKudos(id)}catch(err){toast("Couldn't reach the server");return}}else{S.kudos[id]=!S.kudos[id];save()}
-      k.setAttribute("aria-pressed",kudosMine(d));k.querySelector("span").textContent=kudosCount(d);if(kudosMine(d))toast("Kudos given")})();return}
+  const k=e.target.closest("[data-kudos]");if(k&&!k.disabled){e.preventDefault();const d=findDrive(k.dataset.kudos);if(d)tapKudos(k,d);return}
   const ms=e.target.closest("[data-mapstyle]");if(ms){S.settings.mapStyle=ms.dataset.mapstyle;save();rerender();return}
   const sh=e.target.closest("[data-share]");if(sh){e.preventDefault();openShare(sh.dataset.share);return}
   const o=e.target.closest("[data-open]");if(o){e.preventDefault();openDrive(o.dataset.open);return}
@@ -2318,7 +2389,17 @@ document.addEventListener("change",e=>{if(e.target.id==="solid-color"){S.setting
 function rerender(){const sh=$("#sheet");
   if(SHEET&&!sh.hidden){if(SHEET.kind==="video")return;const y=sh.scrollTop;if(SHEET.kind==="cruise"){openCruise(SHEET.id);sh.scrollTop=y;return}if(SHEET.kind==="vehicle"){openVehicle(SHEET.spec);sh.scrollTop=y;return}if(SHEET.kind==="post"){openPost(SHEET.id);sh.scrollTop=y;return}if(SHEET.kind==="planner")return;if(SHEET.kind==="route"){openRoute(SHEET.id);sh.scrollTop=y;return}if(SHEET.kind==="share")openShare(SHEET.id,SHEET.back);else openDrive(SHEET.id);sh.scrollTop=y}
   else{const y=window.scrollY;render();window.scrollTo(0,y)}}
-window.addEventListener("hashchange",()=>{if(!$("#sheet").hidden){if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET=null;$("#sheet").hidden=true;document.body.style.overflow=""}render();if(pendingOpen){const id=pendingOpen;pendingOpen=null;openDrive(id,true)}});
+function onHash(){const sh=$("#sheet");if(!sh.hidden){if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET=null;sh.hidden=true;sh.classList.remove("sheet-out");document.body.style.overflow=""}render();if(pendingOpen){const id=pendingOpen;pendingOpen=null;openDrive(id,true)}}
+// Switching tabs slides the page in tab order. Browsers without View Transitions get a quick fade-up instead.
+const TAB_IDX={feed:0,record:1,routes:2,you:3,profile:4};
+window.addEventListener("hashchange",()=>{
+  const to=(location.hash||"#feed").slice(1),toI=to.startsWith("u/")?4:TAB_IDX[to]!=null?TAB_IDX[to]:0,fromI=TAB_IDX[current]!=null?TAB_IDX[current]:0;
+  if(reducedMotion()||REC.on||pendingOpen){onHash();return}
+  if(document.startViewTransition){const html=document.documentElement;html.dataset.vt=toI<fromI?"back":"fwd";
+    try{const t=document.startViewTransition(onHash);t.finished.finally(()=>{delete html.dataset.vt});return}catch(e){delete html.dataset.vt}}
+  onHash();replay($("#view"),"view-in",300)});
+// Any sheet that opens gets the push-in animation; re-drawing an open sheet doesn't replay it.
+(()=>{const sh=$("#sheet");let shown=!sh.hidden;new MutationObserver(()=>{if(shown===!sh.hidden)return;shown=!sh.hidden;if(shown){sh.classList.remove("sheet-out");replay(sh,"sheet-in",350)}}).observe(sh,{attributes:true,attributeFilter:["hidden"]})})();
 let rz,lastW=window.innerWidth;window.addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(()=>{if(window.innerWidth===lastW)return;lastW=window.innerWidth;if($("#sheet").hidden)render()},200)});
 const authHash=/access_token=|error_description=/.test(location.hash)?location.hash:null;if(authHash)history.replaceState(null,"",location.pathname+"#you");
 render();loadAvatar();
