@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<!-- unstable preview of branch claude/project-thread-0u4za4 @ f76f5db -->
+<!-- unstable preview of branch claude/project-thread-0u4za4 @ 62e147c -->
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#0b6e4f">
 <link rel="manifest" href="manifest.webmanifest">
@@ -2090,7 +2090,8 @@ async function openVideo(id){
         </div>
         <div class="row" style="justify-content:center"><button class="btn primary" id="v-make" type="button">Make video</button></div>
         <div id="v-prog" hidden class="stack" style="gap:6px"><div class="muted small" id="v-proglab">Rendering…</div><progress id="v-bar" max="1" value="0" style="width:100%"></progress><p class="muted small" style="margin:0" id="v-prognote">Keep the app open until it finishes.</p></div>
-        <div class="row" style="justify-content:center"><button class="btn primary" id="v-share" type="button" hidden>Share</button><button class="btn" id="v-save" type="button" hidden>Save video</button></div>
+        <div class="row" style="justify-content:center"><button class="btn primary" id="v-share" type="button" hidden>Save to Photos</button><button class="btn" id="v-save" type="button" hidden>Save video</button></div>
+        <p class="muted small" id="v-sharehint" style="margin:0;text-align:center" hidden>Opens the share sheet. Tap <b>Save Video</b> to put it in Photos, or send it straight to someone.</p>
       </div>
     </div>`;
   sh.hidden=false;sh.scrollTop=0;document.body.style.overflow="hidden";
@@ -2133,7 +2134,7 @@ async function openVideo(id){
     $("#v-look").outerHTML=overlayLookPanel();bindLook();paint()}})();
   $("#v-make").onclick=async()=>{
     if(busy||!g)return;busy=true;abort=new AbortController();const signal=abort.signal;
-    $("#v-make").disabled=true;$("#v-prog").hidden=false;$("#v-share").hidden=$("#v-save").hidden=true;
+    $("#v-make").disabled=true;$("#v-prog").hidden=false;$("#v-share").hidden=$("#v-save").hidden=$("#v-sharehint").hidden=true;
     const prog=p=>{$("#v-bar").value=p;$("#v-proglab").textContent=`Rendering… ${Math.round(p*100)}%`};
     const st=ovStyle();let blob=null;
     try{
@@ -2146,9 +2147,11 @@ async function openVideo(id){
     busy=false;$("#v-make").disabled=false;$("#v-prog").hidden=true;if(!blob)return;
     const ext=blob.type.includes("mp4")?"mp4":"webm";
     const name=(d.title.replace(/[^\w]+/g,"-")||"drive")+"."+ext;const fileOut=typeof File!=="undefined"?new File([blob],name,{type:blob.type}):null;
-    const sv=$("#v-save");sv.hidden=false;sv.onclick=()=>saveFile(blob,name);
-    const sb=$("#v-share");if(fileOut&&navigator.canShare&&(()=>{try{return navigator.canShare({files:[fileOut]})}catch(e){return false}})()){sb.hidden=false;sb.onclick=async()=>{try{await navigator.share({files:[fileOut],title:d.title})}catch(e){}}}
-    toast("Video ready");
+    // Phones: the share sheet is the way into the camera roll (Save Video). Elsewhere it's a normal download.
+    const canShare=fileOut&&navigator.canShare&&(()=>{try{return navigator.canShare({files:[fileOut]})}catch(e){return false}})();
+    const sv=$("#v-save");sv.hidden=false;sv.textContent=canShare?"Save to Files":"Save video";sv.className=canShare?"btn":"btn primary";sv.onclick=()=>saveFile(blob,name);
+    const sb=$("#v-share");sb.hidden=$("#v-sharehint").hidden=!canShare;if(canShare)sb.onclick=async()=>{try{await navigator.share({files:[fileOut]})}catch(e){if(e&&e.name!=="AbortError")saveFile(blob,name)}};
+    toast("Video ready. Save it before you leave this screen.");
   };
 }
 
