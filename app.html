@@ -2262,7 +2262,7 @@ function routeToggle(){return `<div class="unit-toggle" role="group" aria-label=
 function bindRoutes(ar){document.querySelectorAll("canvas[data-area]").forEach(c=>drawHeat(c,ar[+c.dataset.area].drives));document.querySelectorAll("[data-who]").forEach(b=>b.onclick=()=>{routeWho=b.dataset.who;viewRoutes()})}
 function viewRoutes(){
   if(routeWho==="near")return viewNearby();
-  const drives=allDrives().filter(d=>routeWho==="all"||d.who==="me");
+  const drives=allDrives().filter(d=>routeWho==="all"?d.who!=="me":d.who==="me");
   const ar=areas(drives);
   const total=drives.reduce((a,d)=>a+d.stats.dist,0);
   $("#view").innerHTML=`<div class="stack">
@@ -2271,7 +2271,7 @@ function viewRoutes(){
       ${allRoutes().map(r=>`<button class="effort open-link" data-route-open="${r.id}" style="display:flex">${avatar(person(r.who),30)}<div style="flex:1;min-width:0"><div style="font-weight:600">${esc(r.title)}</div><div class="muted small">${r.who==="me"?"You":esc(person(r.who).name)} · ${fDist(r.dist||pathLen(r.pts)).toFixed(1)} ${dLabel()}</div></div><span class="chip">${r.mode==="straight"?"Straight":"Roads"}</span></button>`).join("")}</div>
     <p class="muted" style="margin:0">${drives.length} ${drives.length===1?"drive":"drives"} · ${fDist(total).toFixed(0)} ${dLabel()} on the road. Roads you drive often show brighter.</p>
     ${stylePicker()}
-    ${areaCards(ar)||`<div class="empty">No routes yet. Tap <b>Drive</b> to record your first one.</div>`}
+    ${areaCards(ar)||(routeWho==="all"?`<div class="empty">No drives from people you follow yet. Find friends on your <a href="#you">profile page</a>.</div>`:`<div class="empty">No routes yet. Tap <b>Drive</b> to record your first one.</div>`)}
   </div>`;
   bindRoutes(ar);const pn=$("#plan-new");if(pn)pn.onclick=()=>openPlanner();
 }
