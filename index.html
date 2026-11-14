@@ -2457,6 +2457,9 @@ function reseatSoon(){reseat();requestAnimationFrame(reseat);for(const t of [150
 async function shareSheet(data){try{return await navigator.share(data)}finally{reseatSoon()}}
 if(window.visualViewport&&(navigator.standalone||matchMedia("(display-mode: standalone)").matches))visualViewport.addEventListener("resize",()=>{if(visualViewport.height>=window.innerHeight-1)reseatSoon()});
 window.addEventListener("focus",reseatSoon);window.addEventListener("pageshow",reseatSoon);
+// iPhone can place the fixed tab bar off the bottom of the screen when the page first loads (seen once the top bar became fixed);
+// the same nudge puts it back. It runs only after load, before the first touch, so it never fights a scroll.
+window.addEventListener("load",()=>{reseatSoon();if(document.fonts&&document.fonts.ready)document.fonts.ready.then(reseatSoon)});
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)reseatSoon()});
 document.addEventListener("focusout",e=>{if(e.target&&/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))setTimeout(reseatSoon,50)});
 // No pinch-zooming the page (iOS ignores the viewport tag for this, so stop its gesture events too).
