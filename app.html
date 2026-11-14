@@ -99,6 +99,9 @@ h3{font-size:18px}
 input[type=text],select,textarea{width:100%;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 12px}
 label.field{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
 label.check{display:flex;gap:8px;align-items:flex-start;font-size:14px}
+.veh-adv summary{cursor:pointer;font-weight:600;list-style-position:inside}
+.veh-adv[open] summary{margin-bottom:10px}
+.veh-adv .adv-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
 label.check input{margin-top:3px;accent-color:var(--accent)}
 
 /* feed */
@@ -949,6 +952,22 @@ function avatar(p,size,extra=""){
 const VEH_MAX_PHOTOS=6;
 function vehPhotoId(info,ph){return "vehp:"+info.key+":"+ph.k}
 function vehInfo(n){S.settings.garage=S.settings.garage||{};const g=S.settings.garage[n]=S.settings.garage[n]||{};if(!g.key)g.key=uid();return g}
+// Advanced settings: the car's specs a power estimate needs (the Virtual Dyno add-on will read these).
+// Stored per vehicle in S.settings.garage[name].dyno in fixed units (kg, m², %), so the units setting only changes what's shown.
+// Blank means "not set": no key is stored and no default is assumed here.
+const LB=0.45359237,ADV_OPEN=new Set();
+const DYNO_FIELDS=[
+  {k:"curbKg",label:"Curb weight",mass:true,min:20,max:50000},
+  {k:"loadKg",label:"Driver + cargo",mass:true,min:0,max:5000},
+  {k:"cd",label:"Drag coefficient",min:0.05,max:2,hint:"Cd"},
+  {k:"areaM2",label:"Frontal area",unit:"m²",min:0.2,max:20},
+  {k:"crr",label:"Rolling resistance",min:0.001,max:0.1,hint:"Crr"},
+  {k:"lossPct",label:"Drivetrain loss",unit:"%",min:0,max:60}];
+const massLabel=()=>U()==="mi"?"lbs":"kg";
+function dynoShow(f,v){if(v==null)return "";const x=f.mass&&U()==="mi"?v/LB:v;return String(f.mass?Math.round(x*10)/10:+x.toPrecision(6))}
+// Everything set for one of my vehicles, in fixed units plus pounds, for the dyno add-on or an export.
+function vehDynoSpecs(n){const d={...((S.settings.garage||{})[n]||{}).dyno};const o={...d};
+  if(d.curbKg!=null)o.curbLb=d.curbKg/LB;if(d.loadKg!=null)o.loadLb=d.loadKg/LB;return o}
 async function renameVehicle(from,to){
   to=to.trim().slice(0,60);if(!to||to===from)return from;if(S.settings.vehicles.includes(to)){toast("You already have a vehicle called that");return from}
   S.settings.vehicles=S.settings.vehicles.map(v=>v===from?to:v);if(S.settings.vehicle===from)S.settings.vehicle=to;
@@ -1648,6 +1667,8 @@ async function openVehicle(spec){
     <div class="detail-stats">${statBlock("Drives",st.n)}${statBlock("Distance",fDist(st.dist).toFixed(fDist(st.dist)<10?1:0),dLabel())}${statBlock("Top speed",Math.round(fSpeed(st.top)),sLabel())}</div>
     <div class="panel"><h3>Specs and mods</h3>${mine?`<textarea id="veh-about" rows="7" maxlength="2000" placeholder="Engine, power, suspension, wheels, tune… list what you've done to it.">${esc(about)}</textarea><p class="muted small" style="margin:0">${g.priv?"This vehicle is private, so only you see this.":"Shows on your profile for anyone who opens this vehicle."}</p>`
       :about?`<p class="veh-about">${esc(about)}</p>`:`<p class="muted" style="margin:0">Nothing listed yet.</p>`}</div>
+    ${mine?`<details class="panel veh-adv" id="veh-adv"${ADV_OPEN.has(g.key)?" open":""}><summary>Advanced settings</summary><p class="muted small" style="margin:0 0 10px">Optional. Fill these in for this vehicle to get horsepower and torque estimates from your drives later. Leave any you don't know blank. Only you see these.</p>
+      <div class="adv-grid">${DYNO_FIELDS.map(f=>`<label class="field">${f.label} (${f.mass?massLabel():f.unit||f.hint})<input type="text" inputmode="decimal" autocomplete="off" data-dyno="${f.k}" value="${esc(dynoShow(f,(g.dyno||{})[f.k]))}"></label>`).join("")}</div></details>`:""}
     ${drives.length?`<div class="panel"><h3>Recent drives</h3>${vehDriveRows(drives)}</div>`:""}
     ${mine?`<div class="panel"><div class="row" style="gap:8px"><button class="btn" id="veh-priv" type="button" aria-pressed="${!!g.priv}">${g.priv?"🔒 Private":"Visible on profile"}</button><span class="spacer"></span>${S.settings.vehicles.length>1?`<button class="btn ghost" id="veh-rm" type="button">Remove vehicle</button>`:""}</div></div>`:""}
   </div>`;
@@ -1656,6 +1677,13 @@ async function openVehicle(spec){
   if(!mine)return;
   const again=()=>openVehicle(SHEET&&SHEET.kind==="vehicle"?SHEET.spec:{name});
   $("#veh-name").onchange=async e=>{const to=await renameVehicle(name,e.target.value);e.target.value=to;if(to!==name){toast("Renamed");openVehicle({name:to})}};
+  $("#veh-adv").ontoggle=e=>{const k=vehInfo(name).key;if(e.target.open)ADV_OPEN.add(k);else ADV_OPEN.delete(k)};
+  sh.querySelectorAll("[data-dyno]").forEach(inp=>inp.onchange=()=>{const f=DYNO_FIELDS.find(x=>x.k===inp.dataset.dyno),gi=vehInfo(name),d=gi.dyno=gi.dyno||{};
+    const t=inp.value.trim().replace(",",".");
+    if(t===""){if(d[f.k]==null)return;delete d[f.k];if(!Object.keys(d).length)delete gi.dyno;save();toast("Cleared");return}
+    let v=Number(t);if(f.mass&&U()==="mi")v*=LB;
+    if(!isFinite(v)||v<f.min||v>f.max){inp.value=dynoShow(f,d[f.k]);toast(`${f.label} should be between ${dynoShow(f,f.min)} and ${dynoShow(f,f.max)}${f.mass?" "+massLabel():f.unit==="%"?"%":""}`);return}
+    d[f.k]=v;save();inp.value=dynoShow(f,v);toast("Saved")});
   $("#veh-about").onchange=e=>{vehInfo(name).about=e.target.value.slice(0,2000);save();toast("Saved")};
   $("#veh-cover").onclick=()=>pickImage(async f=>{await photos.put("veh:"+name,await downscale(f,1600));vehInfo(name).photoAt=Date.now();save();again();toast("Cover photo updated")});
   const more=$("#veh-more");if(more)more.onclick=()=>pickImages(async files=>{const gi=vehInfo(name);gi.photos=gi.photos||[];let n=0;
