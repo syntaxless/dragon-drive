@@ -1178,19 +1178,9 @@ function viewRecord(){
       <label class="check"><input type="checkbox" id="al-above" ${AL().aboveOn?"checked":""}> Warn above <input type="number" id="al-above-v" inputmode="numeric" min="10" max="250" value="${AL().above}" style="width:72px"> ${sLabel()}</label>
       <label class="check"><input type="checkbox" id="al-lim" ${S.settings.limits!==false?"checked":""}> Show speed limits. They come from OpenStreetMap, which gets your approximate location while you drive. Main roads are well covered, side streets less so.</label>
       <p class="muted small" style="margin:0">Alerts beep and flash the screen. Turn the ringer on to hear them.</p></div>
-    <div class="rec-panel">
-      <div class="gps" id="gps"><span class="dot ${REC.on?"ok":""}"></span><span id="gps-t">${REC.on?"Recording":"Ready when you are"}</span></div>
-      <div class="speed-row"><div class="gauge"><div class="k">Speed</div><div class="v num" id="g-speed">–<small>${sLabel()}</small></div></div><div id="g-limit"></div></div>
-      <div class="dash">
-        <div class="gauge big"><div class="k">Distance</div><div class="v num" id="g-dist">0.0<small>${dLabel()}</small></div></div>
-        <div class="gauge"><div class="k">Time</div><div class="v num" id="g-time">0:00</div></div>
-        <div class="gauge"><div class="k">Elevation</div><div class="v num" id="g-alt">–</div></div>
-      </div>
-      <canvas class="route" id="live-route" style="border-radius:12px"></canvas>
-      <label class="field">Vehicle<select id="veh">${S.settings.vehicles.map(v=>`<option ${v===S.settings.vehicle?"selected":""}>${esc(v)}</option>`).join("")}</select></label>
-      <button class="rec-btn" id="rec-btn" type="button"><span class="fill"></span><span class="lbl">${REC.on?"Hold to finish":"Start drive"}</span></button>
-    </div>
-    <div class="notice"><strong>Drive first.</strong> Mount your phone and start recording before you pull away. Once you're moving, Dragon Drive switches to a simple screen with one large control, and you finish by holding the button. Every stat, from elevation and g-force to 0–60 and quarter-mile times, is logged automatically on every drive.</div>
+    <div class="panel"><h3>Vehicle</h3><select id="veh" aria-label="Vehicle">${S.settings.vehicles.map(v=>`<option ${v===S.settings.vehicle?"selected":""}>${esc(v)}</option>`).join("")}</select></div>
+    <button class="rec-btn" id="rec-btn" type="button"><span class="fill"></span><span class="lbl">${REC.on?"Hold to finish":"Start drive"}</span></button>
+    <div class="notice"><strong>Drive first.</strong> Mount your phone and tap Start drive before you pull away. Dragon Drive switches to a simple screen with one large control, and you finish by holding the button. Every stat, from elevation and g-force to 0–60 and quarter-mile times, is logged automatically on every drive.</div>
     <div class="notice"><strong>Keep it open.</strong> iPhone pauses GPS for web apps when the screen locks or you switch to another app, which leaves straight lines across your route. Dragon Drive keeps the screen awake while recording; leave it on screen and plug the phone in for long drives.</div>
     ${geoOK||src!=="phone"?"":`<div class="notice">This browser doesn't offer location, so drives can't be recorded here. Open Dragon Drive on your phone.</div>`}
   </div>`;
@@ -1299,7 +1289,7 @@ function startRec(){
       const g=MOT.on?MOT.peak:null;MOT.peak=0;
       ingest({lat:c.latitude,lon:c.longitude,t:pos.timestamp,v,alt:c.altitude,acc:c.accuracy,gLong:null,gLat:null,gTot:g});
     },err=>{
-      if(!REC.pts.length){stopSensors();REC.on=false;viewRecord();setGps("off",err.code===1?"Location is blocked here. Allow location for this site and try again.":"No GPS signal. Try again outdoors.")}
+      if(!REC.pts.length){stopSensors();REC.on=false;const dm=$("#drivemode");dm.hidden=true;dm.innerHTML="";viewRecord();toast(err.code===1?"Location is blocked here. Allow location for this site and try again.":"No GPS signal. Try again outdoors.")}
       else setGps("off","GPS signal lost");
     },{enableHighAccuracy:true,maximumAge:0,timeout:20000});
   }else setGps("ok","Recording from "+REC.source);
@@ -1333,13 +1323,16 @@ function updateLive(){
   const dmw=$("#drivemode");if(dmw){dmw.classList.toggle("speeding",!!REC.speeding);set("dm-warn",REC.speeding?esc(REC.speeding):"")}
   const c=$("#live-route");if(c)drawRoute(c,thinLive(pts),{live:true,noEnds:n<2,guide:FOLLOW&&FOLLOW.pts});
   const fm=$("#dm-map");if(fm&&n){const cur=pts[n-1];const near=windowPts(cur,FOLLOW?FOLLOW.pts:[],900);drawRoute(fm,thinLive(pts).filter(q=>hav(cur,q)<900),{live:true,noEnds:true,guide:FOLLOW&&FOLLOW.pts,context:[...near,cur,[cur[0]+.004,cur[1]],[cur[0]-.004,cur[1]]]});set("dm-off",FOLLOW&&offRoute(cur)?"Off route":"")}
-  const moving=REC.on&&n>2&&pts[n-1][3]>4;const dm=$("#drivemode");
-  if(moving&&dm.hidden&&!REC.dismissed){dm.hidden=false;dm.innerHTML=`<div class="road">Eyes on the road${CAM.rec?' <span class="rec-dot">● REC</span>':""}</div>
+  const dm=$("#drivemode");
+  if(REC.on&&dm.hidden){dm.hidden=false;dm.innerHTML=`<div class="road">Eyes on the road<span id="dm-rec"></span></div>
     <div class="dm-mid"><div class="dm-speed"><div class="speedo"><div><div class="v num" id="dm-speed">–</div><div class="k">${sLabel()}</div></div><div id="dm-limit"></div></div><div class="dm-warn" id="dm-warn" role="alert"></div></div>
       <div class="dm-info">${CAM.stream?`<video id="dm-cam" class="dm-cam" muted playsinline autoplay aria-label="What the camera is filming"></video>`:""}${FOLLOW?`<div class="dm-mapw"><canvas class="route" id="dm-map"></canvas><span class="chip off-route" id="dm-off"></span></div>`:""}
       <div class="row dm-gauges"><div class="gauge"><div class="k">Distance</div><div class="v num" id="dm-dist"></div></div><div class="gauge"><div class="k">Time</div><div class="v num" id="dm-time"></div></div></div></div></div>
-    <div class="stack dm-ctl"><button class="rec-btn stop" id="dm-btn" type="button"><span class="fill"></span><span class="lbl">Hold to finish</span></button><button class="btn ghost" id="dm-x" type="button" style="justify-content:center">I'm a passenger, show full screen</button><p class="muted small dm-note" style="margin:0;text-align:center">Leave this screen open. GPS pauses if the phone locks or you switch apps.</p></div>`;
-    const dc=$("#dm-cam");if(dc){dc.srcObject=CAM.stream;dc.play().catch(()=>{})}bindHold($("#dm-btn"));$("#dm-x").onclick=()=>{REC.dismissed=true;dm.hidden=true}}
+    <div class="stack dm-ctl"><div class="gps" id="gps" style="justify-content:center"><span class="dot wait"></span><span id="gps-t">Finding GPS…</span></div><button class="rec-btn stop" id="dm-btn" type="button"><span class="fill"></span><span class="lbl">Hold to finish</span></button><p class="muted small dm-note" style="margin:0;text-align:center">Leave this screen open. GPS pauses if the phone locks or you switch apps.</p></div>`;
+    const dc=$("#dm-cam");if(dc){dc.srcObject=CAM.stream;dc.play().catch(()=>{})}bindHold($("#dm-btn"))}
+  // the drive screen opens before the camera is ready, so add its preview and REC mark once it is
+  if(REC.on&&!dm.hidden){const r=$("#dm-rec");if(r&&!!r.innerHTML!==!!CAM.rec)r.innerHTML=CAM.rec?' <span class="rec-dot">● REC</span>':"";
+    const info=dm.querySelector(".dm-info");if(CAM.stream&&info&&!$("#dm-cam")){info.insertAdjacentHTML("afterbegin",'<video id="dm-cam" class="dm-cam" muted playsinline autoplay aria-label="What the camera is filming"></video>');const dc=$("#dm-cam");dc.srcObject=CAM.stream;dc.play().catch(()=>{})}}
   set("dm-dist",`${fDist(dist).toFixed(1)}<small>${dLabel()}</small>`);set("dm-time",fDur(el));
   const b=$("#rec-btn");if(b){b.classList.toggle("stop",REC.on);b.querySelector(".lbl").textContent=REC.on?"Hold to finish":"Start drive"}
 }
