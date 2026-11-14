@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<!-- unstable preview of branch claude/project-thread-23jvg5 @ 2bae6c7 -->
+<!-- unstable preview of branch claude/project-thread-23jvg5 @ c81dd17 -->
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#0b6e4f">
 <link rel="manifest" href="manifest.webmanifest">
@@ -2412,12 +2412,15 @@ const authHash=/access_token=|error_description=/.test(location.hash)?location.h
 render();loadAvatar();
 // iOS Home Screen apps can leave the fixed tab bar floating mid-screen after the share sheet
 // (or a keyboard it opened) closes, until the page is scrolled. Nudge the layout to re-seat it.
-function reseat(){const a=document.activeElement;if(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))return;
+// Never nudge while the page is being scrolled: Safari resizes the viewport as its toolbar shows and hides,
+// and a scrollTo in the middle of that fights the finger and makes the page jitter.
+let lastScroll=0;window.addEventListener("scroll",()=>{lastScroll=Date.now()},{passive:true});
+function reseat(){const a=document.activeElement;if(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))return;if(Date.now()-lastScroll<600)return;
   const y=window.scrollY,nav=document.querySelector("nav.tabs");window.scrollTo(window.scrollX,y+1);window.scrollTo(window.scrollX,y);
   if(nav){nav.style.transform="translateZ(0)";void nav.offsetHeight;nav.style.transform=""}}
 function reseatSoon(){reseat();requestAnimationFrame(reseat);for(const t of [150,400,800])setTimeout(reseat,t)}
 async function shareSheet(data){try{return await navigator.share(data)}finally{reseatSoon()}}
-if(window.visualViewport)visualViewport.addEventListener("resize",()=>{if(visualViewport.height>=window.innerHeight-1)reseatSoon()});
+if(window.visualViewport&&(navigator.standalone||matchMedia("(display-mode: standalone)").matches))visualViewport.addEventListener("resize",()=>{if(visualViewport.height>=window.innerHeight-1)reseatSoon()});
 window.addEventListener("focus",reseatSoon);window.addEventListener("pageshow",reseatSoon);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)reseatSoon()});
 document.addEventListener("focusout",e=>{if(e.target&&/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))setTimeout(reseatSoon,50)});
