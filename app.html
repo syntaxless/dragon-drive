@@ -34,8 +34,8 @@ button{cursor:pointer}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
 .wrap{max-width:640px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
-/* beta note at the top of the feed: scrolls under the top bar with the page */
-.beta{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:10px;background:var(--hl);color:#06110c;font-size:13px;font-weight:500;line-height:1.3}
+/* beta note at the top of every tab (feed, drive, routes, you): scrolls under the top bar with the page; sheets and the driving screen cover it */
+.beta{margin-bottom:12px;display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:10px;background:var(--hl);color:#06110c;font-size:13px;font-weight:500;line-height:1.3}
 .beta b{flex:none;font-family:var(--display);font-weight:700;font-size:12px;letter-spacing:.08em;text-transform:uppercase;background:#06110c;color:var(--hl);padding:1px 7px;border-radius:5px}
 header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
 header.top>.wrap{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:10px}
@@ -326,7 +326,7 @@ html[data-vt="back"]::view-transition-new(dd-main){animation-name:vtInBack}
   <a href="#you" class="me-btn" id="me-btn" aria-label="You: profile, stats and settings"></a>
 </div></header>
 
-<main><div class="wrap" id="view"></div></main>
+<main><div class="wrap"><div class="beta" role="note"><b>Beta</b><span>In active development, things may change.</span></div></div><div class="wrap" id="view"></div></main>
 
 <nav class="tabs" aria-label="Sections"><div class="in">
   <a href="#feed" data-tab="feed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Feed</a>
@@ -1028,7 +1028,6 @@ function viewFeed(){
   const drives=all;
   const nudge=Sync.on()&&!Sync.user?`<div class="notice signup"><div style="flex:1;min-width:180px"><b>Join Dragon Drive</b> to follow friends, share your drives and keep them on all your devices.</div><div class="row" style="gap:8px"><a class="btn" href="#you" data-signin="in" style="color:var(--fg)">Sign in</a><a class="btn primary" href="#you" data-signin="new" style="color:var(--accent-fg)">Create an account</a></div></div>`:Social.ok()&&Social.SOC.loaded&&!Social.me?`<a class="notice" href="#you" style="display:block;text-decoration:none;color:inherit"><b>Pick your @handle</b> so friends can find and follow you.</a>`:Social.ready()&&![...Social.SOC.following].some(id=>(Social.SOC.profiles.get(id)||{}).handle!=="burnout")?`<a class="notice" href="#you" style="display:block;text-decoration:none;color:inherit"><b>Follow your friends</b> to see their drives here. Find them by @handle or send your invite link.</a>`:"";
   $("#view").innerHTML=`<div class="stack">
-    <div class="beta" role="note"><b>Beta</b><span>In active development, things may change.</span></div>
     <div class="row"><div><div class="eyebrow">Your road crew</div><h1>Feed</h1></div><span class="spacer"></span><a class="btn primary" href="#record">Start a drive</a></div>
     ${nudge}
     ${canPost?`<div class="panel" id="adm-stats"><h3>Dragon Drive stats</h3><p class="muted small" style="margin:0">Loading…</p></div>`:""}
