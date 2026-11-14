@@ -68,4 +68,6 @@ Sync uses a free [Supabase](https://supabase.com) project with email sign-in lin
    Then run `supabase/vehicle-pages.sql` (vehicle descriptions and extra photos). New projects get it from social.sql already.
    Also run `supabase/follow-burnout.sql` (everyone follows @burnout) and `supabase/announcements.sql` (verified accounts can post announcements to every feed). Then `supabase/routes.sql` (planned routes you can share so a cruise follows the same line) and `supabase/stats-dashboard.sql` (a stats panel for verified accounts at the top of the feed). social.sql already includes all of these for new projects.
 
+**Signup emails to Burnout** (optional): store the Resend API key in the Vault with `select vault.create_secret('re_…', 'resend_api_key');`, then run `supabase/signup-email.sql`. Every time someone picks their @handle, burnout@turboloser.co gets "@handle has signed up!" with a link to their profile.
+
 Supabase's built-in email sender is rate-limited to a few emails an hour and can't change the From name. To send as Burnout, add custom SMTP under Authentication → Emails (e.g. Resend, free tier) with sender name `Burnout from Dragon Drive` and an address like `burnout@turboloser.co`; the email provider will ask you to add a couple of DNS records for turboloser.co.
