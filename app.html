@@ -37,7 +37,11 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 /* beta note at the top of every tab (feed, drive, routes, you): scrolls under the top bar with the page; sheets and the driving screen cover it */
 .beta{margin-bottom:12px;display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:10px;background:var(--hl);color:#06110c;font-size:13px;font-weight:500;line-height:1.3}
 .beta b{flex:none;font-family:var(--display);font-weight:700;font-size:12px;letter-spacing:.08em;text-transform:uppercase;background:#06110c;color:var(--hl);padding:1px 7px;border-radius:5px}
-header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
+/* The top bar is fixed and covers the status-bar area itself, and the page starts below its measured height (--head-h, kept by a
+   ResizeObserver). A sticky bar left the page tucked under it on iPhone, where Safari placed it lower than the page expected. */
+:root{padding-top:0;--head-h:calc(58px + env(safe-area-inset-top,0px));scroll-padding-top:var(--head-h)}
+header.top{position:fixed;top:0;left:0;right:0;padding-top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
+body{padding-top:var(--head-h)}
 header.top>.wrap{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:10px}
 .brand{color:inherit;text-decoration:none;display:flex;align-items:center;gap:10px;font-family:var(--logo);font-weight:700;font-size:27px;letter-spacing:.01em;line-height:1}
 .brand .logo{display:flex;flex:none}.brand .logo svg{display:block}
@@ -230,6 +234,7 @@ input[type=range]{width:100%;accent-color:var(--hl)}
 @media (orientation:landscape) and (max-height:520px){
   :root{--rail-w:84px;--tab-h:0px}
   body{padding-right:calc(var(--rail-w) + env(safe-area-inset-right,0px))}
+  header.top{right:calc(var(--rail-w) + env(safe-area-inset-right,0px))}
   header.top>.wrap,main>.wrap{padding-right:16px}
   header.top>.wrap{padding-block:5px}
   .brand{font-size:22px}.brand .logo svg{width:28px;height:28px}
@@ -325,6 +330,7 @@ html[data-vt="back"]::view-transition-new(dd-main){animation-name:vtInBack}
   </a>
   <a href="#you" class="me-btn" id="me-btn" aria-label="You: profile, stats and settings"></a>
 </div></header>
+<script>(()=>{const h=document.querySelector("header.top"),set=()=>document.documentElement.style.setProperty("--head-h",h.offsetHeight+"px");set();if(window.ResizeObserver)new ResizeObserver(set).observe(h);addEventListener("resize",set)})();</script>
 
 <main><div class="wrap"><div class="beta" role="note"><b>Beta</b><span>In active development, things may change.</span></div></div><div class="wrap" id="view"></div></main>
 
