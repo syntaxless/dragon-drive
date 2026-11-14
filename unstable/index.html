@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<!-- unstable preview of branch claude/project-thread-23jvg5 @ 82b996d -->
+<!-- unstable preview of branch claude/project-thread-23jvg5 @ 2bae6c7 -->
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#0b6e4f">
 <link rel="manifest" href="manifest.webmanifest">
@@ -164,7 +164,9 @@ canvas.route{display:block;width:100%;aspect-ratio:16/9;max-width:100%;backgroun
 .src:disabled{opacity:.5}
 .dev{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;flex-wrap:wrap}
 .drive-mode{position:fixed;inset:0;z-index:30;background:var(--bg);display:flex;flex-direction:column;justify-content:space-between;padding:calc(24px + env(safe-area-inset-top,0px)) max(20px,env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) max(20px,env(safe-area-inset-left,0px))}
-.drive-mode{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.drive-mode{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none;overscroll-behavior:none}
+/* while the driving screen is up, the page behind it must not scroll or bounce, or the screen jitters */
+html.driving,html.driving body{overflow:hidden;overscroll-behavior:none;height:100%}
 .dm-mid{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px}
 .dm-speed,.dm-info{display:flex;flex-direction:column;align-items:center;gap:10px;width:100%}
 .dm-mapw{position:relative;width:100%}.dm-mapw canvas{border-radius:14px;aspect-ratio:4/3;max-height:34vh}
@@ -1290,7 +1292,7 @@ function startRec(){
       const g=MOT.on?MOT.peak:null;MOT.peak=0;
       ingest({lat:c.latitude,lon:c.longitude,t:pos.timestamp,v,alt:c.altitude,acc:c.accuracy,gLong:null,gLat:null,gTot:g});
     },err=>{
-      if(!REC.pts.length){stopSensors();REC.on=false;const dm=$("#drivemode");dm.hidden=true;dm.innerHTML="";viewRecord();toast(err.code===1?"Location is blocked here. Allow location for this site and try again.":"No GPS signal. Try again outdoors.")}
+      if(!REC.pts.length){stopSensors();REC.on=false;const dm=$("#drivemode");dm.hidden=true;dm.innerHTML="";document.documentElement.classList.remove("driving");viewRecord();toast(err.code===1?"Location is blocked here. Allow location for this site and try again.":"No GPS signal. Try again outdoors.")}
       else setGps("off","GPS signal lost");
     },{enableHighAccuracy:true,maximumAge:0,timeout:20000});
   }else setGps("ok","Recording from "+REC.source);
@@ -1325,7 +1327,7 @@ function updateLive(){
   const c=$("#live-route");if(c)drawRoute(c,thinLive(pts),{live:true,noEnds:n<2,guide:FOLLOW&&FOLLOW.pts});
   const fm=$("#dm-map");if(fm&&n){const cur=pts[n-1];const near=windowPts(cur,FOLLOW?FOLLOW.pts:[],900);drawRoute(fm,thinLive(pts).filter(q=>hav(cur,q)<900),{live:true,noEnds:true,guide:FOLLOW&&FOLLOW.pts,context:[...near,cur,[cur[0]+.004,cur[1]],[cur[0]-.004,cur[1]]]});set("dm-off",FOLLOW&&offRoute(cur)?"Off route":"")}
   const dm=$("#drivemode");
-  if(REC.on&&dm.hidden){dm.hidden=false;dm.innerHTML=`<div class="road">Eyes on the road<span id="dm-rec"></span></div>
+  if(REC.on&&dm.hidden){dm.hidden=false;document.documentElement.classList.add("driving");dm.innerHTML=`<div class="road">Eyes on the road<span id="dm-rec"></span></div>
     <div class="dm-mid"><div class="dm-speed"><div class="speedo"><div><div class="v num" id="dm-speed">–</div><div class="k">${sLabel()}</div></div><div id="dm-limit"></div></div><div class="dm-warn" id="dm-warn" role="alert"></div></div>
       <div class="dm-info">${CAM.stream?`<video id="dm-cam" class="dm-cam" muted playsinline autoplay aria-label="What the camera is filming"></video>`:""}${FOLLOW?`<div class="dm-mapw"><canvas class="route" id="dm-map"></canvas><span class="chip off-route" id="dm-off"></span></div>`:""}
       <div class="row dm-gauges"><div class="gauge"><div class="k">Distance</div><div class="v num" id="dm-dist"></div></div><div class="gauge"><div class="k">Time</div><div class="v num" id="dm-time"></div></div></div></div></div>
@@ -1340,7 +1342,7 @@ function updateLive(){
 function thinLive(p){if(p.length<1500)return p;const k=Math.ceil(p.length/1500);return p.filter((_,i)=>i%k===0||i===p.length-1)}
 function stopSensors(){if(REC.watch!=null)navigator.geolocation.clearWatch(REC.watch);REC.watch=null;clearInterval(REC.tick);stopMotion();wakeLock(false)}
 function finishRec(){
-  REC.endedAt=Date.now();stopSensors();REC.on=false;REC.dismissed=false;$("#drivemode").hidden=true;$("#drivemode").classList.remove("speeding");FOLLOW=null;
+  REC.endedAt=Date.now();stopSensors();REC.on=false;REC.dismissed=false;$("#drivemode").hidden=true;document.documentElement.classList.remove("driving");$("#drivemode").classList.remove("speeding");FOLLOW=null;
   const raw=REC.pts;REC.pts=[];
   if(raw.length<5||pathLen(raw)<100){stopCam(true).then(v=>{});if(CAM.key)delDriveVideo({key:CAM.key});toast("That drive was too short to save.");viewRecord();return}
   const h=new Date(raw[0][2]).getHours();
