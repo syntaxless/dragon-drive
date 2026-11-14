@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<!-- unstable preview of branch claude/project-thread-23jvg5 @ a98086c -->
+<!-- unstable preview of branch claude/project-thread-23jvg5 @ 4fbab4d -->
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#0b6e4f">
 <link rel="manifest" href="manifest.webmanifest">
@@ -1171,7 +1171,7 @@ function viewRecord(){
          ${src==="dragy"?`<p class="muted small" style="margin:0">Dragy doesn't publish its Bluetooth format. Dragon Drive tries the standard NMEA GPS format; if your Dragy connects but shows no data, let us know.</p>`:""}`}
     </div>
     ${FOLLOW?`<div class="notice row" style="align-items:center"><div style="flex:1"><b>Following ${esc(FOLLOW.title)}</b><br><span class="small">The route shows in grey under your line while you drive.</span></div><button class="btn ghost" id="fol-x" type="button">Stop following</button></div>`:""}
-    <div class="panel"><label class="check"><input type="checkbox" id="film" ${S.settings.film?"checked":""} ${REC.on?"disabled":""}> Film the road while driving. Mount the phone facing forward; the video lines up with your data automatically. Uses about 20 MB per minute.</label>
+    <div class="panel"><h3>Video</h3><label class="check"><input type="checkbox" id="film" ${S.settings.film?"checked":""} ${REC.on?"disabled":""}> Film the road while driving. Mount the phone facing forward; the video lines up with your data automatically. Uses about 20 MB per minute.</label>
       ${CAM.stream?`<video id="cam-prev" class="cam-prev" muted playsinline autoplay></video>`:""}</div>
     <div class="panel"><div class="row"><div style="flex:1;min-width:200px"><h3 style="margin:0 0 4px">Action camera</h3><p class="muted small" style="margin:0">Import the video and Dragon Drive reads the GoPro's own GPS to log the drive, then lines the video up with it for the overlay. Pick every file from one recording if the GoPro split it.</p></div><button class="btn" id="gp-import" type="button" ${REC.on?"disabled":""}>Import GoPro video</button></div></div>
     <div class="panel stack" style="gap:8px"><h3 style="margin:0">Speed alerts</h3>
