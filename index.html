@@ -245,6 +245,10 @@ canvas.gg{display:block;width:100%;max-width:280px;aspect-ratio:1/1;margin:0 aut
 input[type=range]{width:100%;accent-color:var(--hl)}
 .map-box{position:relative;z-index:0;isolation:isolate;width:100%;aspect-ratio:4/3;border-radius:14px;overflow:hidden;background:var(--surface-2)}
 .style-pick{gap:6px}
+/* Game Boy map: CRT scan lines and a darker edge laid over the live map. pointer-events:none keeps pan and zoom working;
+   z-index 1 sits over the map canvas and under MapLibre's controls (z-index 2). Snapshot canvases get the same look from crtFx(). */
+.map-box.crt::after{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;border-radius:inherit;
+  background:repeating-linear-gradient(to bottom,rgba(15,56,15,0) 0 2px,rgba(15,56,15,.2) 2px 3px),radial-gradient(ellipse at center,rgba(15,56,15,0) 60%,rgba(15,56,15,.32) 100%)}
 .chip.pick{border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:5px 11px;font-size:13px;cursor:pointer}
 .chip.pick[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
 .chip.pick input[type=color]{width:22px;height:22px;border:0;padding:0;background:none;cursor:pointer}
@@ -833,12 +837,18 @@ const BACKDROPS={
   light:{label:"Light",map:()=>OFM+"/styles/positron",route:"#0a84ff",casing:"#ffffff"},
   dark:{label:"Dark",map:()=>vecStyle({bg:"#12171a",park:"#16201b",water:"#0b1a24",building:"#1b2226",minor:"#263036",major:"#36434c",motorway:"#4a5963"}),route:"#0a84ff",casing:"#0b2a4d"},
   synthwave:{label:"Synthwave",map:()=>vecStyle({bg:"#1a0b2e",park:"#220f3d",water:"#0c1748",building:"#2a1450",minor:"#5b2a9e",major:"#00e5ff",majorCase:"rgba(0,229,255,.25)",motorway:"#ff2bd6",motorwayCase:"rgba(255,43,214,.3)"}),route:"#0a84ff",casing:"#ffffff"},
-  gameboy:{label:"Game Boy",map:()=>vecStyle({bg:"#9bbc0f",park:"#8bac0f",water:"#306230",building:"#8bac0f",minor:"#306230",major:"#0f380f",motorway:"#0f380f",motorwayCase:"#306230"}),route:"#0a84ff",casing:"#0f380f"},
+  gameboy:{label:"Game Boy",crt:true,map:()=>vecStyle({bg:"#9bbc0f",park:"#8bac0f",water:"#306230",building:"#8bac0f",minor:"#306230",major:"#0f380f",motorway:"#0f380f",motorwayCase:"#306230"}),route:"#0a84ff",casing:"#0f380f"},
   grid:{label:"Grid"},
   solid:{label:"Solid color"}};
 const mapsOK=()=>!IN_ARTIFACT&&(()=>{try{const c=document.createElement("canvas");return!!(c.getContext("webgl2")||c.getContext("webgl"))}catch(e){return false}})();
 let _mapsOK=null;const canMap=()=>_mapsOK==null?(_mapsOK=mapsOK()):_mapsOK;
 function backdrop(){let k=S.settings.mapStyle||"streets";if(!BACKDROPS[k])k="streets";if(!BACKDROPS[k]||(BACKDROPS[k].map&&!canMap()))k="grid";return k}
+// CRT look for the Game Boy map, baked into a snapshot canvas: a dark line every 3 CSS px and a darker edge (same as .map-box.crt::after)
+function crtArea(g,x,y,w,h,r){const pitch=3*r,lh=Math.max(1,Math.round(r));
+  g.save();g.beginPath();g.rect(x,y,w,h);g.clip();g.fillStyle="rgba(15,56,15,.2)";for(let t=y+Math.round(2*r);t<y+h;t+=pitch)g.fillRect(x,Math.round(t),w,lh);
+  const v=g.createRadialGradient(x+w/2,y+h/2,0,x+w/2,y+h/2,Math.hypot(w,h)/2);v.addColorStop(.6,"rgba(15,56,15,0)");v.addColorStop(1,"rgba(15,56,15,.32)");g.fillStyle=v;g.fillRect(x,y,w,h);g.restore()}
+function crtFx(c){const g=c.getContext("2d");g.save();g.setTransform(1,0,0,1,0,0);crtArea(g,0,0,c.width,c.height,window.devicePixelRatio||1);g.restore()}
+const crtCls=k=>BACKDROPS[k].crt?" crt":"";
 function lum(hex){const n=parseInt(hex.slice(1),16);const ch=[n>>16&255,n>>8&255,n&255].map(v=>{v/=255;return v<=.03928?v/12.92:((v+.055)/1.055)**2.4});return .2126*ch[0]+.7152*ch[1]+.0722*ch[2]}
 // colors for the route line on the current backdrop
 function routeInk(k){const b=BACKDROPS[k];if(b.map)return{route:b.route,casing:b.casing};
@@ -894,7 +904,7 @@ function paintRoute(c,pts,opt={}){
   const {g,w,h}=sizeCanvas(c);g.fillStyle=css("--surface-2");g.fillRect(0,0,w,h);
   const tok=c._tok=(c._tok||0)+1;const ratio=window.devicePixelRatio||1;
   snapshot(k,w,h,ratio,opt.context||pts,28,(g2,P)=>inkRoute(g2,P,pts,ink,opt.thin?3:4,!opt.noEnds),opt.key?`${opt.key}|${k}|${w}x${h}@${ratio}`:null)
-    .then(img=>{if(c._tok!==tok||!c.isConnected)return;const g3=c.getContext("2d");g3.setTransform(1,0,0,1,0,0);g3.drawImage(img,0,0,c.width,c.height)})
+    .then(img=>{if(c._tok!==tok||!c.isConnected)return;const g3=c.getContext("2d");g3.setTransform(1,0,0,1,0,0);g3.drawImage(img,0,0,c.width,c.height);if(BACKDROPS[k].crt)crtFx(c)})
     .catch(()=>{if(c._tok===tok)drawRoute(c,pts,opt)});
 }
 function stylePicker(){
@@ -1464,7 +1474,7 @@ function openRoute(id){const r=findRoute(id);if(!r)return;if(DETAIL_MAP){DETAIL_
   <div class="wrap body stack">
     <div><div class="eyebrow">${mine?"Your route":`Planned by ${p.handle?`<a href="#u/${esc(p.handle)}" style="color:inherit">${nameHtml(p)}</a>`:esc(p.name)}`}</div><h1 style="text-transform:none">${esc(r.title)}</h1></div>
     ${stylePicker()}
-    ${BACKDROPS[backdrop()].map?`<div class="map-box" id="d-map"></div>`:`<canvas class="route" id="d-route" style="border-radius:14px"></canvas>`}
+    ${BACKDROPS[backdrop()].map?`<div class="map-box${crtCls(backdrop())}" id="d-map"></div>`:`<canvas class="route" id="d-route" style="border-radius:14px"></canvas>`}
     <div class="detail-stats">${statBlock("Distance",fDist(r.dist||pathLen(r.pts)).toFixed(1),dLabel())}${statBlock("Type",r.mode==="straight"?"Straight":"Roads")}${statBlock("Visible to",(r.vis||"public")==="public"?"Everyone":r.vis==="followers"?"Followers":"Only me")}</div>
     <div class="row"><button class="btn primary" id="rt-follow" type="button">Follow this route</button>${mine?'<span class="spacer"></span><button class="btn ghost" id="rt-del" type="button">Delete</button>':""}</div>
     <p class="muted small" style="margin:0">Share the link with your crew. Everyone who taps Follow gets the same line on their driving screen, and drives done together still group into a cruise.</p></div>`;
@@ -1483,7 +1493,7 @@ function openPlanner(editId){
   <div class="wrap body stack">
     <input type="text" id="pl-title" maxlength="120" placeholder="Name this route, e.g. Sunday canyon run" value="${esc(old?old.title:"")}" aria-label="Route name" style="font-family:var(--display);font-size:22px;font-weight:700">
     <div class="row"><div class="unit-toggle" role="group" aria-label="Route type"><button type="button" data-plmode="roads" aria-pressed="${st.mode==="roads"}">Roads</button><button type="button" data-plmode="straight" aria-pressed="${st.mode==="straight"}">Straight</button></div><span class="spacer"></span><span class="muted small" id="pl-info"></span></div>
-    <div class="map-box plan-map" id="pl-map"></div>
+    <div class="map-box plan-map${crtCls(backdrop())}" id="pl-map"></div>
     <div class="row"><button class="btn" id="pl-undo" type="button">Undo</button><button class="btn ghost" id="pl-clear" type="button">Clear</button><span class="spacer"></span>
       <label class="row muted small" style="gap:8px">Visible to<select id="pl-vis" style="flex:none"><option value="public" ${(old?old.vis:"public")==="public"?"selected":""}>Everyone</option><option value="followers" ${old&&old.vis==="followers"?"selected":""}>Followers</option><option value="private" ${old&&old.vis==="private"?"selected":""}>Only me</option></select></label></div>
     <p class="muted small" style="margin:0">Tap the map to add stops in order. Roads mode follows streets between them using OpenStreetMap; switch to Straight for water, trails or a track.</p></div>`;
@@ -1639,7 +1649,7 @@ function openDrive(id,fresh){
     <div class="photo-edit">${d.photo?`<img class="photo" data-photo="${d.id}" alt="Photo from ${esc(d.title)}">`:""}
       ${mine?`<div class="row" style="margin-top:${d.photo?"8px":"0"}"><button class="btn" id="add-photo" type="button"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>${d.photo?"Change photo":"Add a photo"}</button>${d.photo?`<button class="btn ghost" id="rm-photo" type="button">Remove photo</button>`:""}</div>`:""}</div>
     ${stylePicker()}
-    ${BACKDROPS[backdrop()].map?`<div class="map-box" id="d-map"></div>`:`<canvas class="route" id="d-route" style="border-radius:14px"></canvas>`}
+    ${BACKDROPS[backdrop()].map?`<div class="map-box${crtCls(backdrop())}" id="d-map"></div>`:`<canvas class="route" id="d-route" style="border-radius:14px"></canvas>`}
     ${d.pts.length>1&&!REC.on?`<div class="row"><button class="btn" id="d-follow" type="button"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8z"/></svg>Follow this route</button></div>`:""}
     <div class="detail-stats">
       ${statBlock("Distance",fDist(s.dist).toFixed(2),dLabel())}${statBlock("Moving time",fDur(s.moving))}${statBlock("Elapsed",fDur(s.dur))}
@@ -1781,10 +1791,10 @@ async function buildCard(d){
     const gr=g.createLinearGradient(0,top-300,0,top);gr.addColorStop(0,"rgba(15,21,19,0)");gr.addColorStop(1,BG);g.fillStyle=gr;g.fillRect(0,top-300,W,300);
     const gt=g.createLinearGradient(0,0,0,180);gt.addColorStop(0,"rgba(15,21,19,.65)");gt.addColorStop(1,"rgba(15,21,19,0)");g.fillStyle=gt;g.fillRect(0,0,W,180);
     const bx=W-340,by=40,bs=300;
-    if(map){try{const img=await snapshot(k,bs/2,bs/2,2,d.pts,18,(g2,P)=>inkRoute(g2,P,d.pts,ink,3));g.save();roundRect(g,bx,by,bs,bs,28);g.clip();g.drawImage(img,bx,by,bs,bs);g.restore()}catch(e){map=false}}
+    if(map){try{const img=await snapshot(k,bs/2,bs/2,2,d.pts,18,(g2,P)=>inkRoute(g2,P,d.pts,ink,3));g.save();roundRect(g,bx,by,bs,bs,28);g.clip();g.drawImage(img,bx,by,bs,bs);if(BACKDROPS[k].crt)crtArea(g,bx,by,bs,bs,3);g.restore()}catch(e){map=false}}
     if(!map){g.fillStyle=k==="solid"?ink.bg:"rgba(15,21,19,.55)";roundRect(g,bx,by,bs,bs,28);g.fill();routeBox(bx,by,bs,bs,6)}
   }else{
-    if(map){try{const img=await snapshot(k,W/2,top/2,2,d.pts,50,(g2,P)=>inkRoute(g2,P,d.pts,ink,5));g.drawImage(img,0,0,W,top);
+    if(map){try{const img=await snapshot(k,W/2,top/2,2,d.pts,50,(g2,P)=>inkRoute(g2,P,d.pts,ink,5));g.drawImage(img,0,0,W,top);if(BACKDROPS[k].crt)crtArea(g,0,0,W,top,3);
       const gr=g.createLinearGradient(0,top-160,0,top);gr.addColorStop(0,"rgba(15,21,19,0)");gr.addColorStop(1,BG);g.fillStyle=gr;g.fillRect(0,top-160,W,160);
       const gt=g.createLinearGradient(0,0,0,170);gt.addColorStop(0,"rgba(15,21,19,.7)");gt.addColorStop(1,"rgba(15,21,19,0)");g.fillStyle=gt;g.fillRect(0,0,W,170)}catch(e){map=false}}
     if(!map){
@@ -2237,7 +2247,7 @@ function drawCruise(c,drives){
   if(k==="solid"){g.fillStyle=ink.bg;g.fillRect(0,0,w,h)}else{g.strokeStyle=css("--grid");g.lineWidth=1;for(let x=0;x<w;x+=24){g.beginPath();g.moveTo(x+.5,0);g.lineTo(x+.5,h);g.stroke()}for(let y=0;y<h;y+=24){g.beginPath();g.moveTo(0,y+.5);g.lineTo(w,y+.5);g.stroke()}}
   lines(g,projector(all,w,h,18),4)};
   if(BACKDROPS[k].map){const {g,w,h}=sizeCanvas(c);g.fillStyle=css("--surface-2");g.fillRect(0,0,w,h);const tok=c._tok=(c._tok||0)+1;
-    snapshot(k,w,h,window.devicePixelRatio||1,all,24,(g2,P)=>lines(g2,P,3.5)).then(img=>{if(c._tok!==tok||!c.isConnected)return;const g3=c.getContext("2d");g3.setTransform(1,0,0,1,0,0);g3.drawImage(img,0,0,c.width,c.height)}).catch(()=>{if(c._tok===tok&&c.isConnected)flat()});return}
+    snapshot(k,w,h,window.devicePixelRatio||1,all,24,(g2,P)=>lines(g2,P,3.5)).then(img=>{if(c._tok!==tok||!c.isConnected)return;const g3=c.getContext("2d");g3.setTransform(1,0,0,1,0,0);g3.drawImage(img,0,0,c.width,c.height);if(BACKDROPS[k].crt)crtFx(c)}).catch(()=>{if(c._tok===tok&&c.isConnected)flat()});return}
   flat();
 }
 function cruiseRows(g){return g.drives.map((d,i)=>{const p=person(d.who);return `<button class="effort open-link" data-open="${d.id}" style="display:flex;align-items:center"><span class="cruise-dot" style="background:${CRUISE_COLORS[i%CRUISE_COLORS.length]}"></span>${p.handle?`<span data-user="${esc(p.handle)}" class="user-link">${avatar(p,30)}</span>`:avatar(p,30)}<div style="flex:1;min-width:0"><div style="font-weight:600">${d.who==="me"?"You":p.handle?`<span data-user="${esc(p.handle)}">${nameHtml(p)}</span>`:esc(p.name)}</div><div class="muted small">${esc(d.vehicle||"")}${d.vehicle?" · ":""}${fDist(d.stats.dist).toFixed(1)} ${dLabel()} · top ${Math.round(fSpeed(d.stats.max))} ${sLabel()}</div></div><span class="chip">${esc(d.source||"Phone GPS")}</span></button>`}).join("")}
@@ -2303,7 +2313,7 @@ function drawHeat(c,drives){
   if(BACKDROPS[k].map){const all=[].concat(...drives.map(d=>d.pts));const {g,w,h}=sizeCanvas(c);g.fillStyle=css("--surface-2");g.fillRect(0,0,w,h);
     const tok=c._tok=(c._tok||0)+1;const ratio=window.devicePixelRatio||1;
     snapshot(k,w,h,ratio,all,24,(g2,P)=>{g2.globalAlpha=Math.max(.3,Math.min(.85,1.8/drives.length));for(const d of drives)strokePath(g2,P,d.pts,ink.route,3.5);g2.globalAlpha=1})
-      .then(img=>{if(c._tok!==tok||!c.isConnected)return;const g3=c.getContext("2d");g3.setTransform(1,0,0,1,0,0);g3.drawImage(img,0,0,c.width,c.height)}).catch(()=>{});
+      .then(img=>{if(c._tok!==tok||!c.isConnected)return;const g3=c.getContext("2d");g3.setTransform(1,0,0,1,0,0);g3.drawImage(img,0,0,c.width,c.height);if(BACKDROPS[k].crt)crtFx(c)}).catch(()=>{});
     return}
   const {g,w,h}=sizeCanvas(c);g.clearRect(0,0,w,h);
   if(k==="solid"){g.fillStyle=ink.bg;g.fillRect(0,0,w,h)}else{
