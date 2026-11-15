@@ -818,9 +818,10 @@ const mapsOK=()=>!IN_ARTIFACT&&(()=>{try{const c=document.createElement("canvas"
 let _mapsOK=null;const canMap=()=>_mapsOK==null?(_mapsOK=mapsOK()):_mapsOK;
 function backdrop(){let k=S.settings.mapStyle||"streets";if(!BACKDROPS[k])k="streets";if(!BACKDROPS[k]||(BACKDROPS[k].map&&!canMap()))k="grid";return k}
 // CRT look for the Game Boy map, baked into a snapshot canvas: a dark line every 3 CSS px and a darker edge (same as .map-box.crt::after)
-function crtFx(c){const g=c.getContext("2d"),w=c.width,h=c.height,r=window.devicePixelRatio||1,pitch=3*r,lh=Math.max(1,Math.round(r));
-  g.save();g.setTransform(1,0,0,1,0,0);g.fillStyle="rgba(15,56,15,.2)";for(let y=Math.round(2*r);y<h;y+=pitch)g.fillRect(0,Math.round(y),w,lh);
-  const v=g.createRadialGradient(w/2,h/2,0,w/2,h/2,Math.hypot(w,h)/2);v.addColorStop(.6,"rgba(15,56,15,0)");v.addColorStop(1,"rgba(15,56,15,.32)");g.fillStyle=v;g.fillRect(0,0,w,h);g.restore()}
+function crtArea(g,x,y,w,h,r){const pitch=3*r,lh=Math.max(1,Math.round(r));
+  g.save();g.beginPath();g.rect(x,y,w,h);g.clip();g.fillStyle="rgba(15,56,15,.2)";for(let t=y+Math.round(2*r);t<y+h;t+=pitch)g.fillRect(x,Math.round(t),w,lh);
+  const v=g.createRadialGradient(x+w/2,y+h/2,0,x+w/2,y+h/2,Math.hypot(w,h)/2);v.addColorStop(.6,"rgba(15,56,15,0)");v.addColorStop(1,"rgba(15,56,15,.32)");g.fillStyle=v;g.fillRect(x,y,w,h);g.restore()}
+function crtFx(c){const g=c.getContext("2d");g.save();g.setTransform(1,0,0,1,0,0);crtArea(g,0,0,c.width,c.height,window.devicePixelRatio||1);g.restore()}
 const crtCls=k=>BACKDROPS[k].crt?" crt":"";
 function lum(hex){const n=parseInt(hex.slice(1),16);const ch=[n>>16&255,n>>8&255,n&255].map(v=>{v/=255;return v<=.03928?v/12.92:((v+.055)/1.055)**2.4});return .2126*ch[0]+.7152*ch[1]+.0722*ch[2]}
 // colors for the route line on the current backdrop
@@ -1764,10 +1765,10 @@ async function buildCard(d){
     const gr=g.createLinearGradient(0,top-300,0,top);gr.addColorStop(0,"rgba(15,21,19,0)");gr.addColorStop(1,BG);g.fillStyle=gr;g.fillRect(0,top-300,W,300);
     const gt=g.createLinearGradient(0,0,0,180);gt.addColorStop(0,"rgba(15,21,19,.65)");gt.addColorStop(1,"rgba(15,21,19,0)");g.fillStyle=gt;g.fillRect(0,0,W,180);
     const bx=W-340,by=40,bs=300;
-    if(map){try{const img=await snapshot(k,bs/2,bs/2,2,d.pts,18,(g2,P)=>inkRoute(g2,P,d.pts,ink,3));g.save();roundRect(g,bx,by,bs,bs,28);g.clip();g.drawImage(img,bx,by,bs,bs);g.restore()}catch(e){map=false}}
+    if(map){try{const img=await snapshot(k,bs/2,bs/2,2,d.pts,18,(g2,P)=>inkRoute(g2,P,d.pts,ink,3));g.save();roundRect(g,bx,by,bs,bs,28);g.clip();g.drawImage(img,bx,by,bs,bs);if(BACKDROPS[k].crt)crtArea(g,bx,by,bs,bs,3);g.restore()}catch(e){map=false}}
     if(!map){g.fillStyle=k==="solid"?ink.bg:"rgba(15,21,19,.55)";roundRect(g,bx,by,bs,bs,28);g.fill();routeBox(bx,by,bs,bs,6)}
   }else{
-    if(map){try{const img=await snapshot(k,W/2,top/2,2,d.pts,50,(g2,P)=>inkRoute(g2,P,d.pts,ink,5));g.drawImage(img,0,0,W,top);
+    if(map){try{const img=await snapshot(k,W/2,top/2,2,d.pts,50,(g2,P)=>inkRoute(g2,P,d.pts,ink,5));g.drawImage(img,0,0,W,top);if(BACKDROPS[k].crt)crtArea(g,0,0,W,top,3);
       const gr=g.createLinearGradient(0,top-160,0,top);gr.addColorStop(0,"rgba(15,21,19,0)");gr.addColorStop(1,BG);g.fillStyle=gr;g.fillRect(0,top-160,W,160);
       const gt=g.createLinearGradient(0,0,0,170);gt.addColorStop(0,"rgba(15,21,19,.7)");gt.addColorStop(1,"rgba(15,21,19,0)");g.fillStyle=gt;g.fillRect(0,0,W,170)}catch(e){map=false}}
     if(!map){
