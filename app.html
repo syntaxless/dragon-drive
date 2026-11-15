@@ -890,11 +890,8 @@ function snapshot(k,w,h,ratio,pts,pad,draw,key){
   });
   SNAP.q=job.catch(()=>{});return job;
 }
-// On an 8-bit map (g._px) a line is at least 1.7 big pixels wide: a thinner one that runs along a pixel boundary covers two rows
-// by half each and breaks into dashes when snapped.
-const pxW=(g,lw)=>g._px?Math.max(lw,1.7*g._px):lw;
 function inkRoute(g,P,pts,ink,lw,ends=true){
-  lw=pxW(g,lw);strokePath(g,P,pts,ink.casing,lw+3);strokePath(g,P,pts,ink.route,lw);
+  strokePath(g,P,pts,ink.casing,lw+3);strokePath(g,P,pts,ink.route,lw);
   // on an 8-bit map (g._px) an end dot is at least a big pixel and a half across, so its color survives the snapping
   const dr=g._px?Math.max(lw,1.5*g._px):lw;
   if(ends&&pts.length>1){const dot=(p,col)=>{const[x,y]=P(p);g.fillStyle="#fff";g.beginPath();g.arc(x,y,dr+2,0,7);g.fill();g.fillStyle=col;g.beginPath();g.arc(x,y,dr,0,7);g.fill()};dot(pts[0],"#1d8a52");dot(pts[pts.length-1],"#c2410c")}
@@ -2244,7 +2241,7 @@ function cruiseOf(d){return cruises(allDrives()).find(g=>g.drives.includes(d))}
 function cruiseTitle(g){const names=g.drives.map(d=>d.who==="me"?"You":person(d.who).name.split(" ")[0]);return names.length>3?`${names.slice(0,2).join(", ")} and ${names.length-2} others`:names.slice(0,-1).join(", ")+" and "+names[names.length-1]}
 function drawCruise(c,drives){
   const k=backdrop(),ink=routeInk(k),all=[].concat(...drives.map(d=>d.pts));if(!all.length)return;
-  const lines=(g,P,lw)=>(lw=pxW(g,lw),drives.forEach((d,i)=>{strokePath(g,P,d.pts,"rgba(0,0,0,.35)",lw+3);strokePath(g,P,d.pts,CRUISE_COLORS[i%CRUISE_COLORS.length],lw)}));
+  const lines=(g,P,lw)=>drives.forEach((d,i)=>{strokePath(g,P,d.pts,"rgba(0,0,0,.35)",lw+3);strokePath(g,P,d.pts,CRUISE_COLORS[i%CRUISE_COLORS.length],lw)});
   const flat=()=>{const {g,w,h}=sizeCanvas(c);g.clearRect(0,0,w,h);
   if(k==="solid"){g.fillStyle=ink.bg;g.fillRect(0,0,w,h)}else{g.strokeStyle=css("--grid");g.lineWidth=1;for(let x=0;x<w;x+=24){g.beginPath();g.moveTo(x+.5,0);g.lineTo(x+.5,h);g.stroke()}for(let y=0;y<h;y+=24){g.beginPath();g.moveTo(0,y+.5);g.lineTo(w,y+.5);g.stroke()}}
   lines(g,projector(all,w,h,18),4)};
