@@ -28,7 +28,7 @@ Live at https://dragondrive.turboloser.co
 | Dragy | Web Bluetooth, NMEA | Experimental. Dragy doesn't publish its protocol; we try standard NMEA sentences. Needs testing with a real unit. |
 | Other Bluetooth GPS | Web Bluetooth, NMEA (RMC + GGA) | Any receiver that streams NMEA over a BLE serial service. |
 
-Web Bluetooth works in Chrome and Edge on Android, Windows, macOS and ChromeOS. iPhone browsers don't support it, so on iPhone use Phone GPS.
+Web Bluetooth works in Chrome and Edge on Android, Windows, macOS and ChromeOS. iPhone browsers don't support it, so on iPhone use Phone GPS on the website, or the iPhone app, which connects to Bluetooth devices natively.
 
 ## Run it
 
@@ -36,6 +36,7 @@ It's a static, installable web app with no build tools.
 
 - **Locally:** `python3 -m http.server` in this folder, then open http://localhost:8000. Browsers only allow GPS and Bluetooth on `localhost` or HTTPS.
 - **On your phone:** open the live site and use "Add to Home Screen".
+- **iPhone app:** see [native/README.md](native/README.md).
 
 
 ## Files
@@ -48,6 +49,9 @@ It's a static, installable web app with no build tools.
 | `manifest.webmanifest`, `sw.js`, `icon.svg` | Install metadata, offline cache, app icon. |
 | `icon-256.png` | PNG of the icon for emails. |
 | `supabase/` | Database setup and Burnout's sign-in email template. |
+| `privacy.html`, `terms.html`, `support.html` | Privacy Policy, Terms of Use and Support pages (linked from the app and the App Store listing). |
+| `native/` | The iOS app (Capacitor). See `native/README.md` and `native/APP_STORE.md`. |
+| `vendor/fonts/` | The app's fonts (SIL Open Font License, `OFL.txt`), served locally so the app works offline. |
 | `vendor/maplibre/` | MapLibre GL JS 4.7.1 (BSD-3-Clause), served locally so it works offline. |
 | `vendor/mediabunny/` | Mediabunny 1.61.3 (MPL-2.0), unmodified, loaded only when a video is exported. |
 | `CNAME` | Custom domain for GitHub Pages. |
@@ -69,6 +73,8 @@ Sync uses a free [Supabase](https://supabase.com) project with email sign-in lin
 **Social features** (profiles, following, shared drives, kudos, comments, public garage): run `supabase/social.sql` in the SQL editor after `setup.sql`. Visibility rules live in the database, so the app can't show a drive to someone who isn't allowed to see it.
    Then run `supabase/vehicle-pages.sql` (vehicle descriptions and extra photos). New projects get it from social.sql already.
    Also run `supabase/follow-burnout.sql` (everyone follows @burnout) and `supabase/announcements.sql` (verified accounts can post announcements to every feed). Then `supabase/routes.sql` (planned routes you can share so a cruise follows the same line) and `supabase/stats-dashboard.sql` (a stats panel for verified accounts at the top of the feed). social.sql already includes all of these for new projects.
+
+**Safety** (needed for the App Store): run `supabase/safety.sql`. It adds Delete account, Report and Block, and records when someone accepted the Terms. Reports email burnout@turboloser.co (same Resend key as the signup emails); handle them with the queries in `supabase/moderation.sql`.
 
 **Signup emails to Burnout** (optional): store the Resend API key in the Vault with `select vault.create_secret('re_…', 'resend_api_key');`, then run `supabase/signup-email.sql`. Every time someone picks their @handle, burnout@turboloser.co gets "@handle has signed up!" with a link to their profile.
 
