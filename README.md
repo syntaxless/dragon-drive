@@ -28,7 +28,7 @@ Live at https://dragondrive.turboloser.co
 | Dragy | Web Bluetooth, NMEA | Experimental. Dragy doesn't publish its protocol; we try standard NMEA sentences. Needs testing with a real unit. |
 | Other Bluetooth GPS | Web Bluetooth, NMEA (RMC + GGA) | Any receiver that streams NMEA over a BLE serial service. |
 
-Web Bluetooth works in Chrome and Edge on Android, Windows, macOS and ChromeOS. iPhone browsers don't support it, so on iPhone use Phone GPS.
+Web Bluetooth works in Chrome and Edge on Android, Windows, macOS and ChromeOS. iPhone browsers don't support it, so on iPhone use Phone GPS on the website, or the iPhone app, which connects to Bluetooth devices natively.
 
 ## Run it
 

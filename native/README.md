@@ -4,8 +4,8 @@ The iOS app is [Capacitor](https://capacitorjs.com) 8 around the same web app th
 
 - Bundle ID: `com.itschefff.dragondrive` (set in `capacitor.config.json` and the Xcode project). It can't change after the first upload to App Store Connect.
 - iPhone only for now (`TARGETED_DEVICE_FAMILY = 1`), so App Review needs iPhone screenshots only.
-- Native plugins: `@capacitor-community/background-geolocation` (keeps a drive recording with the screen locked or another app open, `UIBackgroundModes: location`) and `@capacitor-community/keep-awake` (screen stays on while recording). `app.html` uses them only when `NATIVE` is true; the website is unchanged.
-- Not in the app yet: RaceBox, Dragy and other Bluetooth GPS (WKWebView has no Web Bluetooth, so the app says "coming soon" and offers Phone GPS). The next step is `@capacitor-community/bluetooth-le`.
+- Native plugins: `@capacitor-community/background-geolocation` (keeps a drive recording with the screen locked or another app open, `UIBackgroundModes: location`), `@capacitor-community/keep-awake` (screen stays on while recording) and `@capacitor-community/bluetooth-le` (RaceBox, Dragy and other Bluetooth GPS). `app.html` uses them only when `NATIVE` is true; the website is unchanged.
+- Bluetooth: WKWebView has no Web Bluetooth, so `nativeBluetooth()` in `app.html` wraps the plugin in the few Web Bluetooth calls `connectDevice()` already makes; the RaceBox and NMEA parsers are shared with the website. The app picks devices from the plugin's own list (RaceBox filtered by name, Dragy and "other" unfiltered). While a Bluetooth device is recording, a location watcher also runs so iOS doesn't suspend the app when the screen locks (`bluetooth-central` is in the background modes too). Tested only against a simulated RaceBox; needs a real RaceBox and Dragy on an iPhone.
 - The app has no service worker and no visit counter (GoatCounter runs only on dragondrive.turboloser.co).
 - Links people share (invites, routes) and the sign-in email always point at https://dragondrive.turboloser.co.
 

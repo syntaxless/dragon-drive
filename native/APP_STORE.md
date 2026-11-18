@@ -37,6 +37,7 @@ Everything App Store Connect asks for, filled in where it can be. Items marked *
 > - Your route on a street map, in Streets, Light, Dark, Synthwave or Game Boy style
 > - Speed and elevation charts and a friction circle of your acceleration, braking and cornering
 > - Keeps recording with the screen locked
+> - Connect a RaceBox for 25 Hz GPS and accurate times
 >
 > SHARE WITH YOUR CREW
 > - Follow friends and see their drives, give kudos and comment
@@ -94,7 +95,7 @@ Contact information: your name, phone and email (you).
 
 ## Review risks and how they're covered
 
-- **4.2 Minimum functionality** (web apps in a wrapper): the app bundles its files and works offline, records in the background with native location, keeps the screen awake, and has its own accounts and social features. Native Bluetooth for RaceBox is the next native feature if review pushes back.
+- **4.2 Minimum functionality** (web apps in a wrapper): the app bundles its files and works offline, records in the background with native location, connects to RaceBox and Dragy over native Bluetooth, keeps the screen awake, and has its own accounts and social features.
 - **1.2 User-generated content**: report, block, Terms agreement, 24-hour moderation (`supabase/moderation.sql`). Apple's list also mentions filtering objectionable material before it's posted; there's no word filter yet. Reviewers usually accept report + block + moderation; if they ask, add a filter.
 - **1.4.1 / 1.4.5 Physical harm**: timed runs could read as encouraging street racing. The Terms and description say tracks and drag strips, and there are no leaderboards.
 - **5.1.1(v) Account deletion**: in the app, removes server data and photos.

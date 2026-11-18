@@ -1209,7 +1209,29 @@ const SOURCES={
   dragy:{name:"Dragy",note:"Over Bluetooth, 10 Hz. Experimental",ble:{filters:[{namePrefix:"Dragy"},{namePrefix:"DRAGY"}],optionalServices:[NUS,"0000ffe0-0000-1000-8000-00805f9b34fb","0000fff0-0000-1000-8000-00805f9b34fb","00001819-0000-1000-8000-00805f9b34fb"]}},
   nmea:{name:"Other Bluetooth GPS",note:"Any receiver that streams NMEA",ble:{acceptAllDevices:true,optionalServices:[NUS,"0000ffe0-0000-1000-8000-00805f9b34fb","0000fff0-0000-1000-8000-00805f9b34fb"]}}};
 const DEV={device:null,name:"",status:"",battery:null,sats:null,hz:0,_n:0,_t:0,last:null};
-const hasBLE=!!(navigator.bluetooth&&navigator.bluetooth.requestDevice);
+// The iPhone app has no Web Bluetooth (WKWebView), so there the same calls go through the native
+// @capacitor-community/bluetooth-le plugin, wrapped to look like the small part of Web Bluetooth used here.
+function nativeBluetooth(){
+  const P=Capacitor.registerPlugin("BluetoothLe");let ready=null;
+  const init=()=>ready||(ready=P.initialize({}).catch(e=>{ready=null;throw e}));
+  const bytes=v=>{if(v&&typeof v!=="string")return v;const b=[];let h=-1;for(const c of String(v||"")){const n=parseInt(c,16);if(isNaN(n))continue;if(h<0)h=n;else{b.push(h*16+n);h=-1}}return new DataView(new Uint8Array(b).buffer)};
+  const ev=()=>{const L={};return{on:(k,f)=>(L[k]=L[k]||[]).push(f),fire:(k,e)=>(L[k]||[]).forEach(f=>f(e))}};
+  return{async requestDevice(o){await init();
+    // the plugin takes one name prefix; Dragy and "any device" ask with no filter and the user picks from the list
+    const f=(o.filters||[]).length===1?o.filters[0]:null;
+    const d=await P.requestDevice({...(f&&f.namePrefix?{namePrefix:f.namePrefix}:{}),optionalServices:(o.optionalServices||[]).map(x=>String(x).toLowerCase())}).catch(e=>{const er=new Error(e&&e.message||"No device chosen");if(/cancel|no device/i.test(er.message))er.name="NotFoundError";throw er});
+    const E=ev(),id=d.deviceId;
+    const dev={id,name:d.name||"",addEventListener:E.on,gatt:{connected:false,
+      async connect(){await P.addListener("disconnected|"+id,()=>{dev.gatt.connected=false;E.fire("gattserverdisconnected",{target:dev})});await P.connect({deviceId:id,timeout:15000});dev.gatt.connected=true;return dev.gatt},
+      disconnect(){P.disconnect({deviceId:id}).catch(()=>{})},
+      async getPrimaryServices(){const r=await P.getServices({deviceId:id});return(r.services||[]).map(sv=>({uuid:sv.uuid,
+        async getCharacteristics(){return(sv.characteristics||[]).map(ch=>{const C=ev();const c={uuid:ch.uuid,properties:ch.properties||{},value:null,addEventListener:C.on,
+          async startNotifications(){await P.addListener(`notification|${id}|${sv.uuid}|${ch.uuid}`,e=>{c.value=bytes(e&&e.value);C.fire("characteristicvaluechanged",{target:c})});
+            await P.startNotifications({deviceId:id,service:sv.uuid,characteristic:ch.uuid});return c}};return c})}}))}}};
+    return dev}};
+}
+const BT=navigator.bluetooth&&navigator.bluetooth.requestDevice?navigator.bluetooth:NATIVE&&Capacitor.registerPlugin?nativeBluetooth():null;
+const hasBLE=!!BT;
 
 // RaceBox "Data Message": UBX-framed, class 0xFF id 0x01, 80-byte payload (RaceBox BLE protocol)
 function makeUbxParser(onFix){
@@ -1257,10 +1279,10 @@ function makeNmeaParser(onFix){
 }
 async function connectDevice(kind){
   const src=SOURCES[kind];
-  if(!hasBLE){toast(NATIVE?"Bluetooth devices aren't in the iPhone app yet. Use Phone GPS for now.":"This browser can't use Bluetooth. Try Chrome on Android or a computer.");return}
+  if(!hasBLE){toast("This browser can't use Bluetooth. Try Chrome on Android or a computer.");return}
   try{
     DEV.status="Choose your device…";updateDevice();
-    const device=await navigator.bluetooth.requestDevice(src.ble);
+    const device=await BT.requestDevice(src.ble);
     DEV.device=device;DEV.name=device.name||src.name;DEV.status="Connecting…";updateDevice();
     device.addEventListener("gattserverdisconnected",()=>{DEV.status="Disconnected";DEV.hz=0;updateDevice();if(REC.on&&S.settings.source===kind)setGps("off","Device disconnected. Recording paused until it reconnects.")});
     const server=await device.gatt.connect();
@@ -1307,7 +1329,7 @@ function viewRecord(){
       <div class="sources" role="group" aria-label="Data source">${Object.entries(SOURCES).map(([k,s])=>`<button class="src" type="button" data-src="${k}" aria-pressed="${src===k}" ${REC.on?"disabled":""}><b>${s.name}</b><span>${s.note}</span></button>`).join("")}</div>
       ${src==="phone"?`<label class="check"><input type="checkbox" id="motion" ${S.settings.motion?"checked":""}> Use the phone's motion sensors for g-force (mount the phone so it can't slide)</label>`:
         `<div class="dev" id="dev-status"></div><div class="row"><button class="btn primary" id="connect" type="button" ${hasBLE?"":"disabled"}>Connect ${SOURCES[src].name}</button></div>
-         ${hasBLE?"":NATIVE?`<div class="notice">RaceBox and other Bluetooth devices are coming to the iPhone app. Use Phone GPS for now.</div>`:`<div class="notice">Bluetooth devices need Chrome or Edge on Android, Windows, macOS or ChromeOS. iPhone browsers don't support Web Bluetooth yet, so on iPhone use Phone GPS.</div>`}
+         ${hasBLE?"":`<div class="notice">Bluetooth devices need Chrome or Edge on Android, Windows, macOS or ChromeOS. iPhone browsers don't support Web Bluetooth yet, so on iPhone use Phone GPS.</div>`}
          ${src==="dragy"?`<p class="muted small" style="margin:0">Dragy doesn't publish its Bluetooth format. Dragon Drive tries the standard NMEA GPS format; if your Dragy connects but shows no data, let us know.</p>`:""}`}
     </div>
     ${FOLLOW?`<div class="notice row" style="align-items:center"><div style="flex:1"><b>Following ${esc(FOLLOW.title)}</b><br><span class="small">The route shows in grey under your line while you drive.</span></div><button class="btn ghost" id="fol-x" type="button">Stop following</button></div>`:""}
@@ -1434,7 +1456,10 @@ function startRec(){
       if(!REC.pts.length){stopSensors();REC.on=false;const dm=$("#drivemode");dm.hidden=true;dm.innerHTML="";document.documentElement.classList.remove("driving");viewRecord();toast(err.code===1?"Location is blocked here. Allow location for this site and try again.":"No GPS signal. Try again outdoors.")}
       else setGps("off","GPS signal lost");
     });
-  }else setGps("ok","Recording from "+REC.source);
+  }else{setGps("ok","Recording from "+REC.source);
+    // iOS suspends the app when the screen locks unless it's using location; keep a watcher running so the
+    // Bluetooth device's data still arrives (its fixes are what get recorded, these are ignored).
+    if(BGEO)REC.keep=geoWatch(()=>{},()=>{})}
   REC.tick=setInterval(()=>{keepAwake();updateLive()},1000);
   viewRecord();
   if(src==="phone"&&!BGEO)toast("Keep Dragon Drive open with the screen on. iPhone pauses GPS if it locks.");
@@ -1470,7 +1495,7 @@ function updateLive(){
     <div class="dm-mid"><div class="dm-speed"><div class="speedo"><div><div class="v num" id="dm-speed">–</div><div class="k">${sLabel()}</div></div><div id="dm-limit"></div></div><div class="dm-warn" id="dm-warn" role="alert"></div></div>
       <div class="dm-info">${CAM.stream?`<video id="dm-cam" class="dm-cam" muted playsinline autoplay aria-label="What the camera is filming"></video>`:""}${FOLLOW?`<div class="dm-mapw"><canvas class="route" id="dm-map"></canvas><span class="chip off-route" id="dm-off"></span></div>`:""}
       <div class="row dm-gauges"><div class="gauge"><div class="k">Distance</div><div class="v num" id="dm-dist"></div></div><div class="gauge"><div class="k">Time</div><div class="v num" id="dm-time"></div></div></div></div></div>
-    <div class="stack dm-ctl"><div class="gps" id="gps" style="justify-content:center"><span class="dot wait"></span><span id="gps-t">Finding GPS…</span></div><button class="rec-btn stop" id="dm-btn" type="button"><span class="fill"></span><span class="lbl">Hold to finish</span></button><p class="muted small dm-note" style="margin:0;text-align:center">${BGEO&&REC.source==="Phone GPS"?"Recording keeps going if the phone locks or you switch apps.":"Leave this screen open. GPS pauses if the phone locks or you switch apps."}</p></div>`;
+    <div class="stack dm-ctl"><div class="gps" id="gps" style="justify-content:center"><span class="dot wait"></span><span id="gps-t">Finding GPS…</span></div><button class="rec-btn stop" id="dm-btn" type="button"><span class="fill"></span><span class="lbl">Hold to finish</span></button><p class="muted small dm-note" style="margin:0;text-align:center">${BGEO?"Recording keeps going if the phone locks or you switch apps.":"Leave this screen open. GPS pauses if the phone locks or you switch apps."}</p></div>`;
     const dc=$("#dm-cam");if(dc){dc.srcObject=CAM.stream;dc.play().catch(()=>{})}bindHold($("#dm-btn"))}
   // the drive screen opens before the camera is ready, so add its preview and REC mark once it is
   if(REC.on&&!dm.hidden){const r=$("#dm-rec");if(r&&!!r.innerHTML!==!!CAM.rec)r.innerHTML=CAM.rec?' <span class="rec-dot">● REC</span>':"";
@@ -1489,7 +1514,7 @@ function geoWatch(ok,fail){if(!BGEO)return navigator.geolocation.watchPosition(o
     ok({timestamp:loc.time||Date.now(),coords:{latitude:loc.latitude,longitude:loc.longitude,accuracy:loc.accuracy,altitude:loc.altitude,speed:loc.speed,heading:loc.bearing}})
   }).then(id=>{w.id=id;if(w.dead)BGEO.removeWatcher({id})}).catch(()=>fail({code:2}));return w}
 function geoClear(w){if(w==null)return;if(typeof w!=="object"){navigator.geolocation.clearWatch(w);return}if(w.id!=null)BGEO.removeWatcher({id:w.id}).catch(()=>{});else w.dead=true}
-function stopSensors(){geoClear(REC.watch);REC.watch=null;clearInterval(REC.tick);stopMotion();wakeLock(false)}
+function stopSensors(){geoClear(REC.watch);geoClear(REC.keep);REC.keep=null;REC.watch=null;clearInterval(REC.tick);stopMotion();wakeLock(false)}
 function finishRec(){
   REC.endedAt=Date.now();stopSensors();REC.on=false;REC.dismissed=false;$("#drivemode").hidden=true;document.documentElement.classList.remove("driving");$("#drivemode").classList.remove("speeding");FOLLOW=null;
   const raw=REC.pts;REC.pts=[];
