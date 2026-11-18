@@ -1,0 +1,10 @@
+{
+  "appId": "com.itschefff.dragondrive",
+  "appName": "Dragon Drive",
+  "webDir": "www",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#fff4d6",
+    "limitsNavigationsToAppBoundDomains": false
+  }
+}

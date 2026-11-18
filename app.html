@@ -103,9 +103,15 @@ h3{font-size:18px}
 .chip.example{border:1px dashed var(--muted);background:transparent}
 .chip.run{color:var(--hl)}
 .chip.closed{color:var(--accent)}
-input[type=text],select,textarea{width:100%;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 12px}
+input[type=text],input[type=email],input[type=password],select,textarea{width:100%;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 12px}
 label.field{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
 label.check{display:flex;gap:8px;align-items:flex-start;font-size:14px}
+.modal{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;padding:16px;padding-bottom:max(16px,env(safe-area-inset-bottom))}
+.modal-card{background:var(--surface);color:inherit;border-radius:18px;padding:18px;width:100%;max-width:440px;max-height:90vh;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+@media (min-width:600px){.modal{align-items:center}}
+.report-link{font-size:12px;font-weight:400;margin-left:4px}
+details.del-acc summary{cursor:pointer;width:max-content}
+.modal-card a,.legal a{color:var(--accent)}
 .veh-adv summary{cursor:pointer;font-weight:600;list-style-position:inside}
 .veh-adv[open] summary{margin-bottom:10px}
 .veh-adv .adv-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
@@ -551,6 +557,10 @@ function seed(){
 /* ================= cloud sync ================= */
 // Optional account sync through Supabase (auth + one JSON row per user + a private photo bucket).
 // Fill these in to turn it on; the anon key is meant to be public. Leave blank to stay device-only.
+// Running inside the iOS app (Capacitor) instead of a browser. Links people share always point at the website.
+const NATIVE=!!(window.Capacitor&&Capacitor.isNativePlatform&&Capacitor.isNativePlatform());
+const SITE="https://dragondrive.turboloser.co/";
+const appUrl=()=>NATIVE?SITE:location.origin+location.pathname;
 const CLOUD={url:"https://wvvqxedrjyqgvjmdzsws.supabase.co",anonKey:"sb_publishable_4vr932RNVitzY40hs4g0nA_xfH_KX2J"};
 const Sync=(()=>{
   const SK="dragondrive.session";let ses=null,timer=null,busy=false,again=false,status="";
@@ -593,13 +603,21 @@ const Sync=(()=>{
     on,api,get user(){return ses},get status(){return status},
     queue(){if(!on()||!ses)return;clearTimeout(timer);timer=setTimeout(run,1500)},
     run,
-    async sendCode(email){const back=location.origin+location.pathname;const r=await fetch(CLOUD.url+"/auth/v1/otp?redirect_to="+encodeURIComponent(back),{method:"POST",headers:{apikey:CLOUD.anonKey,"Content-Type":"application/json"},body:JSON.stringify({email,create_user:true})});if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.msg||j.message||"Couldn't send the email")}},
+    async sendCode(email){const back=appUrl();const r=await fetch(CLOUD.url+"/auth/v1/otp?redirect_to="+encodeURIComponent(back),{method:"POST",headers:{apikey:CLOUD.anonKey,"Content-Type":"application/json"},body:JSON.stringify({email,create_user:true})});if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.msg||j.message||"Couldn't send the email")}},
     async fromLink(hash){const h=new URLSearchParams(hash.slice(1));if(!on()||!h.get("access_token"))return false;
       try{const j={access_token:h.get("access_token"),refresh_token:h.get("refresh_token"),expires_in:+h.get("expires_in")||3600};const r=await fetch(CLOUD.url+"/auth/v1/user",{headers:{apikey:CLOUD.anonKey,Authorization:"Bearer "+j.access_token}});j.user=await r.json();if(!r.ok||!j.user.id)throw 0;keep(fromAuth(j));this.adopt();S.settingsAt=0;loadAvatar();await this.uploadAll();await run();toast("Signed in, syncing")}catch(e){toast("That sign-in link has expired. Request a new one.")}return true},
+    // Password sign-in exists for accounts given a password in the Supabase dashboard (App Review's demo account).
+    async password(email,pw){const j=await auth("token?grant_type=password",{email,password:pw});keep(fromAuth(j));this.adopt();S.settingsAt=0;loadAvatar();await this.uploadAll();await run();await Social.refresh()},
     async verify(email,code){const j=await auth("verify",{type:"email",email,token:code});keep(fromAuth(j));this.adopt();S.settingsAt=0;loadAvatar();await this.uploadAll();await run();await Social.refresh()},
     // Each account keeps its own copy of its data on this phone, so switching accounts never mixes them.
     async signOut(){if(!ses)return;await run();const uid=ses.uid;try{localStorage.setItem(KEY+":"+uid,JSON.stringify(S))}catch(e){}
       await photos.del("avatar:me",true);for(const [n,i] of Object.entries(S.settings.garage||{})){await photos.del("veh:"+n,true);for(const ph of i.photos||[])await photos.del(vehPhotoId(i,ph),true)}AV.url=null;
+      keep(null);status="";Social.reset();S=seed();S.settings.garage={};lastSJ=JSON.stringify(S.settings);mem=S;try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}},
+    // Delete the account on the server, then everything it left on this phone.
+    async deleteAccount(){if(!ses)return;await Social.deleteAccount();const uid=ses.uid;
+      for(const d of S.drives.filter(d=>d.who==="me")){try{if(d.video)await delDriveVideo(d.video);await photos.del(d.id,true)}catch(e){}}
+      await photos.del("avatar:me",true);for(const [n,i] of Object.entries(S.settings.garage||{})){await photos.del("veh:"+n,true);for(const ph of i.photos||[])await photos.del(vehPhotoId(i,ph),true)}AV.url=null;
+      try{localStorage.removeItem(KEY+":"+uid)}catch(e){}
       keep(null);status="";Social.reset();S=seed();S.settings.garage={};lastSJ=JSON.stringify(S.settings);mem=S;try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}},
     adopt(){if(!ses)return;let st=null;try{st=JSON.parse(localStorage.getItem(KEY+":"+ses.uid)||"null")}catch(e){}
       if(st&&!S.drives.some(isReal)){S=st;lastSJ=JSON.stringify(S.settings);mem=S;try{localStorage.setItem(KEY,JSON.stringify(S));localStorage.removeItem(KEY+":"+ses.uid)}catch(e){}}},
@@ -614,7 +632,7 @@ const Sync=(()=>{
 // Profiles, following, shared drives, kudos and comments on top of the account backend.
 // The database decides who can see what (supabase/social.sql); the app only asks.
 const Social=(()=>{
-  const SOC={me:undefined,profiles:new Map(),following:new Set(),drives:[],kudos:new Map(),comments:new Map(),loaded:false,photoUrls:new Map(),posts:new Map(),routes:new Map()};
+  const SOC={me:undefined,profiles:new Map(),following:new Set(),drives:[],kudos:new Map(),comments:new Map(),loaded:false,photoUrls:new Map(),posts:new Map(),routes:new Map(),blocked:new Set()};
   const ok=()=>Sync.on()&&!!Sync.user;
   const ready=()=>ok()&&!!SOC.me;
   const J=async(path,opt={})=>{const r=await Sync.api(path,{...opt,headers:{"Content-Type":"application/json",...(opt.headers||{})}});if(!r.ok){const j=await r.json().catch(()=>({}));const e=new Error(j.message||("HTTP "+r.status));e.code=j.code;e.status=r.status;throw e}return r.status===204||r.headers.get("content-length")==="0"?null:r.json().catch(()=>null)};
@@ -638,6 +656,7 @@ const Social=(()=>{
     if(!ok())return;const u=Sync.user;
     try{
       if(SOC.me===undefined)await loadMe();if(!SOC.me){SOC.loaded=true;return}
+      try{SOC.blocked=new Set((await J("/rest/v1/blocks?select=blocked&blocker=eq."+u.uid)).map(x=>x.blocked))}catch(e){} // needs safety.sql
       const f=await J("/rest/v1/follows?select=followee&follower=eq."+u.uid);SOC.following=new Set(f.map(x=>x.followee));
       const ids=[...SOC.following];
       if(ids.length){addProfiles(await J("/rest/v1/profiles?select=*&id="+inList(ids)));SOC.drives=split(await J("/rest/v1/drives?select=*&user_id="+inList(ids)+"&order=start.desc&limit=60")).map(toLocal)}else SOC.drives=[];
@@ -653,7 +672,7 @@ const Social=(()=>{
     const k=await J("/rest/v1/kudos?select=drive_id,user_id&drive_id="+inList(ids));const c=await J("/rest/v1/comments?select=*&drive_id="+inList(ids)+"&order=created_at.asc");
     const me=Sync.user.uid;for(const id of ids){SOC.kudos.set(id,{n:0,mine:false});SOC.comments.set(id,[])}
     for(const x of k){const e=SOC.kudos.get(x.drive_id);e.n++;if(x.user_id===me)e.mine=true}
-    for(const x of c)SOC.comments.get(x.drive_id).push({id:x.id,who:x.user_id===me?"me":"u:"+x.user_id,text:x.body,t:Date.parse(x.created_at)});
+    for(const x of c)if(!SOC.blocked.has(x.user_id))SOC.comments.get(x.drive_id).push({id:x.id,who:x.user_id===me?"me":"u:"+x.user_id,text:x.body,t:Date.parse(x.created_at)});
     const need=[...new Set(c.map(x=>x.user_id))].filter(id=>!SOC.profiles.has(id)&&id!==me);if(need.length)addProfiles(await J("/rest/v1/profiles?select=*&id="+inList(need)));
   }
   // Publish changes to my real drives (called after each sync).
@@ -709,7 +728,10 @@ const Social=(()=>{
     published:d=>!!(d.remote||(S.pub&&S.pub[d.id])),
     kudos:id=>SOC.kudos.get(id),comments:id=>SOC.comments.get(id),
     async claim(handle){handle=handle.toLowerCase();const u=Sync.user;
-      await J("/rest/v1/profiles",{method:"POST",headers:{Prefer:"return=representation"},body:JSON.stringify({id:u.uid,handle,name:(S.settings.name||"").slice(0,40)})}).then(r=>{SOC.me=r[0]}).catch(e=>{if(/reserved/i.test(e.message))throw new Error("That handle is reserved. Try another.");if(e.code==="23505"||e.status===409)throw new Error("That handle is taken. Try another.");throw e});
+      const body={id:u.uid,handle,name:(S.settings.name||"").slice(0,40),terms_at:new Date().toISOString()};
+      const post=b=>J("/rest/v1/profiles",{method:"POST",headers:{Prefer:"return=representation"},body:JSON.stringify(b)});
+      // terms_at comes from safety.sql; until it's run, create the profile without it
+      await post(body).catch(e=>{if(e.code==="PGRST204"||/terms_at/.test(e.message)){delete body.terms_at;return post(body)}throw e}).then(r=>{SOC.me=r[0]}).catch(e=>{if(/reserved/i.test(e.message))throw new Error("That handle is reserved. Try another.");if(e.code==="23505"||e.status===409)throw new Error("That handle is taken. Try another.");throw e});
       addProfiles([SOC.me]);S.pubAvatar="";await push();await refresh()},
     async toggleKudos(id){const e=SOC.kudos.get(id)||{n:0,mine:false};const u=Sync.user;
       if(e.mine){await J("/rest/v1/kudos?drive_id=eq."+encodeURIComponent(id)+"&user_id=eq."+u.uid,{method:"DELETE"});e.n--;e.mine=false}
@@ -726,7 +748,7 @@ const Social=(()=>{
       else{await J("/rest/v1/follows?follower=eq."+u.uid+"&followee=eq."+id,{method:"DELETE"});SOC.following.delete(id);SOC.drives=SOC.drives.filter(d=>d.who!=="u:"+id)}refresh()},
     async photoUrl(d){if(SOC.photoUrls.has(d.id))return SOC.photoUrls.get(d.id);const uid=d.who.slice(2);const r=await Sync.api("/storage/v1/object/authenticated/drive-photos/"+uid+"/"+encodeURIComponent(d.id)).catch(()=>null);
       const u=r&&r.ok?URL.createObjectURL(await r.blob()):null;SOC.photoUrls.set(d.id,u);return u},
-    posts:()=>[...SOC.posts.values()].sort((a,b)=>b.start-a.start),
+    posts:()=>[...SOC.posts.values()].filter(p=>!SOC.blocked.has(p.uid)).sort((a,b)=>b.start-a.start),
     routes:()=>[...SOC.routes.values()],
     async stats(){return J("/rest/v1/rpc/app_stats",{method:"POST",body:"{}"})},
     async routeById(id){const r=await J("/rest/v1/routes?select=*&id=eq."+encodeURIComponent(id));if(!r[0])return null;if(!SOC.profiles.has(r[0].user_id))addProfiles(await J("/rest/v1/profiles?select=*&id=eq."+r[0].user_id));const x=toRoute(r[0]);if(Sync.user&&r[0].user_id===Sync.user.uid)x.who="me";SOC.routes.set(x.id,x);return x},
@@ -737,8 +759,24 @@ const Social=(()=>{
     async nearby(){const u=Sync.user;if(SOC.nearAt&&Date.now()-SOC.nearAt<120000)return SOC.near;
       const r=await J("/rest/v1/drives?select=*&visibility=eq.public&user_id=neq."+u.uid+"&order=start.desc&limit=300");
       const need=[...new Set(r.map(x=>x.user_id))].filter(id=>!SOC.profiles.has(id));if(need.length)addProfiles(await J("/rest/v1/profiles?select=*&id="+inList(need)));
-      SOC.near=split(r).map(toLocal);SOC.nearAt=Date.now();await loadReactions(SOC.near.map(d=>d.id)).catch(()=>{});return SOC.near},
-    reset(){SOC.routes.clear();SOC.posts.clear();SOC.near=[];SOC.nearAt=0;SOC.me=undefined;SOC.profiles.clear();SOC.following.clear();SOC.drives=[];SOC.kudos.clear();SOC.comments.clear();SOC.loaded=false}
+      SOC.near=split(r.filter(x=>!SOC.blocked.has(x.user_id))).map(toLocal);SOC.nearAt=Date.now();await loadReactions(SOC.near.map(d=>d.id)).catch(()=>{});return SOC.near},
+    // Safety (supabase/safety.sql): blocking, reports and deleting an account.
+    blocked:id=>SOC.blocked.has(id),
+    async block(id,on){const u=Sync.user;
+      if(on){await J("/rest/v1/rpc/block_user",{method:"POST",body:JSON.stringify({target:id})});SOC.blocked.add(id);SOC.following.delete(id);
+        const w="u:"+id;SOC.drives=SOC.drives.filter(d=>d.who!==w);SOC.near=(SOC.near||[]).filter(d=>d.who!==w);for(const [k,l] of SOC.comments)SOC.comments.set(k,l.filter(c=>c.who!==w))}
+      else{await J("/rest/v1/blocks?blocker=eq."+u.uid+"&blocked=eq."+id,{method:"DELETE"});SOC.blocked.delete(id)}
+      refresh()},
+    async report(r){await J("/rest/v1/reports",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify({...r,reporter:Sync.user.uid})})},
+    // Storage files can't be removed from SQL, so delete them through the Storage API, then the account.
+    async deleteAccount(){const u=Sync.user;
+      await J("/rest/v1/rpc/delete_account",{method:"POST",body:JSON.stringify({dry_run:true})}); // fails early if safety.sql isn't installed
+      for(const b of ["photos","avatars","drive-photos"])for(let i=0;i<20;i++){
+        const l=await J("/storage/v1/object/list/"+b,{method:"POST",body:JSON.stringify({prefix:u.uid,limit:1000,offset:0})}).catch(()=>[]);
+        const names=(l||[]).filter(x=>x&&x.id).map(x=>u.uid+"/"+x.name);if(!names.length)break;
+        await J("/storage/v1/object/"+b,{method:"DELETE",body:JSON.stringify({prefixes:names})})}
+      await J("/rest/v1/rpc/delete_account",{method:"POST",body:JSON.stringify({dry_run:false})})},
+    reset(){SOC.blocked.clear();SOC.routes.clear();SOC.posts.clear();SOC.near=[];SOC.nearAt=0;SOC.me=undefined;SOC.profiles.clear();SOC.following.clear();SOC.drives=[];SOC.kudos.clear();SOC.comments.clear();SOC.loaded=false}
   };
 })();
 function allDrives(){return Social.ok()?[...S.drives,...Social.SOC.drives.filter(r=>!S.drives.some(d=>d.id===r.id))]:S.drives}
@@ -1021,6 +1059,30 @@ async function renameVehicle(from,to){
   save();return to}
 function kudosCount(d){const k=Social.ok()&&Social.published(d)&&Social.kudos(d.id);return k?k.n:(S.kudosFrom[d.id]||[]).length+(S.kudos[d.id]?1:0)}
 function kudosMine(d){const k=Social.ok()&&Social.published(d)&&Social.kudos(d.id);return k?k.mine:!!S.kudos[d.id]}
+function commentsHtml(d){return commentsOf(d).map(c=>{const cp=person(c.who);const rp=c.id&&String(c.who).startsWith("u:")&&Social.ready();
+  return `<div class="comment">${cp.handle?`<a href="#u/${esc(cp.handle)}" class="user-link">${avatar(cp)}</a>`:avatar(cp)}<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13px">${cp.handle?`<a href="#u/${esc(cp.handle)}" style="color:inherit">${nameHtml(cp)}</a>`:esc(cp.name)} <span class="muted" style="font-weight:400">${ago(c.t)}</span>${rp?` <button class="link-btn muted report-link" data-report-c="${esc(String(c.id))}" type="button">Report</button>`:""}</div><p>${esc(c.text)}</p></div></div>`}).join("")||'<p class="muted" style="margin:0">No comments yet.</p>'}
+// Report links on comments in a drive or post sheet; reopen() redraws the sheet afterwards.
+function wireReports(root,d,reopen){root.querySelectorAll("[data-report-c]").forEach(b=>b.onclick=()=>{const c=commentsOf(d).find(x=>String(x.id)===b.dataset.reportC);if(!c)return;
+  reportSheet({kind:"comment",id:String(c.id),uid:c.who.slice(2),excerpt:c.text,what:"this comment",done:reopen})})}
+const REPORT_REASONS=[["spam","Spam or scam"],["harassment","Harassment, bullying or hate"],["sexual","Nudity or sexual content"],["violence","Violence or threats"],["dangerous","Dangerous or illegal driving"],["other","Something else"]];
+// The report form. o: {kind, id, uid (the person reported), excerpt, what (shown in the title), done}
+function reportSheet(o){if(!Social.ready()){toast("Sign in and pick a @handle to report");return}
+  const who=Social.person("u:"+o.uid),h=who.handle||"";const box=document.createElement("div");box.className="modal";
+  box.innerHTML=`<form class="modal-card stack" role="dialog" aria-modal="true" aria-labelledby="rp-h"><h3 id="rp-h">Report ${esc(o.what)}</h3>
+    <p class="muted small" style="margin:0">The Dragon Drive team reviews every report within 24 hours and removes anything that breaks the <a href="${SITE}terms.html" target="_blank" rel="noopener">Terms</a>.${h?` @${esc(h)} isn't told who reported it.`:""}</p>
+    <div class="stack" style="gap:8px">${REPORT_REASONS.map(([k,t],i)=>`<label class="check"><input type="radio" name="rp-r" value="${k}" ${i?"":"checked"}> ${t}</label>`).join("")}</div>
+    <label class="field">Anything else we should know? (optional)<textarea id="rp-d" rows="3" maxlength="1000"></textarea></label>
+    ${o.uid&&!Social.blocked(o.uid)&&h?`<label class="check"><input type="checkbox" id="rp-b"> Also block @${esc(h)}</label>`:""}
+    <div class="row"><span class="spacer"></span><button class="btn ghost" id="rp-x" type="button">Cancel</button><button class="btn danger" type="submit">Send report</button></div></form>`;
+  document.body.appendChild(box);const close=()=>{box.remove();document.removeEventListener("keydown",esk)};const esk=e=>{if(e.key==="Escape")close()};document.addEventListener("keydown",esk);
+  box.onclick=e=>{if(e.target===box)close()};box.querySelector("#rp-x").onclick=close;
+  box.querySelector("form").onsubmit=async e=>{e.preventDefault();const btn=box.querySelector("[type=submit]");btn.disabled=true;
+    const reason=(box.querySelector("[name=rp-r]:checked")||{}).value||"other",blk=box.querySelector("#rp-b");
+    try{await Social.report({kind:o.kind,target_id:String(o.id||""),target_user:o.uid||null,target_handle:h,reason,details:box.querySelector("#rp-d").value.trim().slice(0,1000),excerpt:String(o.excerpt||"").slice(0,300)});
+      if(blk&&blk.checked)await Social.block(o.uid,true);
+      close();toast(blk&&blk.checked?`Reported and blocked @${h}`:"Thanks. We'll review it within 24 hours.");if(o.done)o.done(!!(blk&&blk.checked))}
+    catch(err){btn.disabled=false;toast("Couldn't send the report. Check your connection.")}};
+  setTimeout(()=>box.querySelector("input").focus(),0)}
 function commentsOf(d){const c=Social.ok()&&Social.published(d)&&Social.comments(d.id);return c||S.comments[d.id]||[]}
 const heart=`<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 21V10l4-7c1.5 0 2.5 1 2.2 2.6L12.6 9H19a2 2 0 0 1 2 2.3l-1.3 7.6A2.5 2.5 0 0 1 17.2 21H7zM3 10h2.5v11H3z"/></svg>`;
 function statBlock(k,v,u){return `<div class="stat"><div class="k">${k}</div><div class="v">${v}${u?`<small>${u}</small>`:""}</div></div>`}
@@ -1099,15 +1161,17 @@ function postCard(d){const p=person(d.who),n=commentsOf(d).length;
     <div class="card-foot"><button class="kudos" data-kudos="${d.id}" aria-pressed="${kudosMine(d)}" aria-label="Kudos" ${d.who==="me"?"disabled":""}>${heart}<span>${kudosCount(d)}</span></button>
       <button class="kudos" data-post="${d.id}" aria-label="Comments"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg><span>${n}</span></button></div></article>`}
 function openPost(id){const d=Social.SOC.posts.get(id);if(!d)return;if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET={kind:"post",id};const sh=$("#sheet");const p=person(d.who);
-  sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span>${d.who==="me"?'<button class="btn ghost" id="p-del" type="button">Delete</button>':""}</div></div>
+  sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span>${d.who==="me"?'<button class="btn ghost" id="p-del" type="button">Delete</button>':Social.ready()?'<button class="btn ghost" id="p-report" type="button">Report</button>':""}</div></div>
   <div class="wrap body stack">
     <div class="row">${p.handle?`<a href="#u/${esc(p.handle)}" class="user-link">${avatar(p)}</a>`:avatar(p)}<div><div style="font-weight:600">${p.handle?`<a href="#u/${esc(p.handle)}" style="color:inherit">${nameHtml(p)}</a>`:esc(p.name)}</div><div class="muted small">${new Date(d.start).toLocaleString(undefined,{weekday:"short",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}</div></div></div>
     <p class="post-body" style="font-size:17px">${linkify(d.body)}</p>
     <div class="panel"><div class="row"><h3>Kudos & comments</h3><span class="spacer"></span><button class="kudos" data-kudos="${d.id}" aria-pressed="${kudosMine(d)}" aria-label="Kudos" ${d.who==="me"?"disabled":""}>${heart}<span>${kudosCount(d)}</span></button></div>
-      <div class="stack">${commentsOf(d).map(c=>{const cp=person(c.who);return `<div class="comment">${cp.handle?`<a href="#u/${esc(cp.handle)}" class="user-link">${avatar(cp)}</a>`:avatar(cp)}<div><div style="font-weight:600;font-size:13px">${cp.handle?`<a href="#u/${esc(cp.handle)}" style="color:inherit">${nameHtml(cp)}</a>`:esc(cp.name)} <span class="muted" style="font-weight:400">${ago(c.t)}</span></div><p>${esc(c.text)}</p></div></div>`}).join("")||'<p class="muted" style="margin:0">No comments yet.</p>'}</div>
+      <div class="stack">${commentsHtml(d)}</div>
       ${Social.ready()?`<form class="row" id="pc-form"><input type="text" id="pc-in" placeholder="Add a comment" style="flex:1;min-width:0" maxlength="280"><button class="btn" type="submit">Post</button></form>`:""}</div>
   </div>`;
   sh.hidden=false;document.body.style.overflow="hidden";$("#sh-x").onclick=closeSheet;
+  wireReports(sh,d,()=>openPost(d.id));
+  const prp=$("#p-report");if(prp)prp.onclick=()=>reportSheet({kind:"post",id:d.id,uid:d.uid,excerpt:d.body,what:"this post",done:b=>{if(b)closeSheet()}});
   const f=$("#pc-form");if(f)f.onsubmit=async e=>{e.preventDefault();const v=$("#pc-in").value.trim();if(!v)return;try{await Social.comment(d.id,v)}catch(err){toast("Couldn't post the comment");return}openPost(d.id);toast("Comment posted")};
   const del=$("#p-del");if(del)del.onclick=async()=>{if(!confirm("Delete this announcement for everyone?"))return;try{await Social.unannounce(d.id);closeSheet();toast("Announcement deleted")}catch(e){toast("Couldn't reach the server")}};
 }
@@ -1168,7 +1232,7 @@ function makeNmeaParser(onFix){
 }
 async function connectDevice(kind){
   const src=SOURCES[kind];
-  if(!hasBLE){toast("This browser can't use Bluetooth. Try Chrome on Android or a computer.");return}
+  if(!hasBLE){toast(NATIVE?"Bluetooth devices aren't in the iPhone app yet. Use Phone GPS for now.":"This browser can't use Bluetooth. Try Chrome on Android or a computer.");return}
   try{
     DEV.status="Choose your device…";updateDevice();
     const device=await navigator.bluetooth.requestDevice(src.ble);
@@ -1218,7 +1282,7 @@ function viewRecord(){
       <div class="sources" role="group" aria-label="Data source">${Object.entries(SOURCES).map(([k,s])=>`<button class="src" type="button" data-src="${k}" aria-pressed="${src===k}" ${REC.on?"disabled":""}><b>${s.name}</b><span>${s.note}</span></button>`).join("")}</div>
       ${src==="phone"?`<label class="check"><input type="checkbox" id="motion" ${S.settings.motion?"checked":""}> Use the phone's motion sensors for g-force (mount the phone so it can't slide)</label>`:
         `<div class="dev" id="dev-status"></div><div class="row"><button class="btn primary" id="connect" type="button" ${hasBLE?"":"disabled"}>Connect ${SOURCES[src].name}</button></div>
-         ${hasBLE?"":`<div class="notice">Bluetooth devices need Chrome or Edge on Android, Windows, macOS or ChromeOS. iPhone browsers don't support Web Bluetooth yet, so on iPhone use Phone GPS.</div>`}
+         ${hasBLE?"":NATIVE?`<div class="notice">RaceBox and other Bluetooth devices are coming to the iPhone app. Use Phone GPS for now.</div>`:`<div class="notice">Bluetooth devices need Chrome or Edge on Android, Windows, macOS or ChromeOS. iPhone browsers don't support Web Bluetooth yet, so on iPhone use Phone GPS.</div>`}
          ${src==="dragy"?`<p class="muted small" style="margin:0">Dragy doesn't publish its Bluetooth format. Dragon Drive tries the standard NMEA GPS format; if your Dragy connects but shows no data, let us know.</p>`:""}`}
     </div>
     ${FOLLOW?`<div class="notice row" style="align-items:center"><div style="flex:1"><b>Following ${esc(FOLLOW.title)}</b><br><span class="small">The route shows in grey under your line while you drive.</span></div><button class="btn ghost" id="fol-x" type="button">Stop following</button></div>`:""}
@@ -1278,7 +1342,8 @@ function kaVideo(on){
     if(kaVid.paused)kaVid.play().catch(()=>{})}
   else if(kaVid){kaVid.pause()}
 }
-async function wakeLock(on){try{
+const KEEPAWAKE=NATIVE&&Capacitor.registerPlugin?Capacitor.registerPlugin("KeepAwake"):null;
+async function wakeLock(on){if(KEEPAWAKE){try{await (on?KEEPAWAKE.keepAwake():KEEPAWAKE.allowSleep())}catch(e){}if(on)return}try{
   if(on){kaVideo(true);if(!navigator.wakeLock||document.visibilityState!=="visible"||REC.wakeBusy)return;if(REC.wake&&!REC.wake.released)return;
     REC.wakeBusy=true;try{REC.wake=await navigator.wakeLock.request("screen")}finally{REC.wakeBusy=false}
     if(!REC.on){const w=REC.wake;REC.wake=null;w.release().catch(()=>{});return}
@@ -1334,7 +1399,7 @@ function startRec(){
     startMotion();
     if(!("geolocation" in navigator)){REC.on=false;toast("Location isn't available in this browser.");return}
     setGps("wait","Finding GPS…");
-    REC.watch=navigator.geolocation.watchPosition(pos=>{
+    REC.watch=geoWatch(pos=>{
       const c=pos.coords;if(c.accuracy>40){setGps("wait",`Weak GPS (±${Math.round(c.accuracy)} m)`);return}
       const last=REC.pts[REC.pts.length-1];let v=c.speed!=null&&c.speed>=0?c.speed:null;
       if(v==null)v=last?hav(last,[c.latitude,c.longitude])/Math.max(.2,(pos.timestamp-last[2])/1000):0;
@@ -1343,11 +1408,11 @@ function startRec(){
     },err=>{
       if(!REC.pts.length){stopSensors();REC.on=false;const dm=$("#drivemode");dm.hidden=true;dm.innerHTML="";document.documentElement.classList.remove("driving");viewRecord();toast(err.code===1?"Location is blocked here. Allow location for this site and try again.":"No GPS signal. Try again outdoors.")}
       else setGps("off","GPS signal lost");
-    },{enableHighAccuracy:true,maximumAge:0,timeout:20000});
+    });
   }else setGps("ok","Recording from "+REC.source);
   REC.tick=setInterval(()=>{keepAwake();updateLive()},1000);
   viewRecord();
-  if(src==="phone")toast("Keep Dragon Drive open with the screen on. iPhone pauses GPS if it locks.");
+  if(src==="phone"&&!BGEO)toast("Keep Dragon Drive open with the screen on. iPhone pauses GPS if it locks.");
   if(S.settings.film)startCam();
 }
 function ingest(f){
@@ -1380,7 +1445,7 @@ function updateLive(){
     <div class="dm-mid"><div class="dm-speed"><div class="speedo"><div><div class="v num" id="dm-speed">–</div><div class="k">${sLabel()}</div></div><div id="dm-limit"></div></div><div class="dm-warn" id="dm-warn" role="alert"></div></div>
       <div class="dm-info">${CAM.stream?`<video id="dm-cam" class="dm-cam" muted playsinline autoplay aria-label="What the camera is filming"></video>`:""}${FOLLOW?`<div class="dm-mapw"><canvas class="route" id="dm-map"></canvas><span class="chip off-route" id="dm-off"></span></div>`:""}
       <div class="row dm-gauges"><div class="gauge"><div class="k">Distance</div><div class="v num" id="dm-dist"></div></div><div class="gauge"><div class="k">Time</div><div class="v num" id="dm-time"></div></div></div></div></div>
-    <div class="stack dm-ctl"><div class="gps" id="gps" style="justify-content:center"><span class="dot wait"></span><span id="gps-t">Finding GPS…</span></div><button class="rec-btn stop" id="dm-btn" type="button"><span class="fill"></span><span class="lbl">Hold to finish</span></button><p class="muted small dm-note" style="margin:0;text-align:center">Leave this screen open. GPS pauses if the phone locks or you switch apps.</p></div>`;
+    <div class="stack dm-ctl"><div class="gps" id="gps" style="justify-content:center"><span class="dot wait"></span><span id="gps-t">Finding GPS…</span></div><button class="rec-btn stop" id="dm-btn" type="button"><span class="fill"></span><span class="lbl">Hold to finish</span></button><p class="muted small dm-note" style="margin:0;text-align:center">${BGEO&&REC.source==="Phone GPS"?"Recording keeps going if the phone locks or you switch apps.":"Leave this screen open. GPS pauses if the phone locks or you switch apps."}</p></div>`;
     const dc=$("#dm-cam");if(dc){dc.srcObject=CAM.stream;dc.play().catch(()=>{})}bindHold($("#dm-btn"))}
   // the drive screen opens before the camera is ready, so add its preview and REC mark once it is
   if(REC.on&&!dm.hidden){const r=$("#dm-rec");if(r&&!!r.innerHTML!==!!CAM.rec)r.innerHTML=CAM.rec?' <span class="rec-dot">● REC</span>':"";
@@ -1389,7 +1454,17 @@ function updateLive(){
   const b=$("#rec-btn");if(b){b.classList.toggle("stop",REC.on);b.querySelector(".lbl").textContent=REC.on?"Hold to finish":"Start drive"}
 }
 function thinLive(p){if(p.length<1500)return p;const k=Math.ceil(p.length/1500);return p.filter((_,i)=>i%k===0||i===p.length-1)}
-function stopSensors(){if(REC.watch!=null)navigator.geolocation.clearWatch(REC.watch);REC.watch=null;clearInterval(REC.tick);stopMotion();wakeLock(false)}
+// In the iOS app, GPS comes from the native background-location plugin, so a drive keeps logging with
+// the screen locked or another app open. In a browser it's the usual watchPosition.
+const BGEO=NATIVE&&Capacitor.registerPlugin?Capacitor.registerPlugin("BackgroundGeolocation"):null;
+function geoWatch(ok,fail){if(!BGEO)return navigator.geolocation.watchPosition(ok,fail,{enableHighAccuracy:true,maximumAge:0,timeout:20000});
+  const w={id:null,dead:false};
+  BGEO.addWatcher({backgroundTitle:"Dragon Drive is recording",backgroundMessage:"Logging your drive.",requestPermissions:true,stale:false,distanceFilter:0},(loc,err)=>{
+    if(err){fail({code:err.code==="NOT_AUTHORIZED"?1:2});return}if(!loc)return;
+    ok({timestamp:loc.time||Date.now(),coords:{latitude:loc.latitude,longitude:loc.longitude,accuracy:loc.accuracy,altitude:loc.altitude,speed:loc.speed,heading:loc.bearing}})
+  }).then(id=>{w.id=id;if(w.dead)BGEO.removeWatcher({id})}).catch(()=>fail({code:2}));return w}
+function geoClear(w){if(w==null)return;if(typeof w!=="object"){navigator.geolocation.clearWatch(w);return}if(w.id!=null)BGEO.removeWatcher({id:w.id}).catch(()=>{});else w.dead=true}
+function stopSensors(){geoClear(REC.watch);REC.watch=null;clearInterval(REC.tick);stopMotion();wakeLock(false)}
 function finishRec(){
   REC.endedAt=Date.now();stopSensors();REC.on=false;REC.dismissed=false;$("#drivemode").hidden=true;document.documentElement.classList.remove("driving");$("#drivemode").classList.remove("speeding");FOLLOW=null;
   const raw=REC.pts;REC.pts=[];
@@ -1461,7 +1536,7 @@ function routeCard(r){const p=person(r.who);
     <div class="media"><canvas class="route" data-plan="${r.id}"></canvas></div></button>
     <div class="card-foot"><button class="kudos" data-route-follow="${r.id}" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8z"/></svg><span>Follow</span></button><span class="spacer"></span><button class="kudos" data-route-share="${r.id}" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M5 13v7h14v-7"/></svg><span>Share</span></button></div></article>`}
 function paintPlans(root){(root||document).querySelectorAll("canvas[data-plan]").forEach(c=>{const r=findRoute(c.dataset.plan);if(r)drawRoute(c,r.pts,{thin:true})})}
-async function shareRoute(r){const url=location.origin+location.pathname+"#r/"+encodeURIComponent(r.id);
+async function shareRoute(r){const url=appUrl()+"#r/"+encodeURIComponent(r.id);
   if(r.who==="me"&&(r.vis||"public")==="private"){toast("This route is set to Only me. Change who can see it to share it.");return}
   if(r.who==="me"&&!Social.ready()){toast("Sign in and pick a @handle to share routes");return}
   if(r.who==="me"&&!(S.pubR&&S.pubR[r.id])){await Sync.run()}
@@ -1469,7 +1544,7 @@ async function shareRoute(r){const url=location.origin+location.pathname+"#r/"+e
 async function openRouteById(id){let r=findRoute(id);if(!r&&Social.ok()){try{r=await Social.routeById(id)}catch(e){}}
   if(!r){toast(Social.ok()?"That route isn't available. It may be private or deleted.":"Sign in to open shared routes");return}openRoute(r.id)}
 function openRoute(id){const r=findRoute(id);if(!r)return;if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}SHEET={kind:"route",id};const sh=$("#sheet");const p=person(r.who),mine=r.who==="me";
-  sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span>${mine?'<button class="btn" id="rt-edit" type="button">Edit</button>':""}<button class="btn primary" id="rt-share" type="button">Share</button></div></div>
+  sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span>${mine?'<button class="btn" id="rt-edit" type="button">Edit</button>':String(r.who).startsWith("u:")&&Social.ready()?'<button class="btn ghost" id="rt-report" type="button">Report</button>':""}<button class="btn primary" id="rt-share" type="button">Share</button></div></div>
   <div class="wrap body stack">
     <div><div class="eyebrow">${mine?"Your route":`Planned by ${p.handle?`<a href="#u/${esc(p.handle)}" style="color:inherit">${nameHtml(p)}</a>`:esc(p.name)}`}</div><h1 style="text-transform:none">${esc(r.title)}</h1></div>
     ${stylePicker()}
@@ -1481,6 +1556,7 @@ function openRoute(id){const r=findRoute(id);if(!r)return;if(DETAIL_MAP){DETAIL_
   if($("#d-map"))mountDetailMap($("#d-map"),r.pts);else drawRoute($("#d-route"),r.pts);
   $("#rt-follow").onclick=()=>{closeSheet();followRoute({id:r.id,title:r.title,pts:r.pts})};$("#rt-share").onclick=()=>shareRoute(r);
   const ed=$("#rt-edit");if(ed)ed.onclick=()=>openPlanner(r.id);
+  const rrp=$("#rt-report");if(rrp)rrp.onclick=()=>reportSheet({kind:"route",id:r.id,uid:r.who.slice(2),excerpt:r.title,what:"this route",done:b=>{if(b)closeSheet()}});
   const del=$("#rt-del");if(del)del.onclick=()=>{if(!confirm(`Delete ${r.title}?`))return;S.routes=myRoutes().filter(x=>x.id!==r.id);(S.deleted=S.deleted||[]).push(r.id);save();closeSheet();toast("Route deleted")};
 }
 function openPlanner(editId){
@@ -1638,7 +1714,7 @@ function openDrive(id,fresh){
   const p=person(d.who),s=d.stats,mine=d.who==="me";
   const hasAlt=d.pts.some(q=>q[4]!=null);const hasGG=d.pts.some(q=>q[5]!=null);
   const sh=$("#sheet");
-  sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span>${d.sample?'<span class="chip example">Example</span>':""}${d.remote?"":'<button class="btn" id="d-video" type="button">Video</button>'}<button class="btn primary" id="d-share" type="button">Share</button></div></div>
+  sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span>${d.sample?'<span class="chip example">Example</span>':""}${d.remote?(Social.ready()?'<button class="btn ghost" id="d-report" type="button">Report</button>':""):'<button class="btn" id="d-video" type="button">Video</button>'}<button class="btn primary" id="d-share" type="button">Share</button></div></div>
   <div class="wrap body stack">
     <div class="row">${p.handle?`<a href="#u/${esc(p.handle)}" class="user-link" aria-label="${esc(p.name)}'s profile">${avatar(p)}</a>`:avatar(p)}<div><div style="font-weight:600">${p.handle?`<a href="#u/${esc(p.handle)}" style="color:inherit">${nameHtml(p)}</a> <span class="muted small">@${esc(p.handle)}</span>`:esc(p.name)}</div><div class="muted small">${new Date(d.start).toLocaleString(undefined,{weekday:"short",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})} · ${esc(d.vehicle)} · ${esc(d.source||"Phone GPS")}</div></div></div>
     ${mine?`<input type="text" id="title-in" value="${esc(d.title)}" aria-label="Drive title" style="font-family:var(--display);font-size:26px;font-weight:700">`:`<h1 style="text-transform:none">${esc(d.title)}</h1>`}
@@ -1661,7 +1737,7 @@ function openDrive(id,fresh){
     ${hasAlt?`<div class="panel"><div class="row"><h3>Elevation</h3><span class="spacer"></span><span class="muted small">${aLabel()} over distance</span></div><canvas class="chart" id="d-alt"></canvas></div>`:""}
     ${hasGG?`<div class="panel"><div class="row"><h3>G-force</h3><span class="spacer"></span><span class="muted small">Acceleration vs cornering</span></div><canvas class="gg" id="d-gg"></canvas></div>`:""}
     <div class="panel"><div class="row"><h3>Kudos & comments</h3><span class="spacer"></span><button class="kudos" id="d-kudos" aria-pressed="${kudosMine(d)}" aria-label="Kudos" ${mine?"disabled":""}>${heart}<span>${kudosCount(d)}</span></button></div>
-      <div class="stack">${commentsOf(d).map(c=>{const cp=person(c.who);return `<div class="comment">${cp.handle?`<a href="#u/${esc(cp.handle)}" class="user-link">${avatar(cp)}</a>`:avatar(cp)}<div><div style="font-weight:600;font-size:13px">${cp.handle?`<a href="#u/${esc(cp.handle)}" style="color:inherit">${nameHtml(cp)}</a>`:esc(cp.name)} <span class="muted" style="font-weight:400">${ago(c.t)}</span></div><p>${esc(c.text)}</p></div></div>`}).join("")||'<p class="muted" style="margin:0">No comments yet.</p>'}</div>
+      <div class="stack">${commentsHtml(d)}</div>
       <form class="row" id="c-form"><input type="text" id="c-in" placeholder="Add a comment" style="flex:1;min-width:0" maxlength="280"><button class="btn" type="submit">Post</button></form>
     </div>
     ${d.remote?"":`<div class="row">${!window.claude?`<button class="btn" id="gpx" type="button">Export GPX</button>`:""}<span class="spacer"></span><button class="btn danger" id="del" type="button">Delete drive</button></div>`}
@@ -1679,6 +1755,8 @@ function openDrive(id,fresh){
   $("#d-share").onclick=()=>openShare(d.id);
   const dv=$("#d-video");if(dv)dv.onclick=()=>openVideo(d.id);
   const k=$("#d-kudos");k.onclick=()=>tapKudos(k,d);
+  wireReports(sh,d,()=>openDrive(d.id));
+  const drp=$("#d-report");if(drp)drp.onclick=()=>reportSheet({kind:"drive",id:d.id,uid:d.who.slice(2),excerpt:d.title,what:"this drive",done:b=>{if(b){closeSheet();rerender()}}});
   $("#c-form").onsubmit=async e=>{e.preventDefault();const v=$("#c-in").value.trim();if(!v)return;
     if(Social.ok()&&Social.published(d)){try{await Social.comment(d.id,v)}catch(err){toast("Couldn't post the comment");return}}else{(S.comments[d.id]=S.comments[d.id]||[]).push({who:"me",text:v,t:Date.now()});save()}openDrive(d.id);toast("Comment posted")};
   const dvs=$("#d-vis");if(dvs)dvs.onchange=e=>{d.vis=e.target.value;save();toast(d.vis==="private"?"Only you can see this drive":d.vis==="public"?"Anyone on Dragon Drive can see this drive":"Your followers can see this drive")};
@@ -2284,7 +2362,8 @@ async function viewProfile(handle){
     <div class="panel"><div class="profile">${avatar(pp,84)}<div class="stack" style="flex:1;min-width:180px;gap:6px">
       <div><h1 style="text-transform:none;margin:0">${nameHtml(pp)}</h1><div class="muted">@${esc(p.handle)}</div></div>
       <div class="muted small"><button class="link-btn" id="p-fol" type="button">${data.followers} follower${data.followers===1?"":"s"}</button> · <button class="link-btn" id="p-fing" type="button">${data.following} following</button></div>
-      ${me?`<div class="row"><a class="btn" href="#you">Edit profile</a></div>`:Social.ready()?`<div class="row"><button class="btn ${fol?"":"primary"}" id="fol" type="button">${fol?"Following":"Follow"}</button></div>`:`<div class="notice">Pick your own @handle on your <a href="#you">profile page</a> to follow people.</div>`}
+      ${me?`<div class="row"><a class="btn" href="#you">Edit profile</a></div>`:Social.ready()?(Social.blocked(p.id)?`<div class="notice">You blocked @${esc(p.handle)}. You don't see each other's drives, routes or comments, and neither of you can follow the other.</div><div class="row"><button class="btn" id="p-block" type="button">Unblock</button></div>`
+        :`<div class="row"><button class="btn ${fol?"":"primary"}" id="fol" type="button">${fol?"Following":"Follow"}</button></div><div class="muted small"><button class="link-btn" id="p-report" type="button">Report</button> · <button class="link-btn" id="p-block" type="button">Block</button></div>`):`<div class="notice">Pick your own @handle on your <a href="#you">profile page</a> to follow people.</div>`}
     </div></div></div>
     <div class="detail-stats">${statBlock("Drives",ds.length)}${statBlock("Distance",fDist(dist).toFixed(fDist(dist)<10?1:0),dLabel())}${statBlock("Top speed",Math.round(fSpeed(top)),sLabel())}</div>
     <div class="panel" id="p-list" hidden></div>
@@ -2296,6 +2375,10 @@ async function viewProfile(handle){
   const showList=(title,ids)=>{const box=$("#p-list"),open=!box.hidden&&box.dataset.k===title;box.hidden=open;box.dataset.k=title;if(open)return;
     box.innerHTML=`<h3>${title}</h3>`+(ids.length?ids.map(id=>{const q=Social.SOC.profiles.get(id);if(!q)return"";const qp=Social.person("u:"+id);return `<a class="effort" href="#u/${esc(q.handle)}" style="display:flex;text-decoration:none;color:inherit">${avatar(qp,32)}<div style="flex:1;min-width:0"><div style="font-weight:600">${nameHtml(qp)}</div><div class="muted small">@${esc(q.handle)}</div></div></a>`}).join(""):'<p class="muted small" style="margin:0">Nobody yet.</p>');box.scrollIntoView({behavior:"smooth",block:"nearest"})};
   $("#p-fol").onclick=()=>showList("Followers",data.followerIds);$("#p-fing").onclick=()=>showList("Following",data.followingIds);
+  const pb=$("#p-block");if(pb)pb.onclick=async()=>{const on=!Social.blocked(p.id);
+    if(on&&!confirm(`Block @${p.handle}? You won't see each other's drives, routes or comments, and neither of you can follow the other. They aren't told.`))return;
+    pb.disabled=true;try{await Social.block(p.id,on);toast(on?`Blocked @${p.handle}`:`Unblocked @${p.handle}`);viewProfile(handle)}catch(e){toast("Couldn't reach the server");pb.disabled=false}};
+  const prt=$("#p-report");if(prt)prt.onclick=()=>reportSheet({kind:"profile",id:p.handle,uid:p.id,excerpt:(p.name||"")+" @"+p.handle,what:"@"+p.handle,done:b=>{if(b)viewProfile(handle)}});
   const fb=$("#fol");if(fb)fb.onclick=async()=>{fb.disabled=true;try{await Social.follow(p.id,!fol);toast(fol?`Unfollowed @${p.handle}`:`Following @${p.handle}`);viewProfile(handle)}catch(e){toast("Couldn't reach the server");fb.disabled=false}};
 }
 
@@ -2393,7 +2476,8 @@ function viewYou(){
     <div class="panel"><div class="row"><h3>Units</h3><span class="spacer"></span>
       <div class="unit-toggle" role="group" aria-label="Units"><button id="u-mi" type="button" aria-pressed="${U()==="mi"}">Miles</button><button id="u-km" type="button" aria-pressed="${U()==="km"}">Kilometers</button></div></div></div>
     ${Social.ok()&&Social.SOC.loaded&&!Social.me?`<div class="panel"><h3>Pick your @handle</h3><p class="muted small" style="margin:0">This is how friends find and follow you. Lowercase letters, numbers and _ only.</p>
-      <form class="row" id="h-form"><span style="font-weight:700">@</span><input type="text" id="h-in" placeholder="burnout" pattern="[a-z0-9_]{3,20}" maxlength="20" autocapitalize="none" autocomplete="username" style="flex:1;min-width:0" required><button class="btn primary" type="submit">Claim it</button></form></div>`:""}
+      <form class="row" id="h-form"><span style="font-weight:700">@</span><input type="text" id="h-in" placeholder="burnout" pattern="[a-z0-9_]{3,20}" maxlength="20" autocapitalize="none" autocomplete="username" style="flex:1;min-width:0" required><button class="btn primary" type="submit">Claim it</button></form>
+      <p class="muted small" style="margin:0">By claiming a handle you agree to the <a href="${SITE}terms.html" target="_blank" rel="noopener">Terms</a>: no abusive, hateful, sexual or dangerous content, and no harassing other drivers. Anyone can report a drive, comment or profile, and we remove what breaks the rules.</p></div>`:""}
     ${Social.ready()?`<div class="panel"><div class="row"><h3>Friends</h3><span class="spacer"></span><a class="muted small" href="#u/${esc(Social.me.handle)}">@${esc(Social.me.handle)}</a></div>
       <p class="muted small" style="margin:0"><a href="#u/${esc(Social.me.handle)}">Following ${Social.SOC.following.size}</a>. Your drives go to your followers unless you choose otherwise.</p>
       <div class="row"><button class="btn primary" id="inv" type="button">Invite friends</button></div>
@@ -2402,11 +2486,18 @@ function viewYou(){
       <label class="field">New drives are visible to<select id="def-vis"><option value="followers" ${(S.settings.defaultVis||"followers")==="followers"?"selected":""}>Followers</option><option value="public" ${S.settings.defaultVis==="public"?"selected":""}>Everyone</option><option value="private" ${S.settings.defaultVis==="private"?"selected":""}>Only me</option></select></label>
       <label class="check"><input type="checkbox" id="hide-ends" ${S.settings.hideEnds!==false?"checked":""}> Hide the first and last 300 m of shared routes, so they don't show where you live</label></div>`:""}
     ${Sync.on()?`<div class="panel"><h3>${Sync.user?"Account":signinIntent==="new"?"Create an account":signinIntent==="in"?"Sign in":"Sign in or create an account"}</h3>${Sync.user?`<p style="margin:0">Signed in as <b>${esc(Sync.user.email||"")}</b>${Social.me?` · <a href="#u/${esc(Social.me.handle)}">@${esc(Social.me.handle)}</a>`:""}. Your profile, garage, drives and photos sync to every device you sign in on.</p>
-      <div class="row"><span class="muted small" id="sync-status" style="flex:1">${esc(Sync.status)}</span><button class="btn" id="sync-now" type="button">Sync now</button><button class="btn ghost" id="sync-out" type="button">Sign out</button></div>`
-      :`<p class="muted" style="margin:0">Sign in or create an account to follow friends and keep your profile, garage, drives and photos on all your devices. We email you a sign-in link, no password needed.</p>
+      <div class="row"><span class="muted small" id="sync-status" style="flex:1">${esc(Sync.status)}</span><button class="btn" id="sync-now" type="button">Sync now</button><button class="btn ghost" id="sync-out" type="button">Sign out</button></div>
+      <details class="del-acc"><summary class="muted small">Delete account</summary><div class="stack" style="margin-top:10px">
+        <p class="small" style="margin:0">This permanently deletes your Dragon Drive account and everything in it: profile, @handle, drives, photos, garage, routes, kudos, comments and follows, on our servers and on this phone. It can't be undone.</p>
+        <label class="field">Type DELETE to confirm<input type="text" id="del-acc-in" autocapitalize="characters" autocomplete="off"></label>
+        <div class="row"><button class="btn danger" id="del-acc" type="button">Delete my account</button></div></div></details>`
+      :`<p class="muted" style="margin:0">Sign in or create an account to follow friends and keep your profile, garage, drives and photos on all your devices. We email you a sign-in link, no password needed. By creating an account you agree to the <a href="${SITE}terms.html" target="_blank" rel="noopener">Terms</a> and <a href="${SITE}privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.</p>
       <form class="row" id="sync-form"><input type="email" id="sync-email" placeholder="you@example.com" autocomplete="email" style="flex:1;min-width:0" required><button class="btn primary" type="submit">Email me a link</button></form>
       <p class="muted small" id="sync-sent" hidden style="margin:0">Check your email and tap the link. Using the Home Screen app on iPhone? Type the code from the same email here instead.</p>
-      <form class="row" id="sync-code-form" hidden><input type="text" id="sync-code" inputmode="numeric" autocomplete="one-time-code" placeholder="Code from the email" maxlength="10" style="flex:1;min-width:0" required><button class="btn primary" type="submit">Sign in</button></form>`}</div>`:""}
+      <form class="row" id="sync-code-form" hidden><input type="text" id="sync-code" inputmode="numeric" autocomplete="one-time-code" placeholder="Code from the email" maxlength="10" style="flex:1;min-width:0" required><button class="btn primary" type="submit">Sign in</button></form>
+      <p class="muted small" style="margin:0"><button class="link-btn" id="pw-show" type="button">Sign in with a password</button></p>
+      <form class="row" id="pw-form" hidden><input type="password" id="pw-in" placeholder="Password" autocomplete="current-password" style="flex:1;min-width:0" required><button class="btn primary" type="submit">Sign in</button></form>`}</div>`:""}
+    <p class="muted small legal" style="margin:0;text-align:center"><a href="${SITE}privacy.html" target="_blank" rel="noopener">Privacy</a> · <a href="${SITE}terms.html" target="_blank" rel="noopener">Terms</a> · <a href="${SITE}support.html" target="_blank" rel="noopener">Support</a></p>
   </div>`;
   $("#me-name").onchange=e=>{S.settings.name=e.target.value.trim();save();toast("Name saved")};
   $("#av-pick").onclick=()=>pickImage(async f=>{await photos.put("avatar:me",await squareCrop(f,400));S.settings.avatar=true;S.settings.avatarAt=Date.now();save();await loadAvatar();render();toast("Profile photo updated")});
@@ -2420,11 +2511,16 @@ function viewYou(){
     if(signinIntent&&$("#sync-email")){const em=$("#sync-email");em.closest(".panel").scrollIntoView({block:"center"});em.focus();signinIntent=null}
     const sf=$("#sync-form");if(sf)sf.onsubmit=async e=>{e.preventDefault();const em=$("#sync-email").value.trim();const b=sf.querySelector("button");b.disabled=true;try{await Sync.sendCode(em);sf.hidden=true;$("#sync-sent").hidden=false;$("#sync-code-form").hidden=false;toast("Sign-in email sent")}catch(err){toast(err.message)}b.disabled=false};
     const cf=$("#sync-code-form");if(cf)cf.onsubmit=async e=>{e.preventDefault();const b=cf.querySelector("button");b.disabled=true;try{await Sync.verify($("#sync-email").value.trim(),$("#sync-code").value.replace(/\D/g,""));toast("Signed in, syncing");viewYou()}catch(err){toast(err.message)}b.disabled=false};
+    const pws=$("#pw-show");if(pws)pws.onclick=()=>{$("#pw-form").hidden=false;pws.parentElement.hidden=true;$("#sync-email").focus()};
+    const pwf=$("#pw-form");if(pwf)pwf.onsubmit=async e=>{e.preventDefault();const em=$("#sync-email").value.trim();if(!em){toast("Type your email above first");$("#sync-email").focus();return}
+      const b=pwf.querySelector("button");b.disabled=true;try{await Sync.password(em,$("#pw-in").value);toast("Signed in, syncing");viewYou()}catch(err){toast(err.message)}b.disabled=false};
     const sn=$("#sync-now");if(sn)sn.onclick=()=>Sync.run();
+    const da=$("#del-acc");if(da)da.onclick=async()=>{if($("#del-acc-in").value.trim().toUpperCase()!=="DELETE"){toast("Type DELETE to confirm");return}
+      da.disabled=true;da.textContent="Deleting…";try{await Sync.deleteAccount();render();toast("Your account has been deleted")}catch(err){da.disabled=false;da.textContent="Delete my account";toast("Couldn't delete the account. Check your connection and try again.")}};
     const so=$("#sync-out");if(so)so.onclick=async()=>{so.disabled=true;so.textContent="Signing out…";await Sync.signOut();render();toast("Signed out")};
   }
   const hf=$("#h-form");if(hf)hf.onsubmit=async e=>{e.preventDefault();const h=$("#h-in").value.trim().toLowerCase();if(!/^[a-z0-9_]{3,20}$/.test(h)){toast("Use 3–20 lowercase letters, numbers or _");return}const b=hf.querySelector("button");b.disabled=true;try{await Social.claim(h);toast("You're @"+h);viewYou()}catch(err){toast(err.message)}b.disabled=false};
-  const inv=$("#inv");if(inv)inv.onclick=async()=>{const url=location.origin+location.pathname+"#u/"+Social.me.handle;
+  const inv=$("#inv");if(inv)inv.onclick=async()=>{const url=appUrl()+"#u/"+Social.me.handle;
     try{if(navigator.share){await shareSheet({url});return}await navigator.clipboard.writeText(url);toast("Invite link copied")}catch(e){}};
   const ff=$("#f-form");if(ff)ff.onsubmit=async e=>{e.preventDefault();const box=$("#f-res");box.innerHTML='<p class="muted small" style="margin:0">Searching…</p>';
     try{const r=await Social.search($("#f-in").value);box.innerHTML=r.length?r.map(p=>{const pp=Social.person("u:"+p.id);return `<a class="effort" href="#u/${esc(p.handle)}" style="display:flex;text-decoration:none;color:inherit">${avatar(pp,32)}<div style="flex:1;min-width:0"><div style="font-weight:600">${nameHtml(pp)}</div><div class="muted small">@${esc(p.handle)}${Social.SOC.following.has(p.id)?" · Following":""}</div></div></a>`}).join(""):'<p class="muted small" style="margin:0">Nobody by that handle yet.</p>'}catch(err){box.innerHTML='<p class="muted small" style="margin:0">Search failed. Check your connection.</p>'}};

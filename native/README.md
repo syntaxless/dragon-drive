@@ -1,0 +1,34 @@
+# Dragon Drive for iPhone
+
+The iOS app is [Capacitor](https://capacitorjs.com) 8 around the same web app the site serves. `copy-web.sh` runs `../build.sh` and copies the built page, icons, fonts, MapLibre and the legal pages into `www/`; Capacitor bundles that folder into the app, so the app works offline and never depends on the website being up. There's still one source of truth: edit `../app.html` as before.
+
+- Bundle ID: `com.itschefff.dragondrive` (set in `capacitor.config.json` and the Xcode project). It can't change after the first upload to App Store Connect.
+- iPhone only for now (`TARGETED_DEVICE_FAMILY = 1`), so App Review needs iPhone screenshots only.
+- Native plugins: `@capacitor-community/background-geolocation` (keeps a drive recording with the screen locked or another app open, `UIBackgroundModes: location`) and `@capacitor-community/keep-awake` (screen stays on while recording). `app.html` uses them only when `NATIVE` is true; the website is unchanged.
+- Not in the app yet: RaceBox, Dragy and other Bluetooth GPS (WKWebView has no Web Bluetooth, so the app says "coming soon" and offers Phone GPS). The next step is `@capacitor-community/bluetooth-le`.
+- The app has no service worker and no visit counter (GoatCounter runs only on dragondrive.turboloser.co).
+- Links people share (invites, routes) and the sign-in email always point at https://dragondrive.turboloser.co.
+
+## Build on the Mac
+
+Needs Xcode 16 or later and Node 20 or later.
+
+```sh
+cd native
+npm install
+npm run sync      # builds index.html, copies it into www/, updates the Xcode project
+npm run open      # opens ios/App/App.xcodeproj in Xcode
+```
+
+In Xcode: select the **App** target, **Signing & Capabilities**, tick *Automatically manage signing* and choose your team. Background Modes (Location updates) is already in `Info.plist`. Plug in the iPhone, pick it as the run destination, press Run.
+
+Run `npm run sync` after every change to `app.html`, then build again.
+
+## Ship a build
+
+1. Bump the version: target **App**, **General**, *Version* (1.0, 1.1, ...) and *Build* (1, 2, 3, ..., must go up on every upload).
+2. Run destination *Any iOS Device (arm64)*, then **Product, Archive**.
+3. In the Organizer: **Distribute App, App Store Connect, Upload**.
+4. The build shows up in App Store Connect under TestFlight after processing (10 to 30 minutes). Install it on your phone with the TestFlight app before sending it to review.
+
+See `APP_STORE.md` for the listing, privacy answers and review notes.

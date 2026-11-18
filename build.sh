@@ -6,7 +6,11 @@ cd "$(dirname "$0")"
   printf '<meta name="theme-color" content="#0b6e4f">\n<link rel="manifest" href="manifest.webmanifest">\n<link rel="icon" href="icon.svg" type="image/svg+xml">\n<link rel="apple-touch-icon" href="apple-touch-icon.png">\n<meta name="apple-mobile-web-app-capable" content="yes">\n'
   printf '<meta name="description" content="Drive your junk. Log your drives, see your stats, and share your routes.">\n<meta property="og:type" content="website">\n<meta property="og:site_name" content="Dragon Drive">\n<meta property="og:title" content="Dragon Drive">\n<meta property="og:description" content="Drive your junk. Log your drives, see your stats, and share your routes.">\n<meta property="og:url" content="https://dragondrive.turboloser.co/">\n<meta property="og:image" content="https://dragondrive.turboloser.co/og.jpg">\n<meta property="og:image:type" content="image/jpeg">\n<meta property="og:image:width" content="1200">\n<meta property="og:image:height" content="630">\n<meta property="og:image:alt" content="Dragon Drive, Drive your junk, written over a dark street map">\n<meta name="twitter:card" content="summary_large_image">\n<meta name="twitter:image" content="https://dragondrive.turboloser.co/og.jpg">\n'
   printf '<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%%}[hidden]{display:none!important}</style>\n</head>\n<body>\n'
-  cat app.html
-  printf '\n<script data-goatcounter="https://dragondrive.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>'
-  printf '\n<script>if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(function(){});</script>\n</body>\n</html>\n'
+  # Fonts come from vendor/fonts in the served page (works offline and in the iOS app); app.html keeps the
+  # Google Fonts link because the Claude preview can't load local files.
+  grep -v 'fonts.googleapis.com' app.html | awk '{print} /<title>Dragon Drive<\/title>/{print "<link rel=\"stylesheet\" href=\"vendor/fonts/fonts.css\">"}'
+  # Visit counts only on the live site: never in the iOS app (its pages load from capacitor://localhost), local copies or tests.
+  printf '\n<script>if(location.hostname==="dragondrive.turboloser.co"){var g=document.createElement("script");g.async=true;g.src="https://gc.zgo.at/count.js";g.setAttribute("data-goatcounter","https://dragondrive.goatcounter.com/count");document.body.appendChild(g)}</script>'
+  # The iOS app bundles its files, so it has no service worker.
+  printf '\n<script>if("serviceWorker" in navigator&&!window.Capacitor)navigator.serviceWorker.register("sw.js").catch(function(){});</script>\n</body>\n</html>\n'
 } > index.html
