@@ -1,0 +1,12 @@
+{
+  "name": "dragon-drive-location",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dragon Drive's own background GPS for the iOS app. Keeps every fix natively while the screen is locked; the web app collects them with drain().",
+  "main": "index.js",
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  }
+}
