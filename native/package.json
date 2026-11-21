@@ -12,6 +12,7 @@
     "@capacitor-community/keep-awake": "8.0.1",
     "@capacitor/core": "8.6.2",
     "@capacitor/ios": "8.6.2",
+    "dragon-drive-carplay": "file:plugins/carplay",
     "dragon-drive-location": "file:plugins/drive-location"
   },
   "devDependencies": {
