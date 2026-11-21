@@ -1478,7 +1478,7 @@ function keepAwake(){if(REC.on&&document.visibilityState==="visible"&&(!REC.wake
 document.addEventListener("visibilitychange",()=>{if(!REC.on)return;
   if(document.visibilityState==="hidden"){REC.hiddenAt=Date.now();return}
   wakeLock(true);const away=REC.hiddenAt?Date.now()-REC.hiddenAt:0;REC.hiddenAt=null;
-  if(away>5000){(REC.gaps=REC.gaps||[]).push([Date.now()-away,Date.now()]);const m=Math.round(away/60000);
+  if(away>5000&&!REC.bgGps){(REC.gaps=REC.gaps||[]).push([Date.now()-away,Date.now()]);const m=Math.round(away/60000);
     toast(`GPS was paused for ${m<1?"under a minute":m===1?"1 minute":m+" minutes"} while Dragon Drive was closed. Keep it open with the screen on.`)}});
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden"&&!REC.on&&CAM.keep){CAM.keep.getTracks().forEach(t=>t.stop());CAM.keep=null}});
 const CAM={keep:null,stream:null,rec:null,key:null,t0:0,n:0,type:"",writes:[]};
@@ -1514,7 +1514,7 @@ async function delDriveVideo(v){for(let i=0;;i++){const k=v.key+":"+i;const b=aw
 function startRec(){
   const src=S.settings.source;
   if(src!=="phone"&&!(DEV.device&&DEV.device.gatt&&DEV.device.gatt.connected)){toast(`Connect your ${SOURCES[src].name} first, or switch to Phone GPS.`);return}
-  REC.on=true;REC.pts=[];REC.start=Date.now();REC.lastStill=null;REC.gaps=[];REC.hiddenAt=null;REC.speeding="";LIMITS.cur=null;audioUnlock();REC.source=src==="phone"?"Phone GPS":DEV.name||SOURCES[src].name;
+  REC.on=true;REC.pts=[];REC.start=Date.now();REC.lastStill=null;REC.gaps=[];REC.hiddenAt=null;REC.bgGps=src==="phone"&&!!DLOC;REC.diag=null;REC.speeding="";LIMITS.cur=null;audioUnlock();REC.source=src==="phone"?"Phone GPS":DEV.name||SOURCES[src].name;
   wakeLock(true);
   if(src==="phone"){
     startMotion();
@@ -1527,16 +1527,16 @@ function startRec(){
       const g=MOT.on?MOT.peak:null;MOT.peak=0;
       ingest({lat:c.latitude,lon:c.longitude,t:pos.timestamp,v,alt:c.altitude,acc:c.accuracy,gLong:null,gLat:null,gTot:g});
     },err=>{
-      if(!REC.pts.length){stopSensors();REC.on=false;const dm=$("#drivemode");dm.hidden=true;dm.innerHTML="";document.documentElement.classList.remove("driving");viewRecord();toast(err.code===1?"Location is blocked here. Allow location for this site and try again.":"No GPS signal. Try again outdoors.")}
+      if(!REC.pts.length){stopSensors();REC.on=false;const dm=$("#drivemode");dm.hidden=true;dm.innerHTML="";document.documentElement.classList.remove("driving");viewRecord();toast(err.code===1?(NATIVE?"Location is off for Dragon Drive. Turn it on in Settings, Privacy & Security, Location Services.":"Location is blocked here. Allow location for this site and try again."):"No GPS signal. Try again outdoors.")}
       else setGps("off","GPS signal lost");
     });
   }else{setGps("ok","Recording from "+REC.source);
     // iOS suspends the app when the screen locks unless it's using location; keep a watcher running so the
     // Bluetooth device's data still arrives (its fixes are what get recorded, these are ignored).
-    if(BGEO)REC.keep=geoWatch(()=>{},()=>{})}
+    if(DLOC)REC.keep=geoWatch(()=>{},()=>{})}
   REC.tick=setInterval(()=>{keepAwake();updateLive()},1000);
   viewRecord();
-  if(src==="phone"&&!BGEO)toast("Keep Dragon Drive open with the screen on. iPhone pauses GPS if it locks.");
+  if(src==="phone"&&!DLOC)toast("Keep Dragon Drive open with the screen on. iPhone pauses GPS if it locks.");
   if(S.settings.film)startCam();
 }
 function ingest(f){
@@ -1569,7 +1569,7 @@ function updateLive(){
     <div class="dm-mid"><div class="dm-speed"><div class="speedo"><div><div class="v num" id="dm-speed">–</div><div class="k">${sLabel()}</div></div><div id="dm-limit"></div></div><div class="dm-warn" id="dm-warn" role="alert"></div></div>
       <div class="dm-info">${CAM.stream?`<video id="dm-cam" class="dm-cam" muted playsinline autoplay aria-label="What the camera is filming"></video>`:""}${FOLLOW?`<div class="dm-mapw"><canvas class="route" id="dm-map"></canvas><span class="chip off-route" id="dm-off"></span></div>`:""}
       <div class="row dm-gauges"><div class="gauge"><div class="k">Distance</div><div class="v num" id="dm-dist"></div></div><div class="gauge"><div class="k">Time</div><div class="v num" id="dm-time"></div></div></div></div></div>
-    <div class="stack dm-ctl"><div class="gps" id="gps" style="justify-content:center"><span class="dot wait"></span><span id="gps-t">Finding GPS…</span></div><button class="rec-btn stop" id="dm-btn" type="button"><span class="fill"></span><span class="lbl">Hold to finish</span></button><p class="muted small dm-note" style="margin:0;text-align:center">${BGEO?"Recording keeps going if the phone locks or you switch apps.":"Leave this screen open. GPS pauses if the phone locks or you switch apps."}</p></div>`;
+    <div class="stack dm-ctl"><div class="gps" id="gps" style="justify-content:center"><span class="dot wait"></span><span id="gps-t">Finding GPS…</span></div><button class="rec-btn stop" id="dm-btn" type="button"><span class="fill"></span><span class="lbl">Hold to finish</span></button><p class="muted small dm-note" style="margin:0;text-align:center">${REC.bgGps?"Recording keeps going if the phone locks or you switch apps.":DLOC?"Leave this screen open while recording from Bluetooth.":"Leave this screen open. GPS pauses if the phone locks or you switch apps."}</p></div>`;
     const dc=$("#dm-cam");if(dc){dc.srcObject=CAM.stream;dc.play().catch(()=>{})}bindHold($("#dm-btn"))}
   // the drive screen opens before the camera is ready, so add its preview and REC mark once it is
   if(REC.on&&!dm.hidden){const r=$("#dm-rec");if(r&&!!r.innerHTML!==!!CAM.rec)r.innerHTML=CAM.rec?' <span class="rec-dot">● REC</span>':"";
@@ -1578,24 +1578,36 @@ function updateLive(){
   const b=$("#rec-btn");if(b){b.classList.toggle("stop",REC.on);b.querySelector(".lbl").textContent=startLabel()}
 }
 function thinLive(p){if(p.length<1500)return p;const k=Math.ceil(p.length/1500);return p.filter((_,i)=>i%k===0||i===p.length-1)}
-// In the iOS app, GPS comes from the native background-location plugin, so a drive keeps logging with
-// the screen locked or another app open. In a browser it's the usual watchPosition.
-const BGEO=NATIVE&&Capacitor.registerPlugin?Capacitor.registerPlugin("BackgroundGeolocation"):null;
-function geoWatch(ok,fail){if(!BGEO)return navigator.geolocation.watchPosition(ok,fail,{enableHighAccuracy:true,maximumAge:0,timeout:20000});
-  const w={id:null,dead:false};
-  BGEO.addWatcher({backgroundTitle:"Dragon Drive is recording",backgroundMessage:"Logging your drive.",requestPermissions:true,stale:false,distanceFilter:0},(loc,err)=>{
-    if(err){fail({code:err.code==="NOT_AUTHORIZED"?1:2});return}if(!loc)return;
-    ok({timestamp:loc.time||Date.now(),coords:{latitude:loc.latitude,longitude:loc.longitude,accuracy:loc.accuracy,altitude:loc.altitude,speed:loc.speed,heading:loc.bearing}})
-  }).then(id=>{w.id=id;if(w.dead)BGEO.removeWatcher({id})}).catch(()=>fail({code:2}));return w}
-function geoClear(w){if(w==null)return;if(typeof w!=="object"){navigator.geolocation.clearWatch(w);return}if(w.id!=null)BGEO.removeWatcher({id:w.id}).catch(()=>{});else w.dead=true}
+// In the iOS app, GPS comes from Dragon Drive's own native plugin (native/plugins/drive-location), so a drive
+// keeps logging with the screen locked or another app open. iOS pauses this page's JavaScript in the background,
+// so the plugin keeps every fix natively and the page collects them with drain(): every second on screen and
+// straight away when it comes back. In a browser it's the usual watchPosition.
+const DLOC=NATIVE&&Capacitor.registerPlugin?Capacitor.registerPlugin("DriveLocation"):null;
+function geoWatch(ok,fail){if(!DLOC)return navigator.geolocation.watchPosition(ok,fail,{enableHighAccuracy:true,maximumAge:0,timeout:20000});
+  const w={dead:false,busy:null,timer:null,vis:null,seq:0};
+  const feed=r=>{if(w.dead||!r)return;if(r.diag)REC.diag=r.diag;
+    for(const f of r.fixes||[]){if(f.seq<=w.seq)continue;w.seq=f.seq;ok({timestamp:f.t,coords:{latitude:f.lat,longitude:f.lon,accuracy:f.acc,altitude:f.alt==null?null:f.alt,speed:f.v==null?null:f.v,heading:f.hdg==null?null:f.hdg}})}
+    if(r.error&&!w.dead)fail({code:r.error==="denied"?1:2})};
+  w.pull=()=>{if(w.dead)return Promise.resolve();if(!w.busy){const b=Promise.race([DLOC.drain({after:w.seq}).then(feed,()=>{}),new Promise(r=>setTimeout(r,3000))]).finally(()=>{if(w.busy===b)w.busy=null});w.busy=b}return w.busy};
+  DLOC.start().then(r=>{if(r&&(r.status==="denied"||r.status==="restricted"))fail({code:1})},()=>fail({code:2}));
+  w.timer=setInterval(w.pull,1000);w.vis=()=>{if(document.visibilityState==="visible")w.pull()};document.addEventListener("visibilitychange",w.vis);
+  return w}
+// Collect the fixes the plugin is still holding (before a drive is saved).
+// A short line for the drive page: what the iOS app's GPS did while the phone was locked (for testing).
+function gpsCheck(g){const t=ms=>new Date(ms).toLocaleTimeString([],{hour:"numeric",minute:"2-digit",second:"2-digit"});
+  return `GPS check: ${g.total} points, ${g.background} with the app in the background${g.lastFix?`, last at ${t(g.lastFix)}`:""}. ${(g.events||[]).join(", ")}`}
+function geoFlush(w){return w&&typeof w==="object"&&w.pull?w.pull():Promise.resolve()}
+function geoClear(w){if(w==null)return;if(typeof w!=="object"){navigator.geolocation.clearWatch(w);return}
+  w.dead=true;clearInterval(w.timer);document.removeEventListener("visibilitychange",w.vis);DLOC.stop().catch(()=>{})}
 function stopSensors(){geoClear(REC.watch);geoClear(REC.keep);REC.keep=null;REC.watch=null;clearInterval(REC.tick);stopMotion();wakeLock(false)}
-function finishRec(){
-  REC.endedAt=Date.now();stopSensors();REC.on=false;REC.dismissed=false;$("#drivemode").hidden=true;document.documentElement.classList.remove("driving");$("#drivemode").classList.remove("speeding");FOLLOW=null;
+async function finishRec(){
+  if(REC.finishing)return;REC.endedAt=Date.now();REC.finishing=true;try{await geoFlush(REC.watch)}finally{REC.finishing=false}
+  if(!REC.on)return;REC.endedAt=Date.now();stopSensors();REC.on=false;REC.dismissed=false;$("#drivemode").hidden=true;document.documentElement.classList.remove("driving");$("#drivemode").classList.remove("speeding");FOLLOW=null;
   const raw=REC.pts;REC.pts=[];
   if(raw.length<5||pathLen(raw)<100){stopCam(true).then(v=>{});if(CAM.key)delDriveVideo({key:CAM.key});toast("That drive was too short to save.");viewRecord();return}
   const h=new Date(raw[0][2]).getHours();
   const title=h<11?"Morning drive":h<14?"Midday drive":h<18?"Afternoon drive":"Evening drive";
-  const d={id:uid(),who:"me",title,vehicle:S.settings.vehicle,source:REC.source,start:raw[0][2],pts:thin(raw),stats:analyze(raw)};if(REC.gaps&&REC.gaps.length)d.gaps=REC.gaps;REC.gaps=[];
+  const d={id:uid(),who:"me",title,vehicle:S.settings.vehicle,source:REC.source,start:raw[0][2],pts:thin(raw),stats:analyze(raw)};if(REC.gaps&&REC.gaps.length)d.gaps=REC.gaps;REC.gaps=[];if(REC.diag)d.gpsCheck=gpsCheck(REC.diag);
   S.drives.push(d);if(dropExamples())toast("First drive saved, example drives removed");save();
   if(CAM.rec||CAM.stream)stopCam().then(v=>{if(v){d.video=v;save();if(SHEET&&SHEET.kind==="drive"&&SHEET.id===d.id)openDrive(d.id,true)}});
   if(location.hash==="#feed"){render();openDrive(d.id,true)}else{pendingOpen=d.id;location.hash="#feed"}
@@ -1855,6 +1867,7 @@ function openDrive(id,fresh){
       ${statBlock("Avg speed",Math.round(fSpeed(s.avg)),sLabel())}${statBlock("Top speed",Math.round(fSpeed(s.max)),sLabel())}${statBlock("Elev. gain",s.altMin==null?"–":Math.round(fAlt(s.up)),s.altMin==null?"":aLabel())}
       ${statBlock("Max accel",fG(s.gAcc),"g")}${statBlock("Max braking",fG(s.gBrk),"g")}${statBlock("Max lateral",fG(s.gLat),"g")}
     </div>
+    ${mine&&d.gpsCheck?`<p class="muted small" style="margin:0 2px">${esc(d.gpsCheck)}</p>`:""}
     <p class="muted small" style="margin:-4px 2px 0">${s.gSensor?"G-force from the device's accelerometer.":"G-force estimated from GPS speed and heading."}${s.altMin!=null?` Elevation ranges ${Math.round(fAlt(s.altMin))}–${Math.round(fAlt(s.altMax))} ${aLabel()}.`:""}</p>
     <div class="panel"><h3>Timed runs</h3>${runsTable(s)}</div>
     <div class="panel"><div class="row"><h3>Speed</h3><span class="spacer"></span><span class="muted small">${sLabel()} over distance</span></div><canvas class="chart" id="d-speed"></canvas></div>
