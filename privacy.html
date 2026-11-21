@@ -48,7 +48,7 @@ footer{margin-top:40px;font-size:14px}
 <p>Without an account, everything stays on your device and nothing about your drives is sent to us.</p>
 
 <h2>Who can see your drives</h2>
-<p>Each drive has its own setting: <b>Followers</b> (the default), <b>Everyone</b> (anyone signed in to Dragon Drive), or <b>Only me</b> (never uploaded to the social feed). By default the first and last 300 m of a shared route are hidden so it doesn't show where you live; you can change that on your profile page. Private vehicles in your garage are never shown on your profile.</p>
+<p>Each drive has its own setting: <b>Followers</b> (the default), <b>Everyone</b> (anyone signed in to Dragon Drive), or <b>Only me</b> (never uploaded to the social feed). You can set a <b>home privacy zone</b> on your profile page: shared routes and share cards then leave out any start or end near home, and drives that start and end elsewhere show in full. Without a home set, the first and last 300 m of every shared route are hidden. This is done on your phone before a drive is uploaded, so the hidden part never reaches our servers. Your home is saved only as a map point in your private settings, never shown to anyone, and you can remove it at any time. Private vehicles in your garage are never shown on your profile.</p>
 
 <h2>Services we use</h2>
 <ul>
@@ -56,6 +56,7 @@ footer{margin-top:40px;font-size:14px}
 <li><b>Resend</b> sends the sign-in emails, and lets the Dragon Drive team know when a report is filed.</li>
 <li><b>OpenFreeMap</b> serves the map tiles. Like any website, it sees your device's IP address and which map area is loaded.</li>
 <li><b>OSRM</b> (project-osrm.org) works out road routes when you plan a route in Roads mode; it receives the stops you tap.</li>
+<li><b>Nominatim</b> (OpenStreetMap) finds the address you type when you set your home privacy zone; it receives what you type. We don't keep the address.</li>
 <li><b>Overpass API</b> (OpenStreetMap data) looks up speed limits near you when speed alerts are on; it receives the area around your position.</li>
 <li><b>GoatCounter</b> counts visits to the website dragondrive.turboloser.co. It doesn't use cookies or identify you, and it isn't used in the iPhone app.</li>
 </ul>

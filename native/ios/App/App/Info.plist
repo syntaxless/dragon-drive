@@ -81,6 +81,17 @@
 	<string>Dragon Drive lets you pick photos and videos for your drives, profile and garage.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Dragon Drive saves the share cards and drive videos you export to your photo library.</string>
+	<key>UIApplicationShortcutItems</key>
+	<array>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>com.itschefff.dragondrive.start-drive</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Start drive</string>
+			<key>UIApplicationShortcutItemIconType</key>
+			<string>UIApplicationShortcutIconTypePlay</string>
+		</dict>
+	</array>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>arm64</string>
