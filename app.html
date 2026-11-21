@@ -1415,7 +1415,7 @@ async function delDriveVideo(v){for(let i=0;;i++){const k=v.key+":"+i;const b=aw
 function startRec(){
   const src=S.settings.source;
   if(src!=="phone"&&!(DEV.device&&DEV.device.gatt&&DEV.device.gatt.connected)){toast(`Connect your ${SOURCES[src].name} first, or switch to Phone GPS.`);return}
-  REC.on=true;REC.pts=[];REC.start=Date.now();REC.lastStill=null;REC.gaps=[];REC.hiddenAt=null;REC.bgGps=src==="phone"&&!!DLOC;REC.speeding="";LIMITS.cur=null;audioUnlock();REC.source=src==="phone"?"Phone GPS":DEV.name||SOURCES[src].name;
+  REC.on=true;REC.pts=[];REC.start=Date.now();REC.lastStill=null;REC.gaps=[];REC.hiddenAt=null;REC.bgGps=src==="phone"&&!!DLOC;REC.diag=null;REC.speeding="";LIMITS.cur=null;audioUnlock();REC.source=src==="phone"?"Phone GPS":DEV.name||SOURCES[src].name;
   wakeLock(true);
   if(src==="phone"){
     startMotion();
@@ -1485,15 +1485,18 @@ function thinLive(p){if(p.length<1500)return p;const k=Math.ceil(p.length/1500);
 // straight away when it comes back. In a browser it's the usual watchPosition.
 const DLOC=NATIVE&&Capacitor.registerPlugin?Capacitor.registerPlugin("DriveLocation"):null;
 function geoWatch(ok,fail){if(!DLOC)return navigator.geolocation.watchPosition(ok,fail,{enableHighAccuracy:true,maximumAge:0,timeout:20000});
-  const w={dead:false,busy:null,timer:null,vis:null};
-  const feed=r=>{if(w.dead||!r)return;
-    for(const f of r.fixes||[])ok({timestamp:f.t,coords:{latitude:f.lat,longitude:f.lon,accuracy:f.acc,altitude:f.alt==null?null:f.alt,speed:f.v==null?null:f.v,heading:f.hdg==null?null:f.hdg}});
+  const w={dead:false,busy:null,timer:null,vis:null,seq:0};
+  const feed=r=>{if(w.dead||!r)return;if(r.diag)REC.diag=r.diag;
+    for(const f of r.fixes||[]){if(f.seq<=w.seq)continue;w.seq=f.seq;ok({timestamp:f.t,coords:{latitude:f.lat,longitude:f.lon,accuracy:f.acc,altitude:f.alt==null?null:f.alt,speed:f.v==null?null:f.v,heading:f.hdg==null?null:f.hdg}})}
     if(r.error&&!w.dead)fail({code:r.error==="denied"?1:2})};
-  w.pull=()=>{if(w.dead)return Promise.resolve();if(!w.busy)w.busy=DLOC.drain().then(feed,()=>{}).finally(()=>{w.busy=null});return w.busy};
+  w.pull=()=>{if(w.dead)return Promise.resolve();if(!w.busy){const b=Promise.race([DLOC.drain({after:w.seq}).then(feed,()=>{}),new Promise(r=>setTimeout(r,3000))]).finally(()=>{if(w.busy===b)w.busy=null});w.busy=b}return w.busy};
   DLOC.start().then(r=>{if(r&&(r.status==="denied"||r.status==="restricted"))fail({code:1})},()=>fail({code:2}));
   w.timer=setInterval(w.pull,1000);w.vis=()=>{if(document.visibilityState==="visible")w.pull()};document.addEventListener("visibilitychange",w.vis);
   return w}
 // Collect the fixes the plugin is still holding (before a drive is saved).
+// A short line for the drive page: what the iOS app's GPS did while the phone was locked (for testing).
+function gpsCheck(g){const t=ms=>new Date(ms).toLocaleTimeString([],{hour:"numeric",minute:"2-digit",second:"2-digit"});
+  return `GPS check: ${g.total} points, ${g.background} with the app in the background${g.lastFix?`, last at ${t(g.lastFix)}`:""}. ${(g.events||[]).join(", ")}`}
 function geoFlush(w){return w&&typeof w==="object"&&w.pull?w.pull():Promise.resolve()}
 function geoClear(w){if(w==null)return;if(typeof w!=="object"){navigator.geolocation.clearWatch(w);return}
   w.dead=true;clearInterval(w.timer);document.removeEventListener("visibilitychange",w.vis);DLOC.stop().catch(()=>{})}
@@ -1505,7 +1508,7 @@ async function finishRec(){
   if(raw.length<5||pathLen(raw)<100){stopCam(true).then(v=>{});if(CAM.key)delDriveVideo({key:CAM.key});toast("That drive was too short to save.");viewRecord();return}
   const h=new Date(raw[0][2]).getHours();
   const title=h<11?"Morning drive":h<14?"Midday drive":h<18?"Afternoon drive":"Evening drive";
-  const d={id:uid(),who:"me",title,vehicle:S.settings.vehicle,source:REC.source,start:raw[0][2],pts:thin(raw),stats:analyze(raw)};if(REC.gaps&&REC.gaps.length)d.gaps=REC.gaps;REC.gaps=[];
+  const d={id:uid(),who:"me",title,vehicle:S.settings.vehicle,source:REC.source,start:raw[0][2],pts:thin(raw),stats:analyze(raw)};if(REC.gaps&&REC.gaps.length)d.gaps=REC.gaps;REC.gaps=[];if(REC.diag)d.gpsCheck=gpsCheck(REC.diag);
   S.drives.push(d);if(dropExamples())toast("First drive saved, example drives removed");save();
   if(CAM.rec||CAM.stream)stopCam().then(v=>{if(v){d.video=v;save();if(SHEET&&SHEET.kind==="drive"&&SHEET.id===d.id)openDrive(d.id,true)}});
   if(location.hash==="#feed"){render();openDrive(d.id,true)}else{pendingOpen=d.id;location.hash="#feed"}
@@ -1765,6 +1768,7 @@ function openDrive(id,fresh){
       ${statBlock("Avg speed",Math.round(fSpeed(s.avg)),sLabel())}${statBlock("Top speed",Math.round(fSpeed(s.max)),sLabel())}${statBlock("Elev. gain",s.altMin==null?"–":Math.round(fAlt(s.up)),s.altMin==null?"":aLabel())}
       ${statBlock("Max accel",fG(s.gAcc),"g")}${statBlock("Max braking",fG(s.gBrk),"g")}${statBlock("Max lateral",fG(s.gLat),"g")}
     </div>
+    ${mine&&d.gpsCheck?`<p class="muted small" style="margin:0 2px">${esc(d.gpsCheck)}</p>`:""}
     <p class="muted small" style="margin:-4px 2px 0">${s.gSensor?"G-force from the device's accelerometer.":"G-force estimated from GPS speed and heading."}${s.altMin!=null?` Elevation ranges ${Math.round(fAlt(s.altMin))}–${Math.round(fAlt(s.altMax))} ${aLabel()}.`:""}</p>
     <div class="panel"><h3>Timed runs</h3>${runsTable(s)}</div>
     <div class="panel"><div class="row"><h3>Speed</h3><span class="spacer"></span><span class="muted small">${sLabel()} over distance</span></div><canvas class="chart" id="d-speed"></canvas></div>

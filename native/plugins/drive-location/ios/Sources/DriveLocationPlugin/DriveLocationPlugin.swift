@@ -1,6 +1,7 @@
 import Foundation
 import Capacitor
 import CoreLocation
+import UIKit
 
 // Background GPS for a drive.
 //
@@ -9,6 +10,9 @@ import CoreLocation
 // suspended while the app is in the background, so a fix pushed to JavaScript then is lost. This plugin
 // keeps every fix in native memory instead and the web app collects them with drain(): every second while
 // it is on screen, and straight away when it comes back. Nothing is lost while the phone is locked.
+// Each fix has a sequence number and stays here until the page confirms it has it (drain's `after`), so
+// an answer lost while the page was being paused costs nothing: the next drain sends the fixes again.
+// drain() also returns `diag`, a few counters that show what happened while the phone was locked.
 @objc(DriveLocationPlugin)
 public class DriveLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManagerDelegate {
     public let identifier = "DriveLocationPlugin"
@@ -29,6 +33,35 @@ public class DriveLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManager
     private var session: AnyObject?   // CLBackgroundActivitySession on iOS 17+
     private let lock = NSLock()
     private let maxKept = 20000       // about 5.5 hours at 1 Hz between two drains
+    private var seq = 0
+    private var total = 0
+    private var inBackground = 0      // fixes received while the app was not on screen
+    private var lastFix: Date?
+    private var events: [String] = []
+    private var observing = false
+
+    private func note(_ e: String) {
+        let f = DateFormatter(); f.dateFormat = "HH:mm:ss"
+        lock.lock(); events.append("\(e) \(f.string(from: Date()))"); if events.count > 30 { events.removeFirst(events.count - 30) }; lock.unlock()
+    }
+
+    private func observeApp() {
+        if observing { return }
+        observing = true
+        let nc = NotificationCenter.default
+        nc.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
+            guard let self = self, self.running else { return }
+            self.note("background")
+        }
+        nc.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak self] _ in
+            guard let self = self, self.running else { return }
+            self.note("foreground")
+        }
+        nc.addObserver(forName: UIApplication.protectedDataWillBecomeUnavailableNotification, object: nil, queue: .main) { [weak self] _ in
+            guard let self = self, self.running else { return }
+            self.note("locked")
+        }
+    }
 
     private func authName(_ s: CLAuthorizationStatus) -> String {
         switch s {
@@ -57,7 +90,8 @@ public class DriveLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManager
             m.pausesLocationUpdatesAutomatically = false
             m.allowsBackgroundLocationUpdates = true
             m.showsBackgroundLocationIndicator = true
-            self.lock.lock(); self.fixes.removeAll(); self.error = nil; self.lock.unlock()
+            self.lock.lock(); self.fixes.removeAll(); self.error = nil; self.seq = 0; self.total = 0; self.inBackground = 0; self.lastFix = nil; self.events.removeAll(); self.lock.unlock()
+            self.observeApp()
             self.started = Date()
             self.running = true
             let auth = self.currentAuth(m)
@@ -73,19 +107,24 @@ public class DriveLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManager
                 if self.session == nil { self.session = CLBackgroundActivitySession() }
             }
             m.startUpdatingLocation()
+            self.note("start " + self.authName(auth) + (UIApplication.shared.backgroundRefreshStatus == .available ? "" : " no-bg-refresh"))
             call.resolve(["status": self.authName(auth)])
         }
     }
 
     // Every fix since the last drain, oldest first, and an error if location was refused or failed.
+    // `after`: the highest sequence number the page already has; those fixes are dropped here.
     @objc func drain(_ call: CAPPluginCall) {
+        let after = call.getInt("after") ?? -1
         lock.lock()
+        fixes.removeAll { ($0["seq"] as? Int ?? 0) <= after }
         let out = fixes
-        fixes.removeAll()
         let err = error
         error = nil
+        var diag: [String: Any] = ["total": total, "background": inBackground, "events": events, "kept": fixes.count]
+        if let l = lastFix { diag["lastFix"] = (l.timeIntervalSince1970 * 1000).rounded() }
         lock.unlock()
-        var res: [String: Any] = ["fixes": out, "running": running]
+        var res: [String: Any] = ["fixes": out, "running": running, "diag": diag]
         if let err = err { res["error"] = err }
         call.resolve(res)
     }
@@ -95,6 +134,7 @@ public class DriveLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManager
             self.running = false
             self.manager?.stopUpdatingLocation()
             self.manager?.allowsBackgroundLocationUpdates = false
+            self.note("stop")
             if #available(iOS 17.0, *) {
                 (self.session as? CLBackgroundActivitySession)?.invalidate()
             }
@@ -125,6 +165,9 @@ public class DriveLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManager
         }
     }
 
+    public func locationManagerDidPauseLocationUpdates(_ manager: CLLocationManager) { note("paused") }
+    public func locationManagerDidResumeLocationUpdates(_ manager: CLLocationManager) { note("resumed") }
+
     public func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard running else { return }
         // iOS can hand over several fixes at once in the background: keep all of them.
@@ -141,8 +184,12 @@ public class DriveLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManager
             return r
         }
         if rows.isEmpty { return }
+        let bg = UIApplication.shared.applicationState != .active
         lock.lock()
-        fixes.append(contentsOf: rows)
+        total += rows.count
+        if bg { inBackground += rows.count }
+        lastFix = Date()
+        for var r in rows { seq += 1; r["seq"] = seq; fixes.append(r) }
         if fixes.count > maxKept { fixes.removeFirst(fixes.count - maxKept) }
         lock.unlock()
     }
@@ -152,10 +199,12 @@ public class DriveLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManager
         lock.lock()
         error = (err as? CLError)?.code == .denied ? "denied" : err.localizedDescription
         lock.unlock()
+        note("error \((err as NSError).code)")
     }
 
     public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         let s = currentAuth(manager)
+        if running { note("auth " + authName(s)) }
         if s == .denied || s == .restricted {
             lock.lock(); error = "denied"; lock.unlock()
         } else if running && s != .notDetermined {
