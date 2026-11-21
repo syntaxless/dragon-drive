@@ -1428,8 +1428,10 @@ function recSummary(){const s=S.settings.source,v=S.settings.vehicle;
 let starting=false;
 // Reconnect the remembered device on its own: when the app opens and when that source is picked.
 function autoConnect(){const k=S.settings.source;if(k!=="phone"&&hasBLE&&BT.getDevices&&bleMem(k)&&!devReady()&&!REC.on)connectDevice(k,true)}
-// The iPhone app's "Start drive" Quick Action (long-press the icon) calls this once the page is ready.
-window.ddQuick=a=>{if(a==="start"){if(location.hash!=="#record")location.hash="#record";if(!REC.on)tapStart()}return true};
+// The iPhone app's "Start drive" Quick Action (long-press the icon) and Siri call this once the page is ready.
+// It also takes Siri's "End my drive" (native/ios/App/App/DriveIntents.swift): "finish" saves the drive like holding the button.
+window.ddQuick=a=>{if(a==="start"){if(location.hash!=="#record")location.hash="#record";if(!REC.on)tapStart()}
+  else if(a==="finish"){if(REC.on)finishRec();else toast("No drive is being recorded.")}return true};
 async function tapStart(){
   if(REC.on||starting)return;const src=S.settings.source;
   if(src==="phone"||devReady()){startRec();return}
