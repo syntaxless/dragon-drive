@@ -241,6 +241,7 @@ input[type=range]{width:100%;accent-color:var(--hl)}
 .photo-edit{position:relative}
 .photo-edit .photo{border-radius:14px;aspect-ratio:4/3}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tab-h) + 16px + env(safe-area-inset-bottom,0px));z-index:40;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:600;max-width:calc(100% - 32px)}
+html.driving .toast{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 56px);z-index:60}
 .empty{text-align:center;padding:30px 10px;color:var(--muted)}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 /* landscape phones: tab bar becomes a right-hand side rail (easy reach for the right thumb, toward the driver in left-hand-drive cars), compact header, two-column drive screens */
@@ -1195,15 +1196,19 @@ function nativeBluetooth(){
     // the plugin takes one name prefix; Dragy and "any device" ask with no filter and the user picks from the list
     const f=(o.filters||[]).length===1?o.filters[0]:null;
     const d=await P.requestDevice({...(f&&f.namePrefix?{namePrefix:f.namePrefix}:{}),optionalServices:(o.optionalServices||[]).map(x=>String(x).toLowerCase())}).catch(e=>{const er=new Error(e&&e.message||"No device chosen");if(/cancel|no device/i.test(er.message))er.name="NotFoundError";throw er});
+    return wrap(d)},
+    // A device this phone has connected before, by id, with no picker (like Chrome's navigator.bluetooth.getDevices).
+    async getDevices(ids){await init();const r=await P.getDevices({deviceIds:ids||[]});return(r&&r.devices||[]).map(wrap)}};
+  function wrap(d){
     const E=ev(),id=d.deviceId;
     const dev={id,name:d.name||"",addEventListener:E.on,gatt:{connected:false,
-      async connect(){await P.addListener("disconnected|"+id,()=>{dev.gatt.connected=false;E.fire("gattserverdisconnected",{target:dev})});await P.connect({deviceId:id,timeout:15000});dev.gatt.connected=true;return dev.gatt},
+      async connect(o){await P.addListener("disconnected|"+id,()=>{dev.gatt.connected=false;E.fire("gattserverdisconnected",{target:dev})});await P.connect({deviceId:id,timeout:o&&o.timeout||15000});dev.gatt.connected=true;return dev.gatt},
       disconnect(){P.disconnect({deviceId:id}).catch(()=>{})},
       async getPrimaryServices(){const r=await P.getServices({deviceId:id});return(r.services||[]).map(sv=>({uuid:sv.uuid,
         async getCharacteristics(){return(sv.characteristics||[]).map(ch=>{const C=ev();const c={uuid:ch.uuid,properties:ch.properties||{},value:null,addEventListener:C.on,
           async startNotifications(){await P.addListener(`notification|${id}|${sv.uuid}|${ch.uuid}`,e=>{c.value=bytes(e&&e.value);C.fire("characteristicvaluechanged",{target:c})});
             await P.startNotifications({deviceId:id,service:sv.uuid,characteristic:ch.uuid});return c}};return c})}}))}}};
-    return dev}};
+    return dev}
 }
 const BT=navigator.bluetooth&&navigator.bluetooth.requestDevice?navigator.bluetooth:NATIVE&&Capacitor.registerPlugin?nativeBluetooth():null;
 const hasBLE=!!BT;
@@ -1252,15 +1257,33 @@ function makeNmeaParser(onFix){
     }
   };
 }
-async function connectDevice(kind){
+// The Bluetooth device that last connected for each source is remembered on this phone (not synced: the id is
+// per phone), so the next connect, including the one when the app opens, needs no device picker.
+const BLEMEM="dragondrive.ble";
+function bleMem(kind,v){let m={};try{m=JSON.parse(localStorage.getItem(BLEMEM)||"{}")||{}}catch(e){}
+  if(v===undefined)return m[kind]||null;m[kind]=v;try{localStorage.setItem(BLEMEM,JSON.stringify(m))}catch(e){}}
+async function knownDevice(kind){const mem=bleMem(kind);if(!mem||!BT.getDevices)return null;
+  try{const ds=await BT.getDevices([mem.id]);return(ds||[]).find(d=>d.id===mem.id)||null}catch(e){return null}}
+let connecting=false;
+async function connectDevice(kind,auto){
   const src=SOURCES[kind];
-  if(!hasBLE){toast("This browser can't use Bluetooth. Try Chrome on Android or a computer.");return}
+  if(!hasBLE){if(!auto)toast("This browser can't use Bluetooth. Try Chrome on Android or a computer.");return}
+  if(connecting||devReady())return;connecting=true;
   try{
-    DEV.status="Choose your device…";updateDevice();
-    const device=await BT.requestDevice(src.ble);
+    let device=null,known=false;const mem=bleMem(kind);
+    // In a browser the device picker must open straight from the tap, so a tap skips the remembered device
+    // (the app already tried it when it opened); the iPhone app's picker has no such rule.
+    if(mem&&(auto||NATIVE)){DEV.name=mem.name||src.name;DEV.status="Reconnecting…";updateDevice();device=await knownDevice(kind);known=!!device}
+    if(device){DEV.device=device;DEV.status="Connecting…";updateDevice();
+      // a remembered device that is off or out of range: give up quickly, then offer the picker
+      try{await Promise.race([device.gatt.connect({timeout:6000}),new Promise((_,no)=>setTimeout(()=>no(new Error("timeout")),7000))])}
+      catch(e){try{device.gatt.disconnect()}catch(_){}device=null;DEV.device=null}}
+    if(!device){if(auto){DEV.status=mem?`${mem.name||src.name} isn't on or in range. Tap Start to pick it again.`:"";updateDevice();return}
+      DEV.status="Choose your device…";updateDevice();device=await BT.requestDevice(src.ble);known=false}
     DEV.device=device;DEV.name=device.name||src.name;DEV.status="Connecting…";updateDevice();
     device.addEventListener("gattserverdisconnected",()=>{DEV.status="Disconnected";DEV.hz=0;updateDevice();if(REC.on&&S.settings.source===kind)setGps("off","Device disconnected. Recording paused until it reconnects.")});
-    const server=await device.gatt.connect();
+    const server=known?device.gatt:await device.gatt.connect();
+    if(device.id)bleMem(kind,{id:device.id,name:device.name||""});
     const services=await server.getPrimaryServices();
     const onFix=fix=>{
       const now=performance.now();DEV._n++;if(now-DEV._t>1000){DEV.hz=Math.round(DEV._n*1000/(now-DEV._t));DEV._n=0;DEV._t=now}
@@ -1275,6 +1298,7 @@ async function connectDevice(kind){
         try{await ch.startNotifications();subscribed++}catch(e){}}}
     DEV.status=subscribed?"Connected · waiting for data":"Connected, but the device sent nothing we can read";updateDevice();
   }catch(e){DEV.status=e&&e.name==="NotFoundError"?"No device chosen":"Couldn't connect: "+(e&&e.message||e);updateDevice()}
+  finally{connecting=false}
 }
 let thr={};function throttle(fn,ms){if(thr[fn.name])return;thr[fn.name]=setTimeout(()=>{thr[fn.name]=0;fn()},ms)}
 function updateDevice(){const rb=$("#rec-btn");if(rb&&!REC.on)rb.querySelector(".lbl").textContent=startLabel();const rs=$("#rec-sum");if(rs)rs.innerHTML=recSummary();
@@ -1324,7 +1348,7 @@ function viewRecord(){
     ${NATIVE?"":`<div class="notice"><strong>Keep it open.</strong> iPhone pauses GPS for web apps when the screen locks or you switch to another app, which leaves straight lines across your route. Dragon Drive keeps the screen awake while recording; leave it on screen and plug the phone in for long drives.</div>`}
     ${geoOK||src!=="phone"?"":`<div class="notice">This browser doesn't offer location, so drives can't be recorded here. Open Dragon Drive on your phone.</div>`}
   </div>`;
-  document.querySelectorAll("[data-src]").forEach(b=>b.onclick=()=>{S.settings.source=b.dataset.src;save();viewRecord()});
+  document.querySelectorAll("[data-src]").forEach(b=>b.onclick=()=>{S.settings.source=b.dataset.src;save();viewRecord();autoConnect()});
   const m=$("#motion");if(m)m.onchange=e=>{S.settings.motion=e.target.checked;save()};
   $("#film").onchange=e=>{S.settings.film=e.target.checked;save();const r=$("#rec-sum");if(r)r.innerHTML=recSummary()};
   const cp=$("#cam-prev");if(cp){cp.srcObject=CAM.stream;cp.play().catch(()=>{})}
@@ -1347,11 +1371,15 @@ function startLabel(){if(REC.on)return"Hold to finish";const s=S.settings.source
 function recSummary(){const s=S.settings.source,v=S.settings.vehicle;
   return esc([s==="phone"?"Phone GPS":DEV.name||SOURCES[s].name,v,S.settings.film?"Filming":""].filter(Boolean).join(" · "))+'. <a href="#record-setup" data-setup>Change</a>'}
 let starting=false;
+// Reconnect the remembered device on its own: when the app opens and when that source is picked.
+function autoConnect(){const k=S.settings.source;if(k!=="phone"&&hasBLE&&BT.getDevices&&bleMem(k)&&!devReady()&&!REC.on)connectDevice(k,true)}
+// The iPhone app's "Start drive" Quick Action (long-press the icon) calls this once the page is ready.
+window.ddQuick=a=>{if(a==="start"){if(location.hash!=="#record")location.hash="#record";if(!REC.on)tapStart()}return true};
 async function tapStart(){
   if(REC.on||starting)return;const src=S.settings.source;
   if(src==="phone"||devReady()){startRec();return}
   if(!hasBLE){startRec();return}
-  starting=true;try{await connectDevice(src)}finally{starting=false}
+  if(connecting)return;starting=true;try{await connectDevice(src)}finally{starting=false}
   if(devReady()&&!REC.on)startRec();else{const b=$("#rec-btn");if(b)b.querySelector(".lbl").textContent=startLabel()}
 }
 function bindHold(btn){
@@ -2606,7 +2634,8 @@ window.addEventListener("hashchange",()=>{
 (()=>{const sh=$("#sheet");let shown=!sh.hidden;new MutationObserver(()=>{if(shown===!sh.hidden)return;shown=!sh.hidden;if(shown){sh.classList.remove("sheet-out");replay(sh,"sheet-in",350)}}).observe(sh,{attributes:true,attributeFilter:["hidden"]})})();
 let rz,lastW=window.innerWidth;window.addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(()=>{if(window.innerWidth===lastW)return;lastW=window.innerWidth;if($("#sheet").hidden)render()},200)});
 const authHash=/access_token=|error_description=/.test(location.hash)?location.hash:null;if(authHash)history.replaceState(null,"",location.pathname+"#you");
-render();loadAvatar();
+if(!location.hash)history.replaceState(null,"",location.pathname+location.search+"#record");
+render();loadAvatar();autoConnect();
 // iOS Home Screen apps can leave the fixed tab bar floating mid-screen after the share sheet
 // (or a keyboard it opened) closes, until the page is scrolled. Nudge the layout to re-seat it.
 // Never nudge while the page is being scrolled: Safari resizes the viewport as its toolbar shows and hides,
