@@ -1131,7 +1131,7 @@ function viewFeed(){
   const drives=all;
   const nudge=Sync.on()&&!Sync.user?`<div class="notice signup"><div style="flex:1;min-width:180px"><b>Join Dragon Drive</b> to follow friends, share your drives and keep them on all your devices.</div><div class="row" style="gap:8px"><a class="btn" href="#you" data-signin="in" style="color:var(--fg)">Sign in</a><a class="btn primary" href="#you" data-signin="new" style="color:var(--accent-fg)">Create an account</a></div></div>`:Social.ok()&&Social.SOC.loaded&&!Social.me?`<a class="notice" href="#you" style="display:block;text-decoration:none;color:inherit"><b>Pick your @handle</b> so friends can find and follow you.</a>`:Social.ready()&&![...Social.SOC.following].some(id=>(Social.SOC.profiles.get(id)||{}).handle!=="burnout")?`<a class="notice" href="#you" style="display:block;text-decoration:none;color:inherit"><b>Follow your friends</b> to see their drives here. Find them by @handle or send your invite link.</a>`:"";
   $("#view").innerHTML=`<div class="stack">
-    <div class="row"><div><div class="eyebrow">Drive your junk</div><h1>Feed</h1></div><span class="spacer"></span><a class="btn primary" href="#record">Start a drive</a></div>
+    <div class="row"><div><div class="eyebrow">Drive your junk</div><h1>Feed</h1></div><span class="spacer"></span><button class="btn primary" type="button" data-quickstart>Start drive</button></div>
     ${nudge}
     ${canPost?`<div class="panel" id="adm-stats"><h3>Dragon Drive stats</h3><p class="muted small" style="margin:0">Loading…</p></div>`:""}
     ${canPost?`<form class="panel compose" id="ann-form"><h3>Post an announcement</h3><textarea id="ann-in" rows="3" maxlength="1000" placeholder="Everyone on Dragon Drive will see this in their feed." required></textarea><div class="row"><span class="muted small" style="flex:1">Posting as ${nameHtml(Social.person("u:"+Sync.user.uid))}</span><button class="btn primary" type="submit">Post</button></div></form>`:""}
@@ -1277,7 +1277,8 @@ async function connectDevice(kind){
   }catch(e){DEV.status=e&&e.name==="NotFoundError"?"No device chosen":"Couldn't connect: "+(e&&e.message||e);updateDevice()}
 }
 let thr={};function throttle(fn,ms){if(thr[fn.name])return;thr[fn.name]=setTimeout(()=>{thr[fn.name]=0;fn()},ms)}
-function updateDevice(){const el=$("#dev-status");if(!el)return;
+function updateDevice(){const rb=$("#rec-btn");if(rb&&!REC.on)rb.querySelector(".lbl").textContent=startLabel();const rs=$("#rec-sum");if(rs)rs.innerHTML=recSummary();
+  const el=$("#dev-status");if(!el)return;
   el.innerHTML=DEV.device||DEV.status?`<span class="dot ${DEV.last?"ok":DEV.device&&DEV.device.gatt&&DEV.device.gatt.connected?"wait":"off"}"></span><div style="flex:1;min-width:0"><div style="font-weight:600">${esc(DEV.name||"No device")}</div><div class="muted small">${esc(DEV.status)}</div></div>${DEV.hz?`<span class="chip">${DEV.hz} Hz</span>`:""}${DEV.sats!=null?`<span class="chip">${DEV.sats} sats</span>`:""}${DEV.battery!=null?`<span class="chip">${DEV.battery}% battery</span>`:""}`:`<span class="dot"></span><span class="muted small">No device connected</span>`}
 
 // Phone motion sensors: horizontal g (gravity removed), peak between GPS fixes
@@ -1300,6 +1301,9 @@ function viewRecord(){
   const src=S.settings.source;const geoOK="geolocation" in navigator;
   $("#view").innerHTML=`<div class="stack">
     <div><div class="eyebrow">Record</div><h1>New drive</h1></div>
+    ${FOLLOW?`<div class="notice row" style="align-items:center"><div style="flex:1"><b>Following ${esc(FOLLOW.title)}</b><br><span class="small">The route shows in grey under your line while you drive.</span></div><button class="btn ghost" id="fol-x" type="button">Stop following</button></div>`:""}
+    <button class="rec-btn" id="rec-btn" type="button"><span class="fill"></span><span class="lbl">${startLabel()}</span></button>
+    <p class="muted small rec-sum" id="rec-sum" style="margin:-6px 2px 0;text-align:center">${recSummary()}</p>
     <div class="panel"><h3>Data source</h3>
       <div class="sources" role="group" aria-label="Data source">${Object.entries(SOURCES).map(([k,s])=>`<button class="src" type="button" data-src="${k}" aria-pressed="${src===k}" ${REC.on?"disabled":""}><b>${s.name}</b><span>${s.note}</span></button>`).join("")}</div>
       ${src==="phone"?`<label class="check"><input type="checkbox" id="motion" ${S.settings.motion?"checked":""}> Use the phone's motion sensors for g-force (mount the phone so it can't slide)</label>`:
@@ -1307,24 +1311,22 @@ function viewRecord(){
          ${hasBLE?"":`<div class="notice">Bluetooth devices need Chrome or Edge on Android, Windows, macOS or ChromeOS. iPhone browsers don't support Web Bluetooth yet, so on iPhone use Phone GPS.</div>`}
          ${src==="dragy"?`<p class="muted small" style="margin:0">Dragy doesn't publish its Bluetooth format. Dragon Drive tries the standard NMEA GPS format; if your Dragy connects but shows no data, let us know.</p>`:""}`}
     </div>
-    ${FOLLOW?`<div class="notice row" style="align-items:center"><div style="flex:1"><b>Following ${esc(FOLLOW.title)}</b><br><span class="small">The route shows in grey under your line while you drive.</span></div><button class="btn ghost" id="fol-x" type="button">Stop following</button></div>`:""}
+    ${S.settings.vehicles.length>1?`<div class="panel"><h3>Vehicle</h3><select id="veh" aria-label="Vehicle">${S.settings.vehicles.map(v=>`<option ${v===S.settings.vehicle?"selected":""}>${esc(v)}</option>`).join("")}</select></div>`:""}
     <div class="panel"><h3>Phone camera</h3><label class="check"><input type="checkbox" id="film" ${S.settings.film?"checked":""} ${REC.on?"disabled":""}> Film the road while driving. Mount the phone facing forward; the video lines up with your data automatically. Uses about 20 MB per minute.</label>
       ${CAM.stream?`<video id="cam-prev" class="cam-prev" muted playsinline autoplay></video>`:""}</div>
-    <div class="panel"><div class="row"><div style="flex:1;min-width:200px"><h3 style="margin:0 0 4px">Action camera</h3><p class="muted small" style="margin:0">Import the video and Dragon Drive reads the GoPro's own GPS to log the drive, then lines the video up with it for the overlay. Pick every file from one recording if the GoPro split it.</p></div><button class="btn" id="gp-import" type="button" ${REC.on?"disabled":""}>Import GoPro video</button></div></div>
     <div class="panel stack" style="gap:8px"><h3 style="margin:0">Speed alerts</h3>
       <label class="check"><input type="checkbox" id="al-over" ${AL().overOn?"checked":""}> Warn when I'm over the speed limit by <input type="number" id="al-over-v" inputmode="numeric" min="0" max="30" value="${AL().over}" style="width:64px"> ${sLabel()}</label>
       <label class="check"><input type="checkbox" id="al-above" ${AL().aboveOn?"checked":""}> Warn above <input type="number" id="al-above-v" inputmode="numeric" min="10" max="250" value="${AL().above}" style="width:72px"> ${sLabel()}</label>
       <label class="check"><input type="checkbox" id="al-lim" ${S.settings.limits!==false?"checked":""}> Show speed limits. They come from OpenStreetMap, which gets your approximate location while you drive. Main roads are well covered, side streets less so.</label>
       <p class="muted small" style="margin:0">Alerts beep and flash the screen. Turn the ringer on to hear them.</p></div>
-    <div class="panel"><h3>Vehicle</h3><select id="veh" aria-label="Vehicle">${S.settings.vehicles.map(v=>`<option ${v===S.settings.vehicle?"selected":""}>${esc(v)}</option>`).join("")}</select></div>
-    <button class="rec-btn" id="rec-btn" type="button"><span class="fill"></span><span class="lbl">${REC.on?"Hold to finish":"Start drive"}</span></button>
-    <div class="notice"><strong>Drive first.</strong> Mount your phone and tap Start drive before you pull away. Dragon Drive switches to a simple screen with one large control, and you finish by holding the button. Every stat, from elevation and g-force to 0–60 and quarter-mile times, is logged automatically on every drive.</div>
-    <div class="notice"><strong>Keep it open.</strong> iPhone pauses GPS for web apps when the screen locks or you switch to another app, which leaves straight lines across your route. Dragon Drive keeps the screen awake while recording; leave it on screen and plug the phone in for long drives.</div>
+    <div class="panel"><div class="row"><div style="flex:1;min-width:200px"><h3 style="margin:0 0 4px">Action camera</h3><p class="muted small" style="margin:0">Import the video and Dragon Drive reads the GoPro's own GPS to log the drive, then lines the video up with it for the overlay. Pick every file from one recording if the GoPro split it.</p></div><button class="btn" id="gp-import" type="button" ${REC.on?"disabled":""}>Import GoPro video</button></div></div>
+    <div class="notice"><strong>Drive first.</strong> Mount your phone and tap Start drive before you pull away. Dragon Drive switches to a simple screen with one large control, and you finish by holding the button. Every stat, from elevation and g-force to 0–60 and quarter-mile times, is logged automatically on every drive. Your choices on this screen are remembered for next time.</div>
+    ${NATIVE?"":`<div class="notice"><strong>Keep it open.</strong> iPhone pauses GPS for web apps when the screen locks or you switch to another app, which leaves straight lines across your route. Dragon Drive keeps the screen awake while recording; leave it on screen and plug the phone in for long drives.</div>`}
     ${geoOK||src!=="phone"?"":`<div class="notice">This browser doesn't offer location, so drives can't be recorded here. Open Dragon Drive on your phone.</div>`}
   </div>`;
   document.querySelectorAll("[data-src]").forEach(b=>b.onclick=()=>{S.settings.source=b.dataset.src;save();viewRecord()});
   const m=$("#motion");if(m)m.onchange=e=>{S.settings.motion=e.target.checked;save()};
-  $("#film").onchange=e=>{S.settings.film=e.target.checked;save()};
+  $("#film").onchange=e=>{S.settings.film=e.target.checked;save();const r=$("#rec-sum");if(r)r.innerHTML=recSummary()};
   const cp=$("#cam-prev");if(cp){cp.srcObject=CAM.stream;cp.play().catch(()=>{})}
   const c=$("#connect");if(c)c.onclick=()=>connectDevice(src);
   const AS=()=>{S.settings.alerts=AL();return S.settings.alerts};
@@ -1333,9 +1335,24 @@ function viewRecord(){
   $("#al-lim").onchange=e=>{S.settings.limits=e.target.checked;if(!e.target.checked)LIMITS.cur=null;save()};
   const fx=$("#fol-x");if(fx)fx.onclick=()=>{FOLLOW=null;viewRecord()};
   $("#gp-import").onclick=()=>pickVideos(fs=>{const b=$("#gp-import");if(b){b.disabled=true;b.textContent="Reading…"}importGoPro(fs).finally(()=>{const b2=$("#gp-import");if(b2){b2.disabled=false;b2.textContent="Import GoPro video"}})});
-  $("#veh").onchange=e=>{S.settings.vehicle=e.target.value;save()};
+  const vs=$("#veh");if(vs)vs.onchange=e=>{S.settings.vehicle=e.target.value;save();const r=$("#rec-sum");if(r)r.innerHTML=recSummary()};
   bindHold($("#rec-btn"));
   updateDevice();updateLive();
+}
+// One tap from the Drive screen or the Feed starts recording with the remembered setup. If the data source is a
+// Bluetooth device that isn't connected yet, the same tap connects it (the device picker needs this tap) and
+// then starts, instead of asking for a separate Connect tap first.
+const devReady=()=>!!(DEV.device&&DEV.device.gatt&&DEV.device.gatt.connected);
+function startLabel(){if(REC.on)return"Hold to finish";const s=S.settings.source;return s!=="phone"&&!devReady()?`Connect ${SOURCES[s].name} & start`:"Start drive"}
+function recSummary(){const s=S.settings.source,v=S.settings.vehicle;
+  return esc([s==="phone"?"Phone GPS":DEV.name||SOURCES[s].name,v,S.settings.film?"Filming":""].filter(Boolean).join(" · "))+'. <a href="#record-setup" data-setup>Change</a>'}
+let starting=false;
+async function tapStart(){
+  if(REC.on||starting)return;const src=S.settings.source;
+  if(src==="phone"||devReady()){startRec();return}
+  if(!hasBLE){startRec();return}
+  starting=true;try{await connectDevice(src)}finally{starting=false}
+  if(devReady()&&!REC.on)startRec();else{const b=$("#rec-btn");if(b)b.querySelector(".lbl").textContent=startLabel()}
 }
 function bindHold(btn){
   let t0=0,raf=0;const fill=btn.querySelector(".fill");
@@ -1343,7 +1360,7 @@ function bindHold(btn){
   const run=()=>{t0=performance.now();const step=()=>{const k=(performance.now()-t0)/1000;fill.style.transform=`scaleX(${Math.min(1,k)})`;if(k>=1){stopAnim();finishRec()}else raf=requestAnimationFrame(step)};raf=requestAnimationFrame(step)};
   // Start on click (iPhone only treats a finished tap as a user gesture, which the wake lock and audio need);
   // finish by holding. Block the long-press text selection and callout so the hold isn't cancelled.
-  btn.onclick=()=>{if(!REC.on&&Date.now()-REC.endedAt>1200)startRec()};
+  btn.onclick=()=>{if(!REC.on&&Date.now()-REC.endedAt>1200)tapStart()};
   btn.onpointerdown=e=>{if(!REC.on)return;try{btn.setPointerCapture(e.pointerId)}catch(_){}run()};
   btn.onpointerup=btn.onpointercancel=stopAnim;
   btn.addEventListener("touchstart",e=>{if(REC.on)e.preventDefault()},{passive:false});
@@ -1476,7 +1493,7 @@ function updateLive(){
   if(REC.on&&!dm.hidden){const r=$("#dm-rec");if(r&&!!r.innerHTML!==!!CAM.rec)r.innerHTML=CAM.rec?' <span class="rec-dot">● REC</span>':"";
     const info=dm.querySelector(".dm-info");if(CAM.stream&&info&&!$("#dm-cam")){info.insertAdjacentHTML("afterbegin",'<video id="dm-cam" class="dm-cam" muted playsinline autoplay aria-label="What the camera is filming"></video>');const dc=$("#dm-cam");dc.srcObject=CAM.stream;dc.play().catch(()=>{})}}
   set("dm-dist",`${fDist(dist).toFixed(1)}<small>${dLabel()}</small>`);set("dm-time",fDur(el));
-  const b=$("#rec-btn");if(b){b.classList.toggle("stop",REC.on);b.querySelector(".lbl").textContent=REC.on?"Hold to finish":"Start drive"}
+  const b=$("#rec-btn");if(b){b.classList.toggle("stop",REC.on);b.querySelector(".lbl").textContent=startLabel()}
 }
 function thinLive(p){if(p.length<1500)return p;const k=Math.ceil(p.length/1500);return p.filter((_,i)=>i%k===0||i===p.length-1)}
 // In the iOS app, GPS comes from the native background-location plugin, so a drive keeps logging with
@@ -2555,6 +2572,8 @@ function viewYou(){
 
 /* ================= global events ================= */
 document.addEventListener("click",e=>{
+  if(e.target.closest("[data-quickstart]")){tapStart();if(location.hash!=="#record")location.hash="#record";return}
+  const su=e.target.closest("[data-setup]");if(su){e.preventDefault();const p=document.querySelector("#view .panel");if(p)p.scrollIntoView({behavior:reducedMotion()?"auto":"smooth",block:"start"});return}
   const br=e.target.closest("#brand");if(br){replay(br,"flare",950);if(location.hash==="#feed"||location.hash===""){e.preventDefault();if(!$("#sheet").hidden)closeSheet();else window.scrollTo({top:0,behavior:"smooth"})}return}
   const si=e.target.closest("[data-signin]");if(si){signinIntent=si.dataset.signin;if(location.hash==="#you"){e.preventDefault();render()}}
   const us=e.target.closest("[data-user]");if(us){e.preventDefault();e.stopPropagation();location.hash="#u/"+us.dataset.user;return}
