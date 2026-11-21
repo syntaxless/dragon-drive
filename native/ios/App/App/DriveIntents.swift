@@ -42,14 +42,41 @@ struct DriveShortcuts: AppShortcutsProvider {
         AppShortcut(intent: StartDriveIntent(), phrases: [
             "Start a drive in \(.applicationName)",
             "Start my drive in \(.applicationName)",
+            "Start driving in \(.applicationName)",
+            "Begin a drive in \(.applicationName)",
+            "Begin my drive in \(.applicationName)",
+            "Record a drive in \(.applicationName)",
+            "Record my drive in \(.applicationName)",
             "Start recording in \(.applicationName)",
-            "\(.applicationName) start a drive"
+            "Start logging in \(.applicationName)",
+            "Log a drive in \(.applicationName)",
+            "Track my drive in \(.applicationName)",
+            "New drive in \(.applicationName)",
+            "Start a drive with \(.applicationName)",
+            "\(.applicationName) start a drive",
+            "\(.applicationName) start my drive",
+            "\(.applicationName) start recording",
+            "\(.applicationName) let's drive",
+            "Let's drive with \(.applicationName)"
         ])
         AppShortcut(intent: FinishDriveIntent(), phrases: [
             "End my drive in \(.applicationName)",
+            "End the drive in \(.applicationName)",
+            "End a drive in \(.applicationName)",
             "Finish my drive in \(.applicationName)",
+            "Finish the drive in \(.applicationName)",
+            "Stop my drive in \(.applicationName)",
+            "Stop the drive in \(.applicationName)",
+            "Stop driving in \(.applicationName)",
             "Stop recording in \(.applicationName)",
-            "\(.applicationName) end my drive"
+            "Stop logging in \(.applicationName)",
+            "Save my drive in \(.applicationName)",
+            "End my drive with \(.applicationName)",
+            "\(.applicationName) end my drive",
+            "\(.applicationName) finish my drive",
+            "\(.applicationName) stop my drive",
+            "\(.applicationName) stop recording",
+            "I'm done driving in \(.applicationName)"
         ])
     }
 }
