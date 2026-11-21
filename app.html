@@ -60,7 +60,7 @@ h3{font-size:18px}
 .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .spacer{flex:1}
 .num{font-family:var(--display);font-variant-numeric:tabular-nums}
-.btn{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 14px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+.btn{color:inherit;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 14px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
 .btn.ghost{background:transparent}
 .btn.danger{color:var(--bad);border-color:currentColor;background:transparent}
@@ -204,6 +204,7 @@ img.avatar{object-fit:cover;background:var(--surface-2);padding:0}
 canvas.chart{display:block;width:100%;height:160px;max-width:100%}
 canvas.gg{display:block;width:100%;max-width:280px;aspect-ratio:1/1;margin:0 auto}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.stops{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}.stops li+li{border-top:1px solid var(--line)}.stops a{display:flex;gap:10px;align-items:baseline;padding:10px 0;color:inherit;text-decoration:none}.stops b{flex:none;min-width:52px}.stops span{flex:1;min-width:0}.stops a::after{content:"›";color:var(--muted);font-size:20px;line-height:1}
 .runs{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
 .runs td,.runs th{padding:8px 4px;border-top:1px solid var(--line);text-align:left}
 .runs th{font-weight:500;color:var(--muted);font-size:13px}
@@ -1556,7 +1557,7 @@ function cpState(notice){
   const el=REC.on?(n>1?(pts[n-1][2]-pts[0][2])/1000:(Date.now()-REC.start)/1000):0;
   const src=S.settings.source;
   const routes=allRoutes().filter(r=>r.pts&&r.pts.length>1).sort((a,b)=>(b.created||0)-(a.created||0)).slice(0,12)
-    .map(r=>({id:r.id,title:r.title||"Route",detail:`${fDist(r.dist||pathLen(r.pts)).toFixed(1)} ${dLabel()}${r.who==="me"?"":" · "+(person(r.who).name||"")}`}));
+    .map(r=>({id:r.id,title:r.title||"Route",nav:appleRoute(r),detail:`${fDist(r.dist||pathLen(r.pts)).toFixed(1)} ${dLabel()}${r.who==="me"?"":" · "+(person(r.who).name||"")}`}));
   const s={ready:true,recording:REC.on,time:fDur(el),dist:`${fDist(dist).toFixed(1)} ${dLabel()}`,
     source:src==="phone"?"Phone GPS":(SOURCES[src]||{}).name||"",vehicle:S.settings.vehicle||"",routes};
   if(FOLLOW){s.following=FOLLOW.title;s.followingId=FOLLOW.id}
@@ -1589,6 +1590,53 @@ async function routeLeg(a,b,mode){
     const c=j.routes&&j.routes[0]&&j.routes[0].geometry.coordinates;if(c&&c.length>1)return c.map(x=>[+x[1].toFixed(6),+x[0].toFixed(6)])}catch(e){}
   toast("Couldn't find a road route there, so that leg is a straight line");return[a,b]}
 function myRoutes(){return S.routes||(S.routes=[])}
+// Stops and Maps links. A route's stops are the points tapped in the planner (shared routes only carry the
+// line, so theirs are its start and end). Each stop opens Apple Maps with directions to it; the whole route
+// opens in Apple Maps (iOS 18.4 and later take several stops) or Google Maps (up to 9 stops in a link).
+// A Maps app picks its own roads between stops, so a few points along the drawn line are added as extra
+// stops to keep it on the same roads. Addresses come from OpenStreetMap's Nominatim, one lookup a second
+// as its usage policy asks, and are kept with your own routes.
+const llStr=p=>`${(+p[0]).toFixed(6)},${(+p[1]).toFixed(6)}`;
+function routeStops(r){const w=r.wps&&r.wps.length>1?r.wps:r.pts&&r.pts.length>1?[r.pts[0],r.pts[r.pts.length-1]]:[];return w.map(p=>[+p[0],+p[1]])}
+function navStops(r,cap){
+  const st=routeStops(r);if(st.length<2)return null;const dest=st[st.length-1],P=r.pts||[];
+  let way=st.slice(0,-1);
+  if(way.length>cap){const k=way.length/cap;way=Array.from({length:cap},(_,i)=>way[Math.floor(i*k)])}
+  const extra=cap-way.length;
+  if(extra>0&&r.mode!=="straight"&&P.length>2){
+    const cum=[0];for(let i=1;i<P.length;i++)cum.push(cum[i-1]+hav(P[i-1],P[i]));const L=cum[cum.length-1];
+    const items=[];let j=0;
+    for(const p of way){let bi=j,bd=Infinity;for(let i=j;i<P.length;i++){const d=hav(P[i],p);if(d<bd){bd=d;bi=i}}j=bi;items.push({at:cum[bi],p,stop:true})}
+    for(let n=1;n<=extra;n++){const t=L*n/(extra+1);let i=cum.findIndex(c=>c>=t);if(i<0)i=P.length-1;items.push({at:cum[i],p:[P[i][0],P[i][1]],stop:false})}
+    const near=(q,list)=>list.some(x=>Math.abs(x.at-q.at)<300);
+    const stops=items.filter(x=>x.stop),keep=[...stops];
+    for(const x of items)if(!x.stop&&!near(x,keep)&&hav(x.p,dest)>300)keep.push(x);
+    way=keep.sort((a,b)=>a.at-b.at).map(x=>x.p);
+  }
+  return{way,dest}}
+function appleTo(p){return`https://maps.apple.com/directions?destination=${llStr(p)}&mode=driving`}
+function appleRoute(r){const n=navStops(r,14);if(!n)return"";return`https://maps.apple.com/directions?destination=${llStr(n.dest)}${n.way.map(p=>"&waypoint="+llStr(p)).join("")}&mode=driving`}
+function googleRoute(r){const n=navStops(r,9);if(!n)return"";return`https://www.google.com/maps/dir/?api=1&destination=${llStr(n.dest)}${n.way.length?"&waypoints="+n.way.map(llStr).join("%7C"):""}&travelmode=driving&dir_action=navigate`}
+const GEO=new Map();let geoQ=Promise.resolve();
+function addrOf(r,p){const k=llStr(p);return(r.addr&&r.addr[k])||GEO.get(k)||null}
+function fmtAddr(j){const a=j.address||{};const road=a.road||a.pedestrian||a.path||a.track||a.footway||a.cycleway;
+  const town=a.city||a.town||a.village||a.hamlet||a.suburb||a.county;const place=j.name&&j.name!==road?j.name:null;
+  const line=[place,road?(a.house_number?a.house_number+" "+road:road):null].filter(Boolean).join(", ");
+  return[line,town].filter(Boolean).join(", ")||j.display_name||null}
+function reverseGeo(p){const k=llStr(p);if(GEO.has(k))return Promise.resolve(GEO.get(k));
+  const run=geoQ.then(async()=>{if(GEO.has(k))return GEO.get(k);let a=null;
+    try{const res=await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&addressdetails=1&lat=${(+p[0]).toFixed(6)}&lon=${(+p[1]).toFixed(6)}&accept-language=${encodeURIComponent(navigator.language||"en")}`);if(res.ok)a=fmtAddr(await res.json())}catch(e){}
+    await new Promise(z=>setTimeout(z,1100));if(a)GEO.set(k,a);return a});
+  geoQ=run.catch(()=>{});return run}
+async function fillAddrs(r){
+  for(const p of routeStops(r)){if(addrOf(r,p))continue;const a=await reverseGeo(p);const k=llStr(p);
+    document.querySelectorAll(`[data-addr="${k}"]`).forEach(e=>e.textContent=a||"No address here");
+    if(a&&r.who==="me"){const m=myRoutes().find(x=>x.id===r.id);if(m){(m.addr=m.addr||{})[k]=a;r.addr=m.addr;save()}}}}
+function stopsPanel(r){const st=routeStops(r);if(st.length<2)return"";const ap=appleRoute(r),gm=googleRoute(r);
+  return`<div class="panel"><h3 style="margin:0">Stops</h3><ol class="stops">${st.map((p,i)=>`<li><a href="${appleTo(p)}" target="_blank" rel="noopener" aria-label="Directions to ${i===0?"the start":i===st.length-1?"the end":"stop "+i} in Apple Maps"><b>${i===0?"Start":i===st.length-1?"End":"Stop "+i}</b><span data-addr="${llStr(p)}">${esc(addrOf(r,p)||"Finding address…")}</span></a></li>`).join("")}</ol>
+    <div class="row"><a class="btn" href="${ap}" target="_blank" rel="noopener">Open in Apple Maps</a><a class="btn" href="${gm}" target="_blank" rel="noopener">Open in Google Maps</a></div>
+    <p class="muted small" style="margin:0">Tap a stop for directions to it. The whole route opens with your stops and a few extra points along your line, so Maps keeps to the same roads${r.wps&&r.wps.length>1?"":" (shared routes carry only their start and end)"}. Apple Maps needs iOS 18.4 or later for more than one stop. Addresses © OpenStreetMap contributors.</p></div>`}
+
 function allRoutes(){return[...myRoutes().map(r=>({...r,who:"me"})),...(Social.ok()?Social.routes().filter(r=>!myRoutes().some(m=>m.id===r.id)):[])]}
 function findRoute(id){const m=myRoutes().find(r=>r.id===id);return m?{...m,who:"me"}:Social.SOC.routes.get(id)}
 function routeCard(r){const p=person(r.who);
@@ -1612,11 +1660,12 @@ function openRoute(id){const r=findRoute(id);if(!r)return;if(DETAIL_MAP){DETAIL_
     ${stylePicker()}
     ${BACKDROPS[backdrop()].map?`<div class="map-box${crtCls(backdrop())}" id="d-map"></div>`:`<canvas class="route" id="d-route" style="border-radius:14px"></canvas>`}
     <div class="detail-stats">${statBlock("Distance",fDist(r.dist||pathLen(r.pts)).toFixed(1),dLabel())}${statBlock("Type",r.mode==="straight"?"Straight":"Roads")}${statBlock("Visible to",(r.vis||"public")==="public"?"Everyone":r.vis==="followers"?"Followers":"Only me")}</div>
+    ${stopsPanel(r)}
     <div class="row"><button class="btn primary" id="rt-follow" type="button">Follow this route</button>${mine?'<span class="spacer"></span><button class="btn ghost" id="rt-del" type="button">Delete</button>':""}</div>
     <p class="muted small" style="margin:0">Share the link with your crew. Everyone who taps Follow gets the same line on their driving screen, and drives done together still group into a cruise.</p></div>`;
   sh.hidden=false;sh.scrollTop=0;document.body.style.overflow="hidden";$("#sh-x").onclick=closeSheet;
   if($("#d-map"))mountDetailMap($("#d-map"),r.pts);else drawRoute($("#d-route"),r.pts);
-  $("#rt-follow").onclick=()=>{closeSheet();followRoute({id:r.id,title:r.title,pts:r.pts})};$("#rt-share").onclick=()=>shareRoute(r);
+  $("#rt-follow").onclick=()=>{closeSheet();followRoute({id:r.id,title:r.title,pts:r.pts})};$("#rt-share").onclick=()=>shareRoute(r);fillAddrs(r);
   const ed=$("#rt-edit");if(ed)ed.onclick=()=>openPlanner(r.id);
   const rrp=$("#rt-report");if(rrp)rrp.onclick=()=>reportSheet({kind:"route",id:r.id,uid:r.who.slice(2),excerpt:r.title,what:"this route",done:b=>{if(b)closeSheet()}});
   const del=$("#rt-del");if(del)del.onclick=()=>{if(!confirm(`Delete ${r.title}?`))return;S.routes=myRoutes().filter(x=>x.id!==r.id);(S.deleted=S.deleted||[]).push(r.id);save();closeSheet();toast("Route deleted")};
@@ -1648,7 +1697,7 @@ function openPlanner(editId){
   const close=()=>{map=null;closeSheet()};$("#sh-x").onclick=close;
   $("#pl-save").onclick=()=>{const P=pts();if(P.length<2){toast("Add at least two stops");return}const title=$("#pl-title").value.trim()||"Planned route";
     const r={id:old?old.id:"rt-"+uid(),title,mode:st.legs.some(l=>l.length>2)?"roads":st.mode,wps:st.wps,legs:st.legs,pts:P,dist:pathLen(P),vis:$("#pl-vis").value,created:old?old.created:Date.now(),updated:Date.now()};
-    S.routes=[r,...myRoutes().filter(x=>x.id!==r.id)];save();map=null;closeSheet();toast("Route saved");openRoute(r.id)};
+    if(old&&old.addr)r.addr=old.addr;S.routes=[r,...myRoutes().filter(x=>x.id!==r.id)];save();map=null;closeSheet();toast("Route saved");openRoute(r.id)};
   info();
   loadMapLib().then(ml=>{const el=$("#pl-map");if(!el)return;
     const mine=S.drives.filter(isReal);const last=mine.length?mine[mine.length-1].pts.slice(-1)[0]:null;

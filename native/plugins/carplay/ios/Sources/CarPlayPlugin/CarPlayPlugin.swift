@@ -6,7 +6,7 @@ import Capacitor
 // CarPlay for Dragon Drive (category: Driving Task, entitlement com.apple.developer.carplay-driving-task).
 //
 // The car screen is one list: Start drive or Finish drive (with the drive's time and distance), and Follow a
-// route, which opens the list of planned routes. The drive itself still lives in the web app (app.html):
+// route, which opens the list of planned routes (each can be navigated in Apple Maps on the car screen). The drive itself still lives in the web app (app.html):
 // a tap here becomes an event for it ("start", "finish", "follow", "unfollow"), and the web app answers
 // with update(), the state the car screen shows. CarPlayHub holds that state and any events the page has not
 // collected yet, because CarPlay can connect before the web view exists (the app launched from the car).
@@ -68,7 +68,7 @@ public class CarPlayPlugin: CAPPlugin, CAPBridgedPlugin {
     //   source, vehicle: String
     //   following: String      title of the route being followed, or absent
     //   followingId: String
-    //   routes: [{id, title, detail}]   routes the driver can follow, newest first
+    //   routes: [{id, title, detail, nav}]   routes the driver can follow, newest first; nav = Apple Maps link
     //   notice: String, noticeId: String  shown once as an alert in the car (for example "Connect your RaceBox first")
     @objc func update(_ call: CAPPluginCall) {
         CarPlayHub.shared.setState(call.options as? [String: Any] ?? [:])
@@ -83,6 +83,7 @@ public class CarPlayPlugin: CAPPlugin, CAPBridgedPlugin {
 @objc(DDCarPlaySceneDelegate)
 public class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     private var ic: CPInterfaceController?
+    private weak var carScene: CPTemplateApplicationScene?
     private var root: CPListTemplate?
     private var routesList: CPListTemplate?
     private var lastShape = ""
@@ -98,6 +99,7 @@ public class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelega
     public func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene,
                                          didConnect interfaceController: CPInterfaceController) {
         ic = interfaceController
+        carScene = templateApplicationScene
         hub.scene = self
         let t = CPListTemplate(title: "Dragon Drive", sections: mainSections())
         root = t
@@ -180,14 +182,35 @@ public class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelega
             guard let id = r["id"] as? String else { continue }
             let it = CPListItem(text: r["title"] as? String ?? "Route", detailText: r["detail"] as? String,
                                 image: UIImage(systemName: id == cur ? "checkmark.circle.fill" : "map"))
-            it.handler = { [weak self] _, done in
-                self?.hub.send("follow", ["id": id])
-                self?.ic?.popTemplate(animated: true, completion: nil)
-                done()
-            }
+            let nav = (r["nav"] as? String).flatMap { URL(string: $0) }
+            let title = r["title"] as? String ?? "Route"
+            it.handler = { [weak self] _, done in self?.routeChosen(id: id, title: title, nav: nav); done() }
             items.append(it)
         }
         return [CPListSection(items: items)]
+    }
+
+    // A route: navigate it in Apple Maps on the car screen (its stops plus points along the line, built by the
+    // web app) while Dragon Drive follows it, or just follow it. The drive keeps recording either way.
+    private func routeChosen(id: String, title: String, nav: URL?) {
+        guard let ic = ic else { return }
+        let follow = { [weak self] in
+            self?.hub.send("follow", ["id": id])
+            self?.ic?.popTemplate(animated: true, completion: nil)
+        }
+        guard let nav = nav else { follow(); return }
+        let sheet = CPActionSheetTemplate(title: title, message: nil, actions: [
+            CPAlertAction(title: "Navigate in Maps", style: .default) { [weak self] _ in
+                ic.dismissTemplate(animated: true) { _, _ in
+                    follow()
+                    self?.carScene?.open(nav, options: nil, completionHandler: nil)
+                }
+            },
+            CPAlertAction(title: "Follow only", style: .default) { _ in ic.dismissTemplate(animated: true) { _, _ in follow() } },
+            CPAlertAction(title: "Cancel", style: .cancel) { _ in ic.dismissTemplate(animated: true, completion: nil) }
+        ])
+        if ic.presentedTemplate != nil { ic.dismissTemplate(animated: false) { _, _ in ic.presentTemplate(sheet, animated: true, completion: nil) } }
+        else { ic.presentTemplate(sheet, animated: true, completion: nil) }
     }
 
     private func openRoutes() {
