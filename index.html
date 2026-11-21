@@ -413,6 +413,35 @@ function hav(a,b){const dLat=rad(b[0]-a[0]),dLon=rad(b[1]-a[1]);const x=Math.sin
 function bearing(a,b){const y=Math.sin(rad(b[1]-a[1]))*Math.cos(rad(b[0]));const x=Math.cos(rad(a[0]))*Math.sin(rad(b[0]))-Math.sin(rad(a[0]))*Math.cos(rad(b[0]))*Math.cos(rad(b[1]-a[1]));return Math.atan2(y,x)*180/Math.PI}
 function move(p,brg,dist){const la=rad(p[0]),lo=rad(p[1]),br=rad(brg),d=dist/R;const la2=Math.asin(Math.sin(la)*Math.cos(d)+Math.cos(la)*Math.sin(d)*Math.cos(br));const lo2=lo+Math.atan2(Math.sin(br)*Math.sin(d)*Math.cos(la),Math.cos(d)-Math.sin(la)*Math.sin(la2));return[la2*180/Math.PI,lo2*180/Math.PI]}
 function pathLen(p){let d=0;for(let i=1;i<p.length;i++)d+=hav(p[i-1],p[i]);return d}
+/* ---- home privacy zone ----
+   Anything another person can see (shared drives, share cards) leaves out the part of a route near home. The cut is made
+   on this phone before anything is uploaded, so the servers and other users never get those points. Only the map point
+   is kept, in your private synced settings (S.settings.home = {lat, lon, r metres, k secret}), never the address.
+   Two things stop the cuts from giving the house away over many drives: the circle is centred off the house by up to
+   half the radius (and made 1.5x wider so the house is always at least r inside it), and each end is cut a further
+   random 0-30% of r along the road. Both come from the secret k, so they stay the same each time a drive is re-shared. */
+const HOME_R=[250,500,1000,2000],HOME_DEF=500;
+function hash01(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}h^=h>>>15;h=Math.imul(h,2246822519);h^=h>>>13;return (h>>>0)/4294967296}
+function homeKey(){const a=new Uint8Array(16);crypto.getRandomValues(a);return [...a].map(x=>x.toString(16).padStart(2,"0")).join("")}
+function homeZone(){const h=S.settings.home;if(!h||!isFinite(h.lat)||!isFinite(h.lon))return null;const r=h.r||HOME_DEF,k=h.k||"";
+  const ang=hash01(k+"|a")*2*Math.PI,off=.5*r*hash01(k+"|o");
+  return{c:[h.lat+off*Math.cos(ang)/111320,h.lon+off*Math.sin(ang)/(111320*Math.cos(rad(h.lat)))],R:1.5*r,r,k}}
+// Cut the start and/or end that lie in the zone. A drive that starts away from home keeps its real start, and the same for
+// the end. Leaving and coming back near home before getting properly away (3 zone radii) still counts as the start.
+function cutHome(pts,z,id){const n=pts.length;if(n<2)return pts;const inZ=i=>hav(z.c,pts[i])<z.R,far=i=>hav(z.c,pts[i])>3*z.R;
+  const ex=t=>z.r*.3*hash01(z.k+"|"+id+"|"+t);
+  const walk=(i,st,e)=>{let s=0;while(i+st>=0&&i+st<n&&s<e){s+=hav(pts[i],pts[i+st]);i+=st}return i};
+  let a=0,b=n-1;
+  if(inZ(0)){let f=0;while(f<n&&!far(f))f++;let l=0;for(let i=0;i<f;i++)if(inZ(i))l=i;if(l+1>=n)return [];a=walk(l+1,1,ex("s"))}
+  if(inZ(n-1)){let f=n-1;while(f>=0&&!far(f))f--;let l=n-1;for(let i=n-1;i>f;i--)if(inZ(i))l=i;if(l-1<0)return [];b=walk(l-1,-1,ex("e"))}
+  return b-a>=1?pts.slice(a,b+1):[]}
+// The points of my drive that anyone else may see. With no home set, the old rule: the first and last 300 m.
+function sharePts(d){const pts=d.pts||[];if(S.settings.hideEnds===false||pts.length<2)return pts;const z=homeZone();return z?cutHome(pts,z,d.id):Social.trimEnds(pts,300)}
+const privSig=()=>{const h=S.settings.home;return S.settings.hideEnds===false?"off":h&&isFinite(h.lat)?[h.lat,h.lon,h.r||HOME_DEF,h.k].join(","):"300"};
+// Suggest home from where my drives usually start and end: the densest spot with at least 3 ends within 150 m.
+function guessHome(){const ends=[];for(const d of S.drives.filter(isReal))if(d.pts.length>1)ends.push(d.pts[0],d.pts[d.pts.length-1]);
+  let best=null;for(const p of ends){const near=ends.filter(q=>hav(p,q)<150);if(near.length>=3&&(!best||near.length>best.length))best=near}
+  if(!best)return null;return{lat:best.reduce((s,q)=>s+q[0],0)/best.length,lon:best.reduce((s,q)=>s+q[1],0)/best.length,n:best.length}}
 
 /* A point is [lat, lon, tMs, speed m/s, altitude m|null, gLong|null, gLat|null, gTotal|null].
    g values come from the device (RaceBox accelerometer, phone motion sensors) when present. */
@@ -667,7 +696,7 @@ const Social=(()=>{
   // Trim the start and end of a route so it doesn't point at anyone's front door.
   function trimEnds(pts,m){if(!m||pts.length<3)return pts;const cd=[0];for(let i=1;i<pts.length;i++)cd.push(cd[i-1]+hav(pts[i-1],pts[i]));const tot=cd[cd.length-1];const a=tot>2*m+50?m:tot*.3,b=tot>2*m+50?tot-m:tot*.7;const out=pts.filter((_,i)=>cd[i]>=a&&cd[i]<=b);if(out.length>=2)return out;const mid=Math.max(1,Math.floor(pts.length/2));return [pts[mid-1],pts[mid]]}
   const r5=x=>x==null?null:Math.round(x*1e5)/1e5,r2=x=>x==null?null:Math.round(x*100)/100;
-  function row(d){const pts=trimEnds(d.pts,S.settings.hideEnds===false?0:300).map(p=>[r5(p[0]),r5(p[1]),p[2],r2(p[3]),p[4]==null?null:Math.round(p[4]),r2(p[5]),r2(p[6]),r2(p[7])]);
+  function row(d){const pts=sharePts(d).map(p=>[r5(p[0]),r5(p[1]),p[2],r2(p[3]),p[4]==null?null:Math.round(p[4]),r2(p[5]),r2(p[6]),r2(p[7])]);
     return{id:d.id,visibility:d.vis||S.settings.defaultVis||"followers",title:d.title,vehicle:vehPriv(d.vehicle)?"":(d.vehicle||""),source:d.source||"",start:new Date(d.start).toISOString(),stats:d.stats,pts,photo:!!d.photo}}
   // Announcements share the drives table (kind "post"); keep them out of everything that expects a route.
   function toPost(r){const me=Sync.user&&Sync.user.uid;return{id:r.id,who:r.user_id===me?"me":"u:"+r.user_id,uid:r.user_id,remote:true,post:true,body:r.body||"",start:Date.parse(r.start)}}
@@ -675,7 +704,7 @@ const Social=(()=>{
   function toRoute(r){return{id:r.id,who:"u:"+r.user_id,remote:true,title:r.title,pts:r.pts,dist:r.dist,mode:r.mode,vis:r.visibility,created:Date.parse(r.created_at)}}
   function toLocal(r){const p=SOC.profiles.get(r.user_id);return{id:r.id,who:"u:"+r.user_id,remote:true,title:r.title,vehicle:r.vehicle,source:r.source,start:Date.parse(r.start),stats:r.stats,pts:r.pts,photo:r.photo,vis:r.visibility}}
   const vehPriv=n=>!!(S.settings.garage&&S.settings.garage[n]&&S.settings.garage[n].priv);
-  const sig=d=>JSON.stringify([d.title,d.vehicle,vehPriv(d.vehicle),d.vis||S.settings.defaultVis||"followers",!!d.photo,d.pts.length,S.settings.hideEnds!==false]);
+  const sig=d=>JSON.stringify([d.title,d.vehicle,vehPriv(d.vehicle),d.vis||S.settings.defaultVis||"followers",!!d.photo,d.pts.length,privSig()]);
   async function loadMe(){const u=Sync.user;const r=await J("/rest/v1/profiles?select=*&id=eq."+u.uid);SOC.me=r&&r[0]||null;if(SOC.me)addProfiles([SOC.me]);return SOC.me}
   async function refresh(){
     if(!ok())return;const u=Sync.user;
@@ -1773,8 +1802,8 @@ function openDrive(id,fresh){
     ${fresh?`<div class="notice">Drive saved. Give it a name, add a photo, then share it.</div>`:""}
     <div class="photo-edit">${d.photo?`<img class="photo" data-photo="${d.id}" alt="Photo from ${esc(d.title)}">`:""}
       ${mine?`<div class="row" style="margin-top:${d.photo?"8px":"0"}"><button class="btn" id="add-photo" type="button"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>${d.photo?"Change photo":"Add a photo"}</button>${d.photo?`<button class="btn ghost" id="rm-photo" type="button">Remove photo</button>`:""}</div>`:""}</div>
-    ${stylePicker()}
-    ${BACKDROPS[backdrop()].map?`<div class="map-box${crtCls(backdrop())}" id="d-map"></div>`:`<canvas class="route" id="d-route" style="border-radius:14px"></canvas>`}
+    ${d.pts.length<2?`<div class="notice">This drive stayed close to the driver's home, so its route is hidden.</div>`:`${stylePicker()}
+    ${BACKDROPS[backdrop()].map?`<div class="map-box${crtCls(backdrop())}" id="d-map"></div>`:`<canvas class="route" id="d-route" style="border-radius:14px"></canvas>`}`}
     ${d.pts.length>1&&!REC.on?`<div class="row"><button class="btn" id="d-follow" type="button"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8z"/></svg>Follow this route</button></div>`:""}
     <div class="detail-stats">
       ${statBlock("Distance",fDist(s.dist).toFixed(2),dLabel())}${statBlock("Moving time",fDur(s.moving))}${statBlock("Elapsed",fDur(s.dur))}
@@ -1796,7 +1825,7 @@ function openDrive(id,fresh){
   sh.hidden=false;sh.scrollTop=0;document.body.style.overflow="hidden";
   if(fresh)countUp(sh.querySelector(".detail-stats"),d.id);
   fillPhotos(sh);
-  if($("#d-map"))mountDetailMap($("#d-map"),d.pts);else paintRoute($("#d-route"),d.pts);
+  if($("#d-map"))mountDetailMap($("#d-map"),d.pts);else if($("#d-route"))paintRoute($("#d-route"),d.pts);
   const dfl=$("#d-follow");if(dfl)dfl.onclick=()=>{closeSheet();followRoute(d)};
   drawSeries($("#d-speed"),d.pts,q=>fSpeed(q[3]),{color:css("--accent")});
   if(hasAlt)drawSeries($("#d-alt"),d.pts,q=>q[4]==null?null:fAlt(q[4]),{color:css("--alt"),zero:false,minSpan:U()==="mi"?40:12});
@@ -1907,21 +1936,23 @@ async function buildCard(d){
   const BG="#0f1513",FG="#f2f5f3",MUTED="#9fb0a9",AMBER="#f2a93b",GREEN="#3fbf8a",BLUE="#0a84ff";
   const DF='"Barlow Condensed","Arial Narrow",sans-serif',BF='"Barlow",system-ui,sans-serif';
   g.fillStyle=BG;g.fillRect(0,0,W,H);
-  const top=800;let photo=null;const k=backdrop(),ink=routeInk(k);let map=!!BACKDROPS[k].map;
+  const top=800;let photo=null;const k=backdrop(),ink=routeInk(k);
+  // my own drives lose the part near home (sharePts), the same as what my followers see
+  const RP=d.who==="me"?sharePts(d):d.pts||[];let map=!!BACKDROPS[k].map&&RP.length>1;
   if(d.photo){const u=await photos.url(d.id);if(u)try{photo=await loadImage(u)}catch(e){}}
-  const routeBox=(x,y,w,h,lw)=>{const P=projector(d.pts,w,h,Math.round(w*0.08));const P2=p=>{const[a,b]=P(p);return[a+x,b+y]};
-    const solid=k==="solid";g.save();if(!solid){g.shadowColor="rgba(0,0,0,.55)";g.shadowBlur=12}strokePath(g,P2,d.pts,solid?ink.casing:"#ffffff",lw+5);g.restore();strokePath(g,P2,d.pts,solid?ink.route:BLUE,lw);
-    const dot=(p,col)=>{const[a,b]=P2(p);g.fillStyle="#fff";g.beginPath();g.arc(a,b,lw*1.5,0,7);g.fill();g.fillStyle=col;g.beginPath();g.arc(a,b,lw,0,7);g.fill()};dot(d.pts[0],GREEN);dot(d.pts[d.pts.length-1],"#ff7a45")};
+  const routeBox=(x,y,w,h,lw)=>{if(RP.length<2)return;const P=projector(RP,w,h,Math.round(w*0.08));const P2=p=>{const[a,b]=P(p);return[a+x,b+y]};
+    const solid=k==="solid";g.save();if(!solid){g.shadowColor="rgba(0,0,0,.55)";g.shadowBlur=12}strokePath(g,P2,RP,solid?ink.casing:"#ffffff",lw+5);g.restore();strokePath(g,P2,RP,solid?ink.route:BLUE,lw);
+    const dot=(p,col)=>{const[a,b]=P2(p);g.fillStyle="#fff";g.beginPath();g.arc(a,b,lw*1.5,0,7);g.fill();g.fillStyle=col;g.beginPath();g.arc(a,b,lw,0,7);g.fill()};dot(RP[0],GREEN);dot(RP[RP.length-1],"#ff7a45")};
   if(photo){
     const k=Math.max(W/photo.naturalWidth,top/photo.naturalHeight);const pw=photo.naturalWidth*k,ph=photo.naturalHeight*k;
     g.save();g.beginPath();g.rect(0,0,W,top);g.clip();g.drawImage(photo,(W-pw)/2,(top-ph)/2,pw,ph);g.restore();
     const gr=g.createLinearGradient(0,top-300,0,top);gr.addColorStop(0,"rgba(15,21,19,0)");gr.addColorStop(1,BG);g.fillStyle=gr;g.fillRect(0,top-300,W,300);
     const gt=g.createLinearGradient(0,0,0,180);gt.addColorStop(0,"rgba(15,21,19,.65)");gt.addColorStop(1,"rgba(15,21,19,0)");g.fillStyle=gt;g.fillRect(0,0,W,180);
     const bx=W-340,by=40,bs=300;
-    if(map){try{const img=await snapshot(k,bs/2,bs/2,2,d.pts,18,(g2,P)=>inkRoute(g2,P,d.pts,ink,3));g.save();roundRect(g,bx,by,bs,bs,28);g.clip();g.drawImage(img,bx,by,bs,bs);if(BACKDROPS[k].crt)crtArea(g,bx,by,bs,bs,BACKDROPS[k].px?2:3);g.restore()}catch(e){map=false}}
+    if(map){try{const img=await snapshot(k,bs/2,bs/2,2,RP,18,(g2,P)=>inkRoute(g2,P,RP,ink,3));g.save();roundRect(g,bx,by,bs,bs,28);g.clip();g.drawImage(img,bx,by,bs,bs);if(BACKDROPS[k].crt)crtArea(g,bx,by,bs,bs,BACKDROPS[k].px?2:3);g.restore()}catch(e){map=false}}
     if(!map){g.fillStyle=k==="solid"?ink.bg:"rgba(15,21,19,.55)";roundRect(g,bx,by,bs,bs,28);g.fill();routeBox(bx,by,bs,bs,6)}
   }else{
-    if(map){try{const img=await snapshot(k,W/2,top/2,2,d.pts,50,(g2,P)=>inkRoute(g2,P,d.pts,ink,5));g.drawImage(img,0,0,W,top);if(BACKDROPS[k].crt)crtArea(g,0,0,W,top,BACKDROPS[k].px?2:3);
+    if(map){try{const img=await snapshot(k,W/2,top/2,2,RP,50,(g2,P)=>inkRoute(g2,P,RP,ink,5));g.drawImage(img,0,0,W,top);if(BACKDROPS[k].crt)crtArea(g,0,0,W,top,BACKDROPS[k].px?2:3);
       const gr=g.createLinearGradient(0,top-160,0,top);gr.addColorStop(0,"rgba(15,21,19,0)");gr.addColorStop(1,BG);g.fillStyle=gr;g.fillRect(0,top-160,W,160);
       const gt=g.createLinearGradient(0,0,0,170);gt.addColorStop(0,"rgba(15,21,19,.7)");gt.addColorStop(1,"rgba(15,21,19,0)");g.fillStyle=gt;g.fillRect(0,0,W,170)}catch(e){map=false}}
     if(!map){
@@ -1977,7 +2008,7 @@ async function openShare(id,back){
   sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span><h3>Share card</h3></div></div>
     <div class="wrap body stack">${stylePicker()}<div class="empty" id="card-wait">Building your card…</div><img class="share-preview" id="card-img" alt="Share card for ${esc(d.title)}" hidden>
     <div class="row" style="justify-content:center"><button class="btn primary" id="card-share" type="button" hidden>Share</button><button class="btn" id="card-save" type="button" disabled>Save image</button>${d.who==="me"&&!d.photo?`<button class="btn ghost" id="card-photo" type="button">Add a photo first</button>`:""}</div>
-    <p class="muted small" style="text-align:center;margin:0">1080 × 1350, sized for Instagram, stories and group chats.</p></div>`;
+    <p class="muted small" style="text-align:center;margin:0">1080 × 1350, sized for Instagram, stories and group chats.${d.who==="me"&&isReal(d)&&S.settings.hideEnds!==false?(homeZone()?" The part of the route near your home is left out.":" The first and last 300 m of the route are left out."):""}</p></div>`;
   sh.hidden=false;sh.scrollTop=0;document.body.style.overflow="hidden";
   $("#sh-x").onclick=()=>wasOpen?openDrive(d.id):closeSheet();
   const tok=openShare._tok=(openShare._tok||0)+1;
@@ -2534,7 +2565,8 @@ function viewYou(){
       <form class="row" id="f-form"><input type="search" id="f-in" placeholder="Find people by @handle" autocapitalize="none" style="flex:1;min-width:0"><button class="btn" type="submit">Search</button></form>
       <div id="f-res" class="stack" style="gap:0"></div>
       <label class="field">New drives are visible to<select id="def-vis"><option value="followers" ${(S.settings.defaultVis||"followers")==="followers"?"selected":""}>Followers</option><option value="public" ${S.settings.defaultVis==="public"?"selected":""}>Everyone</option><option value="private" ${S.settings.defaultVis==="private"?"selected":""}>Only me</option></select></label>
-      <label class="check"><input type="checkbox" id="hide-ends" ${S.settings.hideEnds!==false?"checked":""}> Hide the first and last 300 m of shared routes, so they don't show where you live</label></div>`:""}
+      </div>`:""}
+    ${homePanel()}
     ${Sync.on()?`<div class="panel"><h3>${Sync.user?"Account":signinIntent==="new"?"Create an account":signinIntent==="in"?"Sign in":"Sign in or create an account"}</h3>${Sync.user?`<p style="margin:0">Signed in as <b>${esc(Sync.user.email||"")}</b>${Social.me?` · <a href="#u/${esc(Social.me.handle)}">@${esc(Social.me.handle)}</a>`:""}. Your profile, garage, drives and photos sync to every device you sign in on.</p>
       <div class="row"><span class="muted small" id="sync-status" style="flex:1">${esc(Sync.status)}</span><button class="btn" id="sync-now" type="button">Sync now</button><button class="btn ghost" id="sync-out" type="button">Sign out</button></div>
       <details class="del-acc"><summary class="muted small">Delete account</summary><div class="stack" style="margin-top:10px">
@@ -2575,7 +2607,39 @@ function viewYou(){
   const ff=$("#f-form");if(ff)ff.onsubmit=async e=>{e.preventDefault();const box=$("#f-res");box.innerHTML='<p class="muted small" style="margin:0">Searching…</p>';
     try{const r=await Social.search($("#f-in").value);box.innerHTML=r.length?r.map(p=>{const pp=Social.person("u:"+p.id);return `<a class="effort" href="#u/${esc(p.handle)}" style="display:flex;text-decoration:none;color:inherit">${avatar(pp,32)}<div style="flex:1;min-width:0"><div style="font-weight:600">${nameHtml(pp)}</div><div class="muted small">@${esc(p.handle)}${Social.SOC.following.has(p.id)?" · Following":""}</div></div></a>`}).join(""):'<p class="muted small" style="margin:0">Nobody by that handle yet.</p>'}catch(err){box.innerHTML='<p class="muted small" style="margin:0">Search failed. Check your connection.</p>'}};
   const dvs=$("#def-vis");if(dvs)dvs.onchange=e=>{S.settings.defaultVis=e.target.value;save();toast("Saved")};
-  const he=$("#hide-ends");if(he)he.onchange=e=>{S.settings.hideEnds=e.target.checked;save()};
+  bindHome();
+}
+
+/* ---- home privacy zone settings (You page) ---- */
+const homeR=m=>U()==="mi"?{250:"0.15 mi",500:"0.3 mi",1000:"0.6 mi",2000:"1.2 mi"}[m]||(m/1609.34).toFixed(2)+" mi":m>=1000?m/1000+" km":m+" m";
+function homePanel(){const h=S.settings.home,set=!!homeZone(),off=S.settings.hideEnds===false,g=set?null:guessHome();
+  return `<div class="panel" id="home-panel"><h3>Home privacy zone</h3>
+    <p class="muted small" style="margin:0">Drives you share, and your share cards, leave out the start or end of a route when it's near home, so nobody can tell where you live. Drives that start and end somewhere else show in full. You always see your whole route. Only the map point is saved, never the address, and nobody else can see it.</p>
+    ${set?`<div class="row"><span style="flex:1;min-width:0"><b>Home is set.</b> <span class="muted small">Routes hide at least this far around it:</span></span>
+        <select id="home-r" aria-label="Hide radius" style="flex:none">${HOME_R.map(m=>`<option value="${m}" ${(h.r||HOME_DEF)===m?"selected":""}>${homeR(m)}</option>`).join("")}</select></div>
+      <div class="row"><button class="btn" id="home-change" type="button">Change home</button><button class="btn ghost" id="home-rm" type="button">Remove home</button></div>`
+    :`<p class="small" style="margin:0">No home set yet, so the first and last 300 m of every shared route are hidden instead.</p>`}
+    <div class="stack" id="home-set" ${set?"hidden":""} style="gap:8px">
+      <form class="row" id="home-form"><input type="search" id="home-q" placeholder="Search your address" autocomplete="street-address" style="flex:1;min-width:0"><button class="btn" type="submit">Find</button></form>
+      <div id="home-res" class="stack" style="gap:0"></div>
+      <div class="row"><button class="btn" id="home-here" type="button">Use my current location</button>${g?`<button class="btn" id="home-guess" type="button">Use where ${g.n} of my drives start or end</button>`:""}</div>
+    </div>
+    <label class="check"><input type="checkbox" id="hide-ends" ${off?"":"checked"}> Hide the start and end of shared routes${set?" near home":""}</label></div>`}
+function setHome(lat,lon,label){const o=S.settings.home||{};S.settings.home={lat:Math.round(lat*1e6)/1e6,lon:Math.round(lon*1e6)/1e6,r:o.r||HOME_DEF,k:o.k||homeKey()};S.settings.hideEnds=true;save();viewYou();toast(label?"Home set to "+label:"Home set")}
+function bindHome(){
+  const he=$("#hide-ends");if(he)he.onchange=e=>{S.settings.hideEnds=e.target.checked;save();viewYou()};
+  const hr=$("#home-r");if(hr)hr.onchange=e=>{S.settings.home={...S.settings.home,r:+e.target.value};save();toast("Saved")};
+  const hc=$("#home-change");if(hc)hc.onclick=()=>{$("#home-set").hidden=false;$("#home-q").focus()};
+  const rm=$("#home-rm");if(rm)rm.onclick=()=>{delete S.settings.home;save();viewYou();toast("Home removed. Shared routes hide their first and last 300 m.")};
+  const gs=$("#home-guess");if(gs)gs.onclick=()=>{const g=guessHome();if(g)setHome(g.lat,g.lon,"where your drives start and end")};
+  const hh=$("#home-here");if(hh)hh.onclick=()=>{if(!navigator.geolocation){toast("Location isn't available here");return}hh.disabled=true;hh.textContent="Finding you…";
+    navigator.geolocation.getCurrentPosition(p=>setHome(p.coords.latitude,p.coords.longitude,"your current location"),e=>{hh.disabled=false;hh.textContent="Use my current location";toast(e.code===1?"Location is blocked. Allow it, or search your address.":"Couldn't find your location. Try searching your address.")},{enableHighAccuracy:true,timeout:15000,maximumAge:0})};
+  const hf=$("#home-form");if(hf)hf.onsubmit=async e=>{e.preventDefault();const q=$("#home-q").value.trim();const box=$("#home-res");if(q.length<3){toast("Type more of your address");return}
+    box.innerHTML='<p class="muted small" style="margin:0">Searching…</p>';
+    try{const r=await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q="+encodeURIComponent(q),{headers:{Accept:"application/json"}});if(!r.ok)throw 0;const list=await r.json();
+      box.innerHTML=list.length?list.map((x,i)=>`<button class="effort" type="button" data-home="${i}" style="display:block;width:100%;text-align:left;background:none;border:0;color:inherit;font:inherit;cursor:pointer">${esc(x.display_name)}</button>`).join(""):'<p class="muted small" style="margin:0">No match. Try adding the city or zip code.</p>';
+      box.querySelectorAll("[data-home]").forEach(b=>b.onclick=()=>{const x=list[+b.dataset.home];setHome(+x.lat,+x.lon,String(x.display_name).split(",").slice(0,2).join(","))})}
+    catch(err){box.innerHTML='<p class="muted small" style="margin:0">Search failed. Check your connection, or use your current location.</p>'}};
 }
 
 /* ================= global events ================= */
