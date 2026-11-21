@@ -36,6 +36,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      configurationForConnecting connectingSceneSession: UISceneSession,
                      options: UIScene.ConnectionOptions) -> UISceneConfiguration {
+        // CarPlay: the car screen gets its own scene, described in Info.plist (DDCarPlaySceneDelegate, in plugins/carplay).
+        if connectingSceneSession.role.rawValue == "CPTemplateApplicationSceneSessionRoleApplication" {
+            return UISceneConfiguration(name: "CarPlay Configuration", sessionRole: connectingSceneSession.role)
+        }
         let config = UISceneConfiguration(name: "Default Configuration",
                                           sessionRole: connectingSceneSession.role)
         config.delegateClass = SceneDelegate.self

@@ -1,0 +1,12 @@
+{
+  "name": "dragon-drive-carplay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dragon Drive's CarPlay screens (Driving Task category): start and finish a drive, see its time and distance, and pick a route to follow. The web app drives it through the CarPlay plugin.",
+  "main": "index.js",
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  }
+}

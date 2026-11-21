@@ -1502,6 +1502,7 @@ function updateLive(){
     const info=dm.querySelector(".dm-info");if(CAM.stream&&info&&!$("#dm-cam")){info.insertAdjacentHTML("afterbegin",'<video id="dm-cam" class="dm-cam" muted playsinline autoplay aria-label="What the camera is filming"></video>');const dc=$("#dm-cam");dc.srcObject=CAM.stream;dc.play().catch(()=>{})}}
   set("dm-dist",`${fDist(dist).toFixed(1)}<small>${dLabel()}</small>`);set("dm-time",fDur(el));
   const b=$("#rec-btn");if(b){b.classList.toggle("stop",REC.on);b.querySelector(".lbl").textContent=REC.on?"Hold to finish":"Start drive"}
+  cpState();
 }
 function thinLive(p){if(p.length<1500)return p;const k=Math.ceil(p.length/1500);return p.filter((_,i)=>i%k===0||i===p.length-1)}
 // In the iOS app, GPS comes from the native background-location plugin, so a drive keeps logging with
@@ -1524,7 +1525,7 @@ function finishRec(){
   const d={id:uid(),who:"me",title,vehicle:S.settings.vehicle,source:REC.source,start:raw[0][2],pts:thin(raw),stats:analyze(raw)};if(REC.gaps&&REC.gaps.length)d.gaps=REC.gaps;REC.gaps=[];
   S.drives.push(d);if(dropExamples())toast("First drive saved, example drives removed");save();
   if(CAM.rec||CAM.stream)stopCam().then(v=>{if(v){d.video=v;save();if(SHEET&&SHEET.kind==="drive"&&SHEET.id===d.id)openDrive(d.id,true)}});
-  if(location.hash==="#feed"){render();openDrive(d.id,true)}else{pendingOpen=d.id;location.hash="#feed"}
+  if(location.hash==="#feed"){render();openDrive(d.id,true)}else{pendingOpen=d.id;location.hash="#feed"}cpState();
 }
 
 /* ================= speed limits, alerts, follow a route ================= */
@@ -1567,6 +1568,42 @@ let FOLLOW=null;
 function followRoute(d){FOLLOW={id:d.id,title:d.title,pts:d.pts.map(p=>[p[0],p[1],p[2]])};toast(`Following ${d.title}. Start a drive when you're ready.`);location.hash="#record"}
 function offRoute(p){if(!FOLLOW)return false;let m=Infinity;for(const q of FOLLOW.pts){const d=hav(p,q);if(d<m)m=d;if(m<120)return false}return m>=120}
 function windowPts(p,list,r){return list.filter(q=>hav(p,q)<r)}
+
+/* ================= CarPlay (iOS app only) ================= */
+// The car screen (native/plugins/carplay) shows Start drive / Finish drive and Follow a route. Its taps come here
+// as events and run the same code as the phone's buttons; cpState() tells it what to show. It only runs while
+// CarPlay is connected. Needs Apple's CarPlay Driving Task entitlement to appear in a real car.
+const CARPLAY=NATIVE&&Capacitor.registerPlugin?Capacitor.registerPlugin("CarPlay"):null;
+let CP_ON=false,cpNote=0;
+function cpState(notice){
+  if(!CARPLAY||!CP_ON)return;
+  const pts=REC.pts,n=pts.length;let dist=0;for(let i=1;i<n;i++)dist+=hav(pts[i-1],pts[i]);
+  const el=REC.on?(n>1?(pts[n-1][2]-pts[0][2])/1000:(Date.now()-REC.start)/1000):0;
+  const src=S.settings.source;
+  const routes=allRoutes().filter(r=>r.pts&&r.pts.length>1).sort((a,b)=>(b.created||0)-(a.created||0)).slice(0,12)
+    .map(r=>({id:r.id,title:r.title||"Route",detail:`${fDist(r.dist||pathLen(r.pts)).toFixed(1)} ${dLabel()}${r.who==="me"?"":" · "+(person(r.who).name||"")}`}));
+  const s={ready:true,recording:REC.on,time:fDur(el),dist:`${fDist(dist).toFixed(1)} ${dLabel()}`,
+    source:src==="phone"?"Phone GPS":(SOURCES[src]||{}).name||"",vehicle:S.settings.vehicle||"",routes};
+  if(FOLLOW){s.following=FOLLOW.title;s.followingId=FOLLOW.id}
+  if(notice){s.notice=notice;s.noticeId=String(++cpNote)}
+  CARPLAY.update(s).catch(()=>{});
+}
+if(CARPLAY){
+  const L=(e,f)=>CARPLAY.addListener(e,f).catch(()=>{});
+  L("connected",()=>{CP_ON=true;cpState()});
+  L("disconnected",()=>{CP_ON=false});
+  L("start",()=>{if(REC.on){cpState();return}
+    if(location.hash!=="#record")location.hash="#record";
+    startRec();
+    const src=S.settings.source;
+    cpState(REC.on?null:src!=="phone"?`Connect your ${SOURCES[src].name} on your iPhone first, or switch to Phone GPS.`:"Couldn't start the drive. Check Dragon Drive on your iPhone.")});
+  L("finish",()=>{if(REC.on)finishRec();cpState()});
+  L("follow",e=>{const r=e&&findRoute(e.id);if(r&&!REC.on)followRoute({id:r.id,title:r.title,pts:r.pts});
+    else if(r){FOLLOW={id:r.id,title:r.title,pts:r.pts.map(p=>[p[0],p[1],p[2]])};$("#drivemode").hidden=true;$("#drivemode").innerHTML="";updateLive()}
+    cpState()});
+  L("unfollow",()=>{FOLLOW=null;if(REC.on){$("#drivemode").hidden=true;$("#drivemode").innerHTML="";updateLive()}else if(current==="record")viewRecord();cpState()});
+  CARPLAY.status().then(r=>{if(r&&r.connected){CP_ON=true;cpState()}}).catch(()=>{});
+}
 
 /* ================= planned routes ================= */
 // Plan a route by tapping points on the map. "Roads" snaps each leg to roads with the free OSRM
