@@ -2,11 +2,11 @@
 import PackageDescription
 
 let package = Package(
-    name: "DragonDriveCarPlay",
+    name: "DragonDriveCarplay",
     platforms: [.iOS(.v15)],
     products: [
         .library(
-            name: "DragonDriveCarPlay",
+            name: "DragonDriveCarplay",
             targets: ["CarPlayPlugin"])
     ],
     dependencies: [
