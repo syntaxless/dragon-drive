@@ -1408,7 +1408,12 @@ function autoConnect(){const k=S.settings.source;if(k!=="phone"&&hasBLE&&BT.getD
 // The iPhone app's "Start drive" Quick Action (long-press the icon) and Siri call this once the page is ready.
 // It also takes Siri's "End my drive" (native/ios/App/App/DriveIntents.swift): "finish" saves the drive like holding the button.
 // "show" comes after Siri started a drive once the phone was unlocked: the drive is native, so just pick it up.
+// "film" ("Start filming with Dragon Drive"): a drive with the camera on, or the camera on for the drive under way.
+// "siri-start": Siri's plain start of a Bluetooth drive, which never films (filming has to be asked for).
 window.ddQuick=a=>{if(a==="show"){if(location.hash!=="#record")location.hash="#record";syncNative();return true}
+  if(a==="film"){if(location.hash!=="#record")location.hash="#record";
+    if(REC.on){if(!CAM.stream)startCam()}else{REC.film=true;syncNative().then(()=>{if(!REC.on)tapStart()})}return true}
+  if(a==="siri-start"){REC.film=false;a="start"}
   if(a==="start"){if(location.hash!=="#record")location.hash="#record";if(!REC.on)tapStart()}
   else if(a==="finish"){if(REC.on)finishRec();else toast("No drive is being recorded.")}return true};
 async function tapStart(){
@@ -1524,7 +1529,9 @@ function startRec(adopt){
   REC.tick=setInterval(()=>{keepAwake();updateLive()},1000);
   viewRecord();
   if(src==="phone"&&!DLOC)toast("Keep Dragon Drive open with the screen on. iPhone pauses GPS if it locks.");
-  if(S.settings.film&&!adopt)startCam();
+  // A drive Siri or the car screen started films only when asked ("Start filming with Dragon Drive"); a tap on the
+  // phone follows the "Film the road" setting.
+  const film=REC.film!=null?REC.film:S.settings.film&&!adopt;REC.film=null;if(film)startCam();
   if(adopt)toast(adopt.origin==="carplay"?"Recording the drive you started on the car screen":"Recording the drive you started with Siri");
 }
 // One fix into a drive's points (st keeps the parked point between calls). False if it was not kept.
@@ -1613,8 +1620,8 @@ if(DREC){DREC.status().then(()=>{DREC_OK=true;recConfig();syncNative();if(curren
 // Drive screen panel: hands-free start and finish, and the permission a locked-phone start needs.
 function lockPanel(){return DREC_OK?`<div class="panel" id="lock-panel"><h3>Hands-free</h3><p class="muted small" id="lock-t" style="margin:0">Say "Start Dragon Drive" and "Dragon Drive, I'm done".</p><button class="btn ghost" id="lock-b" type="button" style="margin-top:10px" hidden>Allow with the phone locked</button></div>`:""}
 async function lockFill(){const t=$("#lock-t"),b=$("#lock-b");if(!t||!b)return;const st=await DREC.status().catch(()=>null);if(!st)return;
-  if(st.status==="always"){t.textContent=`Say "Start Dragon Drive" or "Dragon Drive, I'm done" any time, even with the phone locked, and the car screen works the same way. Siri needs "Allow Siri When Locked" on in Settings, Siri.`;b.hidden=true;return}
-  t.textContent=`Siri and the car screen can finish a drive with the phone locked. To start one without unlocking, for example on a motorcycle, allow location Always. Without it, Siri asks you to unlock first. Phone GPS only: camera, speed alerts and Bluetooth devices need the app open.`;b.hidden=false;
+  if(st.status==="always"){t.textContent=`Say "Start Dragon Drive" or "Dragon Drive, I'm done" any time, even with the phone locked, and the car screen works the same way. Siri needs "Allow Siri When Locked" on in Settings, Siri. To film too, say "Start filming with Dragon Drive" with the phone unlocked and mounted: iPhone only lets the camera run with the app on screen.`;b.hidden=true;return}
+  t.textContent=`Siri and the car screen can finish a drive with the phone locked. To start one without unlocking, for example on a motorcycle, allow location Always. Without it, Siri asks you to unlock first. Phone GPS only: camera, speed alerts and Bluetooth devices need the app open. To film, say "Start filming with Dragon Drive".`;b.hidden=false;
   b.onclick=async()=>{const r=await DREC.requestAlways().catch(()=>null);if(r&&r.status==="always"){toast("Done. Siri can start a drive with the phone locked.");lockFill()}
     else{toast('In Settings, tap Location, then "Always".');DREC.openSettings().catch(()=>{})}}}
 function geoWatch(ok,fail,plug){if(!DLOC)return navigator.geolocation.watchPosition(ok,fail,{enableHighAccuracy:true,maximumAge:0,timeout:20000});

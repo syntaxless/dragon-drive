@@ -35,13 +35,43 @@ struct StartDriveIntent: AppIntent, ForegroundContinuableIntent {
             return .result(dialog: "Location is off for Dragon Drive. Turn it on in Settings, then try again.")
         case .needsPage:
             throw needsToContinueInForegroundError("Unlock your iPhone to start your drive with your Bluetooth device.") {
-                PageCommand.send("start")
+                PageCommand.send("siri-start")
             }
         case .needsForeground:
             throw needsToContinueInForegroundError("Unlock your iPhone to start your drive. To start with it locked, allow location Always on the Drive screen.") {
                 DriveRecorder.shared.start(origin: "siri", force: true)
                 PageCommand.send("show")
             }
+        }
+    }
+}
+
+// "Start filming with Dragon Drive": a drive with the phone camera on. A plain start never films; filming has to be
+// asked for. iOS lets an app use the camera only on screen, so this one always needs the phone unlocked and the app
+// open (it asks iOS to unlock if needed). Said during a drive, it turns the camera on for that drive.
+@available(iOS 16.4, *)
+struct FilmDriveIntent: AppIntent, ForegroundContinuableIntent {
+    static var title: LocalizedStringResource = "Start filming"
+    static var description = IntentDescription("Starts recording a drive and films the road with the phone camera. Needs the phone unlocked.")
+    static var openAppWhenRun: Bool = false
+    static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
+
+    @MainActor
+    static func go() {
+        let rec = DriveRecorder.shared
+        if rec.config.source == "phone" && !rec.pageDrive { rec.start(origin: "siri", force: true) }
+        PageCommand.send("film")
+    }
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        DriveRecorder.shared.boot()
+        if DriveRecorder.shared.appActive {
+            FilmDriveIntent.go()
+            return .result(dialog: "Filming your drive.")
+        }
+        throw needsToContinueInForegroundError("Unlock your iPhone to start filming. The camera only works with Dragon Drive on screen.") {
+            FilmDriveIntent.go()
         }
     }
 }
@@ -109,6 +139,21 @@ struct DriveShortcuts: AppShortcutsProvider {
             "\(.applicationName) let's drive",
             "Let's drive with \(.applicationName)"
         ])
+        AppShortcut(intent: FilmDriveIntent(), phrases: [
+            "Start driving with \(.applicationName) and film it",
+            "Start driving in \(.applicationName) and film it",
+            "Start a drive with \(.applicationName) and film it",
+            "Start \(.applicationName) and film it",
+            "Start filming with \(.applicationName)",
+            "Start filming in \(.applicationName)",
+            "\(.applicationName) start filming",
+            "\(.applicationName) film",
+            "Film with \(.applicationName)",
+            "Film my drive with \(.applicationName)",
+            "Film my drive in \(.applicationName)",
+            "Record video with \(.applicationName)",
+            "Record video in \(.applicationName)"
+        ])
         // The short ones first (Chefff's wording). Avoid "end/stop ... my drive", "route" or "trip": while driving,
         // Siri sent "End my drive in Dragon Drive" to Apple Maps (ended navigation or looked for a road).
         AppShortcut(intent: FinishDriveIntent(), phrases: [
@@ -134,7 +179,7 @@ struct DriveShortcuts: AppShortcutsProvider {
     }
 }
 
-// Hands a command ("start", "finish", "show") to the page. The app may have just been launched and the page still loading,
+// Hands a command ("start", "siri-start", "film", "finish", "show") to the page. The app may have just been launched and the page still loading,
 // so ask every 0.3 s, for up to 20 s, until window.ddQuick (app.html) answers true.
 enum PageCommand {
     private static var pending: String?
