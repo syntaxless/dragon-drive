@@ -394,7 +394,7 @@ const KEY="roadtripper.v2";
 let mem=null;
 function load(){try{const s=localStorage.getItem(KEY);if(s)return JSON.parse(s)}catch(e){}return mem}
 let lastSJ=null;
-function save(){mem=S;S.updated=Date.now();{const sj=JSON.stringify(S.settings);if(lastSJ!==null&&sj!==lastSJ)S.settingsAt=Date.now();lastSJ=sj}if(typeof Sync!=="undefined")Sync.queue();try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast("This device is out of storage space. Delete a few old drives.")}}
+function save(){mem=S;S.updated=Date.now();{const sj=JSON.stringify(S.settings);if(lastSJ!==null&&sj!==lastSJ)S.settingsAt=Date.now();lastSJ=sj}if(typeof Sync!=="undefined")Sync.queue();try{recConfig()}catch(e){}try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast("This device is out of storage space. Delete a few old drives.")}}
 // Photos are large, so they live in IndexedDB (with an in-memory fallback).
 const photos=(()=>{
   let dbp=null;const cache=new Map(),urls=new Map();
@@ -1325,6 +1325,7 @@ async function connectDevice(kind,auto){
   if(!hasBLE){if(!auto)toast("This browser can't use Bluetooth. Try Chrome on Android or a computer.");return}
   if(connecting||devReady())return;connecting=true;
   try{
+    if(kind==="racebox"&&DREC_RB){await rbConnect(auto);return}
     let device=null,known=false;const mem=bleMem(kind);
     // In a browser the device picker must open straight from the tap, so a tap skips the remembered device
     // (the app already tried it when it opened); the iPhone app's picker has no such rule.
@@ -1355,6 +1356,32 @@ async function connectDevice(kind,auto){
   }catch(e){DEV.status=e&&e.name==="NotFoundError"?"No device chosen":"Couldn't connect: "+(e&&e.message||e);updateDevice()}
   finally{connecting=false}
 }
+// In app builds whose recorder reads the RaceBox itself (native/ios/App/App/RaceBoxLink.swift), the recorder owns the
+// RaceBox connection, so a RaceBox drive keeps recording, and Siri and the car screen can start and finish one, with the
+// phone locked. The page still finds the device with its picker the first time, then hands its id to the recorder,
+// which reconnects it by that id from then on and sends its status here ("racebox" events, rbDev).
+const until=(ok,ms)=>new Promise(res=>{const t0=Date.now();const k=()=>ok()?res(true):Date.now()-t0>ms?res(false):setTimeout(k,250);k()});
+async function rbConnect(auto){const src=SOURCES.racebox,mem=bleMem("racebox");
+  if(mem){DEV.name=mem.name||src.name;DEV.status="Reconnecting…";updateDevice();
+    const st=await DREC.raceboxLink({id:mem.id,name:mem.name||""}).catch(()=>null);if(st)rbDev(st);
+    if(await until(devReady,7000))return;
+    // The recorder keeps asking, so a RaceBox that is turned on later still connects on its own.
+    if(auto){DEV.status=`${mem.name||src.name} isn't on or in range yet. It connects when it is, or tap Start to pick it again.`;updateDevice();return}}
+  DEV.status="Choose your device…";updateDevice();
+  const device=await BT.requestDevice(src.ble);
+  bleMem("racebox",{id:device.id,name:device.name||""});recConfig();
+  DEV.name=device.name||src.name;DEV.status="Connecting…";updateDevice();
+  const st=await DREC.raceboxLink({id:device.id,name:device.name||""});rbDev(st);
+  if(!await until(devReady,12000)){DEV.status=`Couldn't connect to ${DEV.name}. Make sure it's on and near the phone.`;updateDevice()}}
+function rbDev(st){if(!st||!DREC_RB||(!st.remembered&&!(DEV.device&&DEV.device.native)))return;
+  if(!DEV.device||!DEV.device.native)DEV.device={native:true,id:st.id||"",name:st.name||"",addEventListener(){},gatt:{connected:false,disconnect(){DREC.raceboxUnlink().catch(()=>{})}}};
+  const d=DEV.device,was=d.gatt.connected;d.gatt.connected=st.state==="connected"||st.state==="data";if(st.name)d.name=st.name;
+  DEV.name=st.name||DEV.name||"RaceBox";if(st.sats!=null)DEV.sats=st.sats;if(st.battery!=null)DEV.battery=st.battery;DEV.hz=d.gatt.connected?st.hz||0:0;DEV.last=st.fix?{}:null;
+  const msg={data:"Connected · GPS fix",connected:"Connected · waiting for GPS fix",waiting:"Connecting…",off:"Bluetooth is off on this phone",unauthorized:"Bluetooth is off for Dragon Drive. Turn it on in Settings, Dragon Drive."}[st.state];
+  if(msg)DEV.status=msg;else if(was)DEV.status="Disconnected";
+  if(REC.on&&REC.rb){if(was&&!d.gatt.connected)setGps("off",`${DEV.name} disconnected. Recording carries on when it reconnects.`);
+    else if(st.fix)setGps("ok","Recording from "+REC.source);else if(d.gatt.connected)setGps("wait",`${DEV.name} is waiting for a GPS fix`)}
+  throttle(updateDevice,500)}
 let thr={};function throttle(fn,ms){if(thr[fn.name])return;thr[fn.name]=setTimeout(()=>{thr[fn.name]=0;fn()},ms)}
 function updateDevice(){const rb=$("#rec-btn");if(rb&&!REC.on)rb.querySelector(".lbl").textContent=startLabel();const rs=$("#rec-sum");if(rs)rs.innerHTML=recSummary();
   const el=$("#dev-status");if(!el)return;
@@ -1391,6 +1418,7 @@ function viewRecord(){
          ${src==="dragy"?`<p class="muted small" style="margin:0">Dragy doesn't publish its Bluetooth format. Dragon Drive tries the standard NMEA GPS format; if your Dragy connects but shows no data, let us know.</p>`:""}`}
     </div>
     ${S.settings.vehicles.length>1?`<div class="panel"><h3>Vehicle</h3><select id="veh" aria-label="Vehicle">${S.settings.vehicles.map(v=>`<option ${v===S.settings.vehicle?"selected":""}>${esc(v)}</option>`).join("")}</select></div>`:""}
+    ${lockPanel()}
     <div class="panel"><h3>Phone camera</h3><label class="check"><input type="checkbox" id="film" ${S.settings.film?"checked":""} ${REC.on?"disabled":""}> Film the road while driving. Mount the phone facing forward; the video lines up with your data automatically. Uses about 20 MB per minute.</label>
       ${CAM.stream?`<video id="cam-prev" class="cam-prev" muted playsinline autoplay></video>`:""}</div>
     <div class="panel stack" style="gap:8px"><h3 style="margin:0">Speed alerts</h3>
@@ -1398,13 +1426,15 @@ function viewRecord(){
       <label class="check"><input type="checkbox" id="al-above" ${AL().aboveOn?"checked":""}> Warn above <input type="number" id="al-above-v" inputmode="numeric" min="10" max="250" value="${AL().above}" style="width:72px"> ${sLabel()}</label>
       <label class="check"><input type="checkbox" id="al-lim" ${S.settings.limits!==false?"checked":""}> Show speed limits. They come from OpenStreetMap, which gets your approximate location while you drive. Main roads are well covered, side streets less so.</label>
       <p class="muted small" style="margin:0">Alerts beep and flash the screen. Turn the ringer on to hear them.</p></div>
-    <div class="panel"><div class="row"><div style="flex:1;min-width:200px"><h3 style="margin:0 0 4px">Action camera</h3><p class="muted small" style="margin:0">Import the video and Dragon Drive reads the GoPro's own GPS to log the drive, then lines the video up with it for the overlay. Pick every file from one recording if the GoPro split it.</p></div><button class="btn" id="gp-import" type="button" ${REC.on?"disabled":""}>Import GoPro video</button></div></div>
+    ${GP_OK?gpPanel():`<div class="panel"><div class="row"><div style="flex:1;min-width:200px"><h3 style="margin:0 0 4px">Action camera</h3><p class="muted small" style="margin:0">Import the video and Dragon Drive reads the GoPro's own GPS to log the drive, then lines the video up with it for the overlay. Pick every file from one recording if the GoPro split it.</p></div><button class="btn" id="gp-import" type="button" ${REC.on?"disabled":""}>Import GoPro video</button></div></div>`}
     <div class="notice"><strong>Drive first.</strong> Mount your phone and tap Start drive before you pull away. Dragon Drive switches to a simple screen with one large control, and you finish by holding the button. Every stat, from elevation and g-force to 0–60 and quarter-mile times, is logged automatically on every drive. Your choices on this screen are remembered for next time.</div>
     ${NATIVE?"":`<div class="notice"><strong>Keep it open.</strong> iPhone pauses GPS for web apps when the screen locks or you switch to another app, which leaves straight lines across your route. Dragon Drive keeps the screen awake while recording; leave it on screen and plug the phone in for long drives.</div>`}
     ${geoOK||src!=="phone"?"":`<div class="notice">This browser doesn't offer location, so drives can't be recorded here. Open Dragon Drive on your phone.</div>`}
   </div>`;
   document.querySelectorAll("[data-src]").forEach(b=>b.onclick=()=>{S.settings.source=b.dataset.src;save();viewRecord();autoConnect()});
   const m=$("#motion");if(m)m.onchange=e=>{S.settings.motion=e.target.checked;save()};
+  if(DREC_OK)lockFill();
+  if(GP_OK)gpFill();
   $("#film").onchange=e=>{S.settings.film=e.target.checked;save();const r=$("#rec-sum");if(r)r.innerHTML=recSummary()};
   const cp=$("#cam-prev");if(cp){cp.srcObject=CAM.stream;cp.play().catch(()=>{})}
   const c=$("#connect");if(c)c.onclick=()=>connectDevice(src);
@@ -1427,13 +1457,23 @@ function recSummary(){const s=S.settings.source,v=S.settings.vehicle;
   return esc([s==="phone"?"Phone GPS":DEV.name||SOURCES[s].name,v,S.settings.film?"Filming":""].filter(Boolean).join(" · "))+'. <a href="#record-setup" data-setup>Change</a>'}
 let starting=false;
 // Reconnect the remembered device on its own: when the app opens and when that source is picked.
-function autoConnect(){const k=S.settings.source;if(k!=="phone"&&hasBLE&&BT.getDevices&&bleMem(k)&&!devReady()&&!REC.on)connectDevice(k,true)}
+function autoConnect(){if(DREC&&!DREC_OK&&!DREC_NO)return;const k=S.settings.source;if(k!=="phone"&&hasBLE&&BT.getDevices&&bleMem(k)&&!devReady()&&!REC.on)connectDevice(k,true)}
 // The iPhone app's "Start drive" Quick Action (long-press the icon) and Siri call this once the page is ready.
 // It also takes Siri's "End my drive" (native/ios/App/App/DriveIntents.swift): "finish" saves the drive like holding the button.
-window.ddQuick=a=>{if(a==="start"){if(location.hash!=="#record")location.hash="#record";if(!REC.on)tapStart()}
+// "show" comes after Siri started a drive once the phone was unlocked: the drive is native, so just pick it up.
+// "film" ("Start filming with Dragon Drive"): a drive with the camera on, or the camera on for the drive under way.
+// "siri-start": Siri's plain start of a Bluetooth drive, which never films (filming has to be asked for).
+window.ddQuick=a=>{if(a==="show"){if(location.hash!=="#record")location.hash="#record";syncNative();return true}
+  if(a==="film"){if(location.hash!=="#record")location.hash="#record";
+    if(REC.on){if(!CAM.stream)startCam()}else{REC.film=true;syncNative().then(()=>{if(!REC.on)tapStart()})}return true}
+  if(a==="siri-start"){REC.film=false;a="start"}
+  if(a==="start"){if(location.hash!=="#record")location.hash="#record";if(!REC.on)tapStart()}
   else if(a==="finish"){if(REC.on)finishRec();else toast("No drive is being recorded.")}return true};
 async function tapStart(){
-  if(REC.on||starting)return;const src=S.settings.source;
+  if(REC.on||starting)return;
+  // Right after launch (Quick Action, Siri) the recorder may not have answered yet: wait for it, so the drive is native.
+  if(DREC&&!DREC_OK){starting=true;try{await Promise.race([DREC.status().then(recReady),new Promise(r=>setTimeout(r,1500))])}catch(e){}finally{starting=false}if(REC.on)return}
+  const src=S.settings.source;
   if(src==="phone"||devReady()){startRec();return}
   if(!hasBLE){startRec();return}
   if(connecting)return;starting=true;try{await connectDevice(src)}finally{starting=false}
@@ -1514,44 +1554,69 @@ async function stopCam(discard){
 }
 async function driveVideo(v){const parts=[];for(let i=0;;i++){const b=await photos.get(v.key+":"+i);if(!b)break;parts.push(b)}return parts.length?new Blob(parts,{type:v.type}):null}
 async function delDriveVideo(v){for(let i=0;;i++){const k=v.key+":"+i;const b=await photos.get(k);if(!b)break;await photos.del(k,true)}}
-function startRec(){
-  const src=S.settings.source;
-  if(src!=="phone"&&!(DEV.device&&DEV.device.gatt&&DEV.device.gatt.connected)){toast(`Connect your ${SOURCES[src].name} first, or switch to Phone GPS.`);return}
-  REC.on=true;REC.pts=[];REC.start=Date.now();REC.lastStill=null;REC.gaps=[];REC.hiddenAt=null;REC.bgGps=src==="phone"&&!!DLOC;REC.diag=null;REC.speeding="";LIMITS.cur=null;audioUnlock();REC.source=src==="phone"?"Phone GPS":DEV.name||SOURCES[src].name;
+// adopt: a drive the native recorder is already running (started by Siri or the car screen): {id, start, origin}.
+// adopt.source is "racebox" for a RaceBox drive the recorder runs (RaceBoxLink.swift).
+function startRec(adopt){
+  const src=adopt?adopt.source||"phone":S.settings.source;
+  const rb=src==="racebox"&&DREC_RB;   // a RaceBox drive recorded by the native recorder, not this page
+  if(src!=="phone"&&!adopt&&!(DEV.device&&DEV.device.gatt&&DEV.device.gatt.connected)){toast(`Connect your ${SOURCES[src].name} first, or switch to Phone GPS.`);return}
+  REC.on=true;REC.pts=[];REC.start=Date.now();REC.lastStill=null;REC.gaps=[];REC.hiddenAt=null;REC.bgGps=src==="phone"&&!!DLOC||rb;REC.native=(src==="phone"||rb)&&DREC_OK;REC.rb=rb;REC.nid=adopt?adopt.id:null;REC.diag=null;REC.speeding="";LIMITS.cur=null;audioUnlock();
+  REC.source=src==="phone"?"Phone GPS":adopt&&adopt.device||DEV.name||SOURCES[src].name;
   wakeLock(true);
-  if(src==="phone"){
-    startMotion();
+  if(rb){
+    setGps(DEV.last?"ok":"wait",DEV.last?"Recording from "+REC.source:`Waiting for ${REC.source}…`);
+    REC.watch=geoWatch(pos=>{const f=pos.raw;if(!f)return;
+      ingest({lat:f.lat,lon:f.lon,t:f.t,v:Math.max(0,f.v||0),alt:f.alt==null?null:f.alt,acc:f.acc,gLong:f.gx==null?null:f.gx,gLat:f.gy==null?null:f.gy,gTot:f.g==null?null:f.g})},
+      err=>{if(REC.pts.length)return;abortRec(err.code===4?"Bluetooth is off. Turn it on to record from your RaceBox.":`Connect your ${SOURCES.racebox.name} first, or switch to Phone GPS.`)},DREC,{source:"racebox"});
+  }else if(src==="phone"){
+    if(!REC.native)startMotion();   // the native recorder measures g itself, with the phone locked too
     if(!("geolocation" in navigator)){REC.on=false;toast("Location isn't available in this browser.");return}
     setGps("wait","Finding GPS…");
     REC.watch=geoWatch(pos=>{
       const c=pos.coords;if(c.accuracy>40){setGps("wait",`Weak GPS (±${Math.round(c.accuracy)} m)`);return}
       const last=REC.pts[REC.pts.length-1];let v=c.speed!=null&&c.speed>=0?c.speed:null;
       if(v==null)v=last?hav(last,[c.latitude,c.longitude])/Math.max(.2,(pos.timestamp-last[2])/1000):0;
-      const g=MOT.on?MOT.peak:null;MOT.peak=0;
+      const g=pos.g!=null?pos.g:MOT.on?MOT.peak:null;MOT.peak=0;
       ingest({lat:c.latitude,lon:c.longitude,t:pos.timestamp,v,alt:c.altitude,acc:c.accuracy,gLong:null,gLat:null,gTot:g});
     },err=>{
-      if(!REC.pts.length){stopSensors();REC.on=false;const dm=$("#drivemode");dm.hidden=true;dm.innerHTML="";document.documentElement.classList.remove("driving");viewRecord();toast(err.code===1?(NATIVE?"Location is off for Dragon Drive. Turn it on in Settings, Privacy & Security, Location Services.":"Location is blocked here. Allow location for this site and try again."):"No GPS signal. Try again outdoors.")}
+      if(!REC.pts.length)abortRec(err.code===1?(NATIVE?"Location is off for Dragon Drive. Turn it on in Settings, Privacy & Security, Location Services.":"Location is blocked here. Allow location for this site and try again."):"No GPS signal. Try again outdoors.");
       else setGps("off","GPS signal lost");
-    });
+    },REC.native?DREC:null);
   }else{setGps("ok","Recording from "+REC.source);
     // iOS suspends the app when the screen locks unless it's using location; keep a watcher running so the
     // Bluetooth device's data still arrives (its fixes are what get recorded, these are ignored).
-    if(DLOC)REC.keep=geoWatch(()=>{},()=>{})}
+    if(DLOC)REC.keep=geoWatch(()=>{},()=>{});
+    if(DREC_OK)DREC.pageDrive({on:true}).catch(()=>{})}
   REC.tick=setInterval(()=>{keepAwake();updateLive()},1000);
   viewRecord();
   if(src==="phone"&&!DLOC)toast("Keep Dragon Drive open with the screen on. iPhone pauses GPS if it locks.");
-  if(S.settings.film)startCam();
+  // A drive Siri or the car screen started films only when asked ("Start filming with Dragon Drive"); a tap on the
+  // phone follows the "Film the road" setting.
+  const film=REC.film!=null?REC.film:S.settings.film&&!adopt;REC.film=null;if(film)startCam();
+  if(adopt)toast(adopt.origin==="carplay"?"Recording the drive you started on the car screen":"Recording the drive you started with Siri");
 }
-function ingest(f){
-  if(!REC.on||!isFinite(f.lat)||!isFinite(f.lon))return;
+// A drive that couldn't get going: back to the Drive screen with why.
+function abortRec(msg){stopSensors();REC.on=false;const dm=$("#drivemode");dm.hidden=true;dm.innerHTML="";document.documentElement.classList.remove("driving");viewRecord();toast(msg)}
+// One fix into a drive's points (st keeps the parked point between calls). False if it was not kept.
+function pushFix(pts,st,f){
+  if(!isFinite(f.lat)||!isFinite(f.lon))return false;
   const p=[f.lat,f.lon,f.t,f.v,f.alt==null?null:f.alt,f.gLong,f.gLat,f.gTot];
-  const last=REC.pts[REC.pts.length-1];
-  if(last&&p[2]<=last[2])return;
-  if(last&&p[3]>90)return;
+  const last=pts[pts.length-1];
+  if(last&&p[2]<=last[2])return false;
+  if(last&&p[3]>90)return false;
   // while parked, keep one point every 2 s, but always keep the last one before the car moves off
-  if(p[3]<=0.5&&last&&last[3]<=0.5&&p[2]-last[2]<2000){REC.lastStill=p;return}
-  if(REC.lastStill&&p[3]>0.5){REC.pts.push(REC.lastStill)}
-  REC.lastStill=null;REC.pts.push(p);
+  if(p[3]<=0.5&&last&&last[3]<=0.5&&p[2]-last[2]<2000){st.lastStill=p;return false}
+  if(st.lastStill&&p[3]>0.5){pts.push(st.lastStill)}
+  st.lastStill=null;pts.push(p);return true}
+// The native recorder's raw fixes as drive points, with the same checks as a drive recorded on screen (a RaceBox
+// drive, rb, takes every fix, like connectDevice's onFix; Phone GPS drops fixes over 40 m).
+function nativePts(fx,rb){const pts=[],st={lastStill:null};
+  for(const f of fx){if(!rb&&!(f.acc<=40))continue;const last=pts[pts.length-1];let v=f.v!=null&&f.v>=0?f.v:null;
+    if(v==null)v=last?hav(last,[f.lat,f.lon])/Math.max(.2,(f.t-last[2])/1000):0;
+    pushFix(pts,st,{lat:f.lat,lon:f.lon,t:f.t,v,alt:f.alt==null?null:f.alt,gLong:f.gx==null?null:f.gx,gLat:f.gy==null?null:f.gy,gTot:f.g==null?null:f.g})}
+  return pts}
+function ingest(f){
+  if(!REC.on||!pushFix(REC.pts,REC,f))return;
   setGps("ok",`Recording · ${REC.source}${f.acc?` · ±${Math.round(f.acc)} m`:""}`);
 }
 function updateLive(){
@@ -1587,13 +1652,108 @@ function thinLive(p){if(p.length<1500)return p;const k=Math.ceil(p.length/1500);
 // so the plugin keeps every fix natively and the page collects them with drain(): every second on screen and
 // straight away when it comes back. In a browser it's the usual watchPosition.
 const DLOC=NATIVE&&Capacitor.registerPlugin?Capacitor.registerPlugin("DriveLocation"):null;
-function geoWatch(ok,fail){if(!DLOC)return navigator.geolocation.watchPosition(ok,fail,{enableHighAccuracy:true,maximumAge:0,timeout:20000});
-  const w={dead:false,busy:null,timer:null,vis:null,seq:0};
+// The native drive recorder (native/ios/App/App/DriveRecorder.swift) owns Phone GPS drives in app builds that have it,
+// so Siri and the car screen can start and finish a drive with the phone locked while this page is paused. The page
+// drains its fixes like DriveLocation's, picks up a drive it didn't start (syncNative), and saves drives the recorder
+// finished on its own (importNative). DREC_OK turns true once the recorder answers; older builds keep DriveLocation.
+// DREC_RB: the recorder also records RaceBox drives (builds with RaceBoxLink.swift; its status has "racebox").
+const DREC=NATIVE&&Capacitor.registerPlugin?Capacitor.registerPlugin("DriveRecorder"):null;let DREC_OK=false,DREC_RB=false,DREC_NO=false,nSync=null;
+function recReady(st){DREC_OK=true;DREC_RB=!!(st&&st.racebox);recConfig()}
+function recConfig(){if(!DREC_OK)return;const rb=bleMem("racebox")||{};const c={source:S.settings.source,vehicle:S.settings.vehicle||"",units:U(),motion:!!S.settings.motion,racebox:rb.id||"",raceboxName:rb.name||""};
+  const k=JSON.stringify(c);if(k===recConfig.k)return;recConfig.k=k;DREC.config(c).catch(()=>{})}
+function syncNative(){if(!DREC_OK)return Promise.resolve();if(nSync)return nSync;
+  nSync=(async()=>{try{const st=await DREC.status();
+    // Siri or the car screen finished the drive this page was showing: let go of it here and save the native copy.
+    if(REC.on&&REC.native&&!REC.finishing&&(!st.recording||(REC.nid&&st.id!==REC.nid)))await dropLive();
+    await importNative();
+    if(st.recording&&!REC.on&&!REC.finishing){if(location.hash!=="#record")location.hash="#record";startRec({id:st.id,start:st.start,origin:st.origin,source:st.source,device:st.device})}
+  }catch(e){}finally{nSync=null}})();return nSync}
+async function dropLive(){const nid=REC.nid,cam=CAM.rec||CAM.stream;REC.on=false;stopSensors();REC.pts=[];REC.endedAt=Date.now();FOLLOW=null;
+  const dm=$("#drivemode");dm.hidden=true;dm.innerHTML="";dm.classList.remove("speeding");document.documentElement.classList.remove("driving");
+  if(cam){const v=await stopCam();if(v)REC.vidFor={id:nid,v}}}
+async function importNative(){const r=await DREC.finished().catch(()=>null);const list=(r&&r.drives)||[];if(!list.length)return;
+  const ids=[];let last=null,n=0;
+  for(const x of list){ids.push(x.id);if(S.drives.some(d=>d.id===x.id))continue;const rb=x.source==="racebox";const raw=nativePts(x.fixes||[],rb);if(raw.length<5||pathLen(raw)<100)continue;
+    const d=makeDrive(raw,{id:x.id,vehicle:x.vehicle||S.settings.vehicle,source:rb?x.device||"RaceBox":"Phone GPS",diag:x.diag});
+    if(REC.vidFor&&REC.vidFor.id===x.id){d.video=REC.vidFor.v;REC.vidFor=null}
+    S.drives.push(d);last=d;n++;gpTag(d)}
+  if(last){S.drives.sort((a,b)=>a.start-b.start);dropExamples();save();toast(n>1?`Saved ${n} drives you finished with Siri or CarPlay`:"Saved the drive you finished with Siri or CarPlay");
+    if(location.hash==="#feed"){render();openDrive(last.id,true)}else{pendingOpen=last.id;location.hash="#feed"}}
+  await DREC.ack({ids}).catch(()=>{});cpState()}
+if(DREC){DREC.status().then(st=>{recReady(st);if(DREC_RB&&st.racebox)rbDev(st.racebox);syncNative();if(current==="record")viewRecord();autoConnect()}).catch(()=>{DREC_NO=true;autoConnect()});
+  DREC.addListener("changed",()=>syncNative()).catch(()=>{});
+  DREC.addListener("racebox",st=>rbDev(st)).catch(()=>{});
+  document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")syncNative()})}
+// Drive screen panel: hands-free start and finish, and the permission a locked-phone start needs.
+function lockPanel(){return DREC_OK?`<div class="panel" id="lock-panel"><h3>Hands-free</h3><p class="muted small" id="lock-t" style="margin:0">Say "Start Dragon Drive" and "Dragon Drive, I'm done".</p><button class="btn ghost" id="lock-b" type="button" style="margin-top:10px" hidden>Allow with the phone locked</button></div>`:""}
+async function lockFill(){const t=$("#lock-t"),b=$("#lock-b");if(!t||!b)return;const st=await DREC.status().catch(()=>null);if(!st)return;
+  // A RaceBox drive needs no location permission: the recorder connects the RaceBox itself.
+  if(DREC_RB&&S.settings.source==="racebox"){const known=st.racebox&&st.racebox.remembered;
+    t.textContent=known?`Say "Start Dragon Drive" or "Dragon Drive, I'm done" any time, even with the phone locked: Dragon Drive connects your RaceBox itself, and the car screen works the same way. Siri needs "Allow Siri When Locked" on in Settings, Siri. The camera and speed alerts need the app open.`
+      :`Connect your RaceBox here once. After that, Siri and the car screen can start and finish RaceBox drives with the phone locked.`;b.hidden=true;return}
+  if(st.status==="always"){t.textContent=`Say "Start Dragon Drive" or "Dragon Drive, I'm done" any time, even with the phone locked, and the car screen works the same way. Siri needs "Allow Siri When Locked" on in Settings, Siri. To film too, say "Start filming with Dragon Drive" with the phone unlocked and mounted: iPhone only lets the camera run with the app on screen.`;b.hidden=true;return}
+  t.textContent=`Siri and the car screen can finish a drive with the phone locked. To start one without unlocking, for example on a motorcycle, allow location Always. Without it, Siri asks you to unlock first. ${DREC_RB?"Phone GPS and RaceBox":"Phone GPS"} only: the camera, speed alerts${DREC_RB?" and Dragy":" and Bluetooth devices"} need the app open. To film, say "Start filming with Dragon Drive".`;b.hidden=false;
+  b.onclick=async()=>{const r=await DREC.requestAlways().catch(()=>null);if(r&&r.status==="always"){toast("Done. Siri can start a drive with the phone locked.");lockFill()}
+    else{toast('In Settings, tap Location, then "Always".');DREC.openSettings().catch(()=>{})}}}
+/* ================= GoPro control (iOS app only) ================= */
+// Paired GoPros (HERO9 Black and newer, Open GoPro over Bluetooth) start recording when a drive starts and stop when it
+// ends. The native side (native/ios/App/App/GoPros.swift) does it, so it works when Siri or the car screen starts the
+// drive with the phone locked. This panel pairs cameras and shows their state; the video stays on the camera and
+// comes in through the GoPro import, which lines it up by the camera's clock (set from the phone on every connect).
+const GOPRO=NATIVE&&Capacitor.registerPlugin?Capacitor.registerPlugin("GoPro"):null;let GP_OK=false,GP={cams:[],found:[]},gpPairing=false;
+const gpState=c=>({connecting:"Looking for the camera…",connected:REC.on?"Connected, starting…":"Connected",recording:"Recording",stopping:"Stopping…",error:"Needs attention"}[c.state]||(c.auto?"Records with your next drive":"Not recording with drives"));
+function gpPanel(){return `<div class="panel stack" id="gp-panel" style="gap:10px"><h3 style="margin:0">Action camera</h3>
+  <p class="muted small" style="margin:0">Paired GoPros (HERO9 Black and newer) start recording when a drive starts and stop when it ends, also when Siri or the car screen starts it with the phone locked. A sleeping GoPro wakes up for the drive. The video stays on the camera: import it afterwards to add it to the drive.</p>
+  <div id="gp-cams" class="stack" style="gap:8px"></div><div id="gp-pair" class="stack" style="gap:8px"></div>
+  <label class="check" id="gp-sleep-l" hidden><input type="checkbox" id="gp-sleep"> Turn the GoPros off after a drive (they stay ready to wake for the next one)</label>
+  <div class="row"><button class="btn" id="gp-pair-b" type="button">Pair a GoPro</button><button class="btn ghost" id="gp-import" type="button" ${REC.on?"disabled":""}>Import GoPro video</button></div>
+  <p class="muted small" style="margin:0">Importing reads the GoPro's own GPS and lines the video up with the drive for the overlay. Pick every file from one recording if the GoPro split it.</p></div>`}
+function gpFill(){const box=$("#gp-cams"),pb=$("#gp-pair"),b=$("#gp-pair-b");if(!box||!pb||!b)return;
+  box.innerHTML=GP.cams.map(c=>`<div class="dev"><span class="dot ${c.state==="recording"?"ok":c.state==="error"?"off":c.state==="idle"?"":"wait"}"></span><div style="flex:1;min-width:0"><div style="font-weight:600">${esc(c.name)}</div><div class="muted small">${esc(c.note||gpState(c))}</div></div>${c.battery!=null?`<span class="chip">${c.battery}% battery</span>`:""}${c.videoLeft!=null?`<span class="chip">${Math.floor(c.videoLeft/60)} min left</span>`:""}</div>
+    <div class="row" style="margin-top:-2px;align-items:center;gap:6px"><label class="check" style="flex:1 1 100%"><input type="checkbox" data-gpauto="${c.id}" ${c.auto?"checked":""}> Record with drives</label>${REC.on?"":`<button class="btn ghost" style="padding:6px 10px" type="button" data-gpcheck="${c.id}">Check</button><button class="btn ghost" style="padding:6px 10px" type="button" data-gptest="${c.id}">Test</button><button class="btn ghost" style="padding:6px 10px" type="button" data-gpforget="${c.id}">Forget</button>`}</div>`).join("");
+  const sl=$("#gp-sleep-l");if(sl)sl.hidden=!GP.cams.length;const sc=$("#gp-sleep");if(sc)sc.checked=!!GP.sleepAfter;
+  b.hidden=gpPairing;b.textContent=GP.cams.length?"Pair another GoPro":"Pair a GoPro";
+  if(!gpPairing){pb.innerHTML=GP.pairNote?`<p class="small" style="margin:0;color:var(--bad)">${esc(GP.pairNote)}</p>`:"";}
+  else{const bt=GP.bluetooth;pb.innerHTML=`<div class="notice small"><b>Put the GoPro in pairing mode.</b> On the camera, swipe down, open Preferences, then Wireless Connections (Connections on HERO9 and HERO10), Connect Device, GoPro Quik App. Keep it next to the phone, pick it below, and tap Pair when iPhone asks.</div>
+    ${bt==="off"?`<p class="small" style="margin:0;color:var(--bad)">Bluetooth is off. Turn it on in Control Center.</p>`:bt==="denied"?`<p class="small" style="margin:0;color:var(--bad)">Bluetooth is off for Dragon Drive. Turn it on in Settings, Dragon Drive.</p>`:""}
+    ${GP.pairing&&GP.pairing.length?`<p class="muted small" style="margin:0">Pairing… accept the request on the iPhone if it asks.</p>`:GP.found.length?GP.found.map(f=>`<button class="btn" type="button" data-gpfound="${f.id}">${esc(f.name)}</button>`).join(""):`<p class="muted small" style="margin:0">${GP.scanning?"Looking for GoPros…":"Search stopped."}</p>`}
+    ${GP.pairNote?`<p class="small" style="margin:0;color:var(--bad)">${esc(GP.pairNote)}</p>`:""}
+    <div class="row">${GP.scanning||(GP.pairing&&GP.pairing.length)?"":`<button class="btn ghost" type="button" id="gp-again">Search again</button>`}<button class="btn ghost" type="button" id="gp-cancel">Cancel</button></div>`}
+  b.onclick=()=>{gpPairing=true;GOPRO.scan().catch(()=>{});gpFill()};
+  const ag=$("#gp-again");if(ag)ag.onclick=()=>GOPRO.scan().catch(()=>{});
+  const cx=$("#gp-cancel");if(cx)cx.onclick=()=>{gpPairing=false;GOPRO.stopScan().catch(()=>{});gpFill()};
+  if(sc)sc.onchange=e=>GOPRO.setSleepAfter({on:e.target.checked}).catch(()=>{});
+  pb.querySelectorAll("[data-gpfound]").forEach(x=>x.onclick=()=>GOPRO.pair({id:x.dataset.gpfound}).catch(()=>toast("That GoPro went out of range. Search again.")));
+  box.querySelectorAll("[data-gpauto]").forEach(x=>x.onchange=e=>GOPRO.setAuto({id:x.dataset.gpauto,on:e.target.checked}).catch(()=>{}));
+  box.querySelectorAll("[data-gpcheck]").forEach(x=>x.onclick=()=>GOPRO.check({id:x.dataset.gpcheck}).catch(()=>{}));
+  box.querySelectorAll("[data-gptest]").forEach(x=>x.onclick=()=>{toast("Recording 5 seconds on the GoPro…");GOPRO.check({id:x.dataset.gptest,test:true}).catch(()=>{})});
+  box.querySelectorAll("[data-gpforget]").forEach(x=>x.onclick=()=>{GOPRO.forget({id:x.dataset.gpforget}).catch(()=>{});toast("Forgotten. To pair it again later, also forget it in iPhone Settings, Bluetooth.")})}
+function gpUpdate(st){const before=GP;GP=st||GP;
+  // A camera that just paired ends the pairing view.
+  if(gpPairing&&before.pairing&&before.pairing.length&&!(GP.pairing&&GP.pairing.length)&&GP.cams.length>before.cams.length){gpPairing=false;toast("GoPro paired. It records with your drives.")}
+  // While driving: say when each camera starts, or why it can't.
+  if(REC.on)for(const c of GP.cams){const o=(before.cams||[]).find(x=>x.id===c.id);if(!o)continue;
+    if(c.state==="recording"&&o.state!=="recording")toast(`${c.name} is recording`);
+    else if(c.note&&c.note!==o.note&&c.state!=="recording")toast(`${c.name}: ${c.note}`)}
+  if(current==="record")gpFill()}
+// Which GoPros filmed a drive, from the camera log the native side keeps (by time), noted on the drive.
+async function gpTag(d){if(!GP_OK||!d||!d.pts||d.pts.length<2)return;const r=await GOPRO.sessions().catch(()=>null);const end=d.pts[d.pts.length-1][2];
+  const hit=((r&&r.sessions)||[]).filter(x=>x.start<end+60000&&x.end>d.start-60000).flatMap(x=>x.cams||[]);
+  if(hit.length){d.gopros=[...new Set(hit)];save();if(SHEET&&SHEET.kind==="drive"&&SHEET.id===d.id)openDrive(d.id,true)}}
+if(GOPRO){GOPRO.state().then(st=>{GP_OK=true;GP=st;if(current==="record")viewRecord()}).catch(()=>{});GOPRO.addListener("state",gpUpdate).catch(()=>{})}
+// opt: more for the recorder's start ({source:"racebox"}). A RaceBox drive needs no location, so its location
+// permission is not checked; the recorder answers error "device" (no RaceBox connected yet) or "bluetoothOff" (code 4).
+function geoWatch(ok,fail,plug,opt){if(!DLOC&&!plug)return navigator.geolocation.watchPosition(ok,fail,{enableHighAccuracy:true,maximumAge:0,timeout:20000});
+  const P=plug||DLOC,rb=!!(opt&&opt.source==="racebox");const w={dead:false,busy:null,timer:null,vis:null,seq:0,P,nid:null};
   const feed=r=>{if(w.dead||!r)return;if(r.diag)REC.diag=r.diag;
-    for(const f of r.fixes||[]){if(f.seq<=w.seq)continue;w.seq=f.seq;ok({timestamp:f.t,coords:{latitude:f.lat,longitude:f.lon,accuracy:f.acc,altitude:f.alt==null?null:f.alt,speed:f.v==null?null:f.v,heading:f.hdg==null?null:f.hdg}})}
+    for(const f of r.fixes||[]){if(f.seq<=w.seq)continue;w.seq=f.seq;ok({timestamp:f.t,g:f.g,raw:f,coords:{latitude:f.lat,longitude:f.lon,accuracy:f.acc,altitude:f.alt==null?null:f.alt,speed:f.v==null?null:f.v,heading:f.hdg==null?null:f.hdg}})}
     if(r.error&&!w.dead)fail({code:r.error==="denied"?1:2})};
-  w.pull=()=>{if(w.dead)return Promise.resolve();if(!w.busy){const b=Promise.race([DLOC.drain({after:w.seq}).then(feed,()=>{}),new Promise(r=>setTimeout(r,3000))]).finally(()=>{if(w.busy===b)w.busy=null});w.busy=b}return w.busy};
-  DLOC.start().then(r=>{if(r&&(r.status==="denied"||r.status==="restricted"))fail({code:1})},()=>fail({code:2}));
+  // After a long stretch locked the recorder hands its fixes over in batches ("more"): keep asking until it's done.
+  const get=()=>Promise.race([P.drain({after:w.seq}),new Promise(r=>setTimeout(r,3000))]).then(r=>{feed(r);if(r&&r.more&&!w.dead)return get()},()=>{});
+  w.pull=()=>{if(w.dead)return Promise.resolve();if(!w.busy){const b=get().finally(()=>{if(w.busy===b)w.busy=null});w.busy=b}return w.busy};
+  P.start({origin:"app",...(opt||{})}).then(r=>{if(r&&r.id){w.nid=r.id;if(P===DREC&&REC.on&&REC.native)REC.nid=r.id}
+    if(r&&r.error)fail({code:r.error==="bluetoothOff"?4:3});
+    else if(!rb&&r&&(r.status==="denied"||r.status==="restricted"))fail({code:1})},()=>fail({code:2}));
   w.timer=setInterval(w.pull,1000);w.vis=()=>{if(document.visibilityState==="visible")w.pull()};document.addEventListener("visibilitychange",w.vis);
   return w}
 // Collect the fixes the plugin is still holding (before a drive is saved).
@@ -1602,17 +1762,23 @@ function gpsCheck(g){const t=ms=>new Date(ms).toLocaleTimeString([],{hour:"numer
   return `GPS check: ${g.total} points, ${g.background} with the app in the background${g.lastFix?`, last at ${t(g.lastFix)}`:""}. ${(g.events||[]).join(", ")}`}
 function geoFlush(w){return w&&typeof w==="object"&&w.pull?w.pull():Promise.resolve()}
 function geoClear(w){if(w==null)return;if(typeof w!=="object"){navigator.geolocation.clearWatch(w);return}
-  w.dead=true;clearInterval(w.timer);document.removeEventListener("visibilitychange",w.vis);DLOC.stop().catch(()=>{})}
-function stopSensors(){geoClear(REC.watch);geoClear(REC.keep);REC.keep=null;REC.watch=null;clearInterval(REC.tick);stopMotion();wakeLock(false)}
+  w.dead=true;clearInterval(w.timer);document.removeEventListener("visibilitychange",w.vis);
+  // The page saves this drive itself (or drops it): the recorder lets go of its copy, and only of this drive.
+  if(w.P===DREC)DREC.cancel(w.nid?{id:w.nid}:{}).catch(()=>{});else w.P.stop().catch(()=>{})}
+function stopSensors(){if(DREC_OK&&!REC.native)DREC.pageDrive({on:false}).catch(()=>{});geoClear(REC.watch);geoClear(REC.keep);REC.keep=null;REC.watch=null;clearInterval(REC.tick);stopMotion();wakeLock(false)}
+// A saved drive from its points: the same for a drive finished here and one the native recorder finished (Siri, car).
+function makeDrive(raw,o){const h=new Date(raw[0][2]).getHours();
+  const title=h<11?"Morning drive":h<14?"Midday drive":h<18?"Afternoon drive":"Evening drive";
+  const d={id:o.id||uid(),who:"me",title,vehicle:o.vehicle,source:o.source,start:raw[0][2],pts:thin(raw),stats:analyze(raw)};
+  if(o.gaps&&o.gaps.length)d.gaps=o.gaps;if(o.diag)d.gpsCheck=gpsCheck(o.diag);return d}
 async function finishRec(){
   if(REC.finishing)return;REC.endedAt=Date.now();REC.finishing=true;try{await geoFlush(REC.watch)}finally{REC.finishing=false}
   if(!REC.on)return;REC.endedAt=Date.now();stopSensors();REC.on=false;REC.dismissed=false;$("#drivemode").hidden=true;document.documentElement.classList.remove("driving");$("#drivemode").classList.remove("speeding");FOLLOW=null;
   const raw=REC.pts;REC.pts=[];
   if(raw.length<5||pathLen(raw)<100){stopCam(true).then(v=>{});if(CAM.key)delDriveVideo({key:CAM.key});toast("That drive was too short to save.");viewRecord();return}
-  const h=new Date(raw[0][2]).getHours();
-  const title=h<11?"Morning drive":h<14?"Midday drive":h<18?"Afternoon drive":"Evening drive";
-  const d={id:uid(),who:"me",title,vehicle:S.settings.vehicle,source:REC.source,start:raw[0][2],pts:thin(raw),stats:analyze(raw)};if(REC.gaps&&REC.gaps.length)d.gaps=REC.gaps;REC.gaps=[];if(REC.diag)d.gpsCheck=gpsCheck(REC.diag);
+  const d=makeDrive(raw,{id:REC.nid,vehicle:S.settings.vehicle,source:REC.source,gaps:REC.gaps,diag:REC.diag});REC.gaps=[];
   S.drives.push(d);if(dropExamples())toast("First drive saved, example drives removed");save();
+  setTimeout(()=>gpTag(d),3000);   // the cameras' stop is logged a moment after the drive ends
   if(CAM.rec||CAM.stream)stopCam().then(v=>{if(v){d.video=v;save();if(SHEET&&SHEET.kind==="drive"&&SHEET.id===d.id)openDrive(d.id,true)}});
   if(location.hash==="#feed"){render();openDrive(d.id,true)}else{pendingOpen=d.id;location.hash="#feed"}cpState();
 }
@@ -1671,7 +1837,7 @@ function cpState(notice){
   const src=S.settings.source;
   const routes=allRoutes().filter(r=>r.pts&&r.pts.length>1).sort((a,b)=>(b.created||0)-(a.created||0)).slice(0,12)
     .map(r=>({id:r.id,title:r.title||"Route",nav:appleRoute(r),detail:`${fDist(r.dist||pathLen(r.pts)).toFixed(1)} ${dLabel()}${r.who==="me"?"":" · "+(person(r.who).name||"")}`}));
-  const s={ready:true,recording:REC.on,time:fDur(el),dist:`${fDist(dist).toFixed(1)} ${dLabel()}`,
+  const s={ready:true,recording:REC.on,pageDrive:REC.on&&!REC.native,time:fDur(el),dist:`${fDist(dist).toFixed(1)} ${dLabel()}`,
     source:src==="phone"?"Phone GPS":(SOURCES[src]||{}).name||"",vehicle:S.settings.vehicle||"",routes};
   if(FOLLOW){s.following=FOLLOW.title;s.followingId=FOLLOW.id}
   if(notice){s.notice=notice;s.noticeId=String(++cpNote)}
@@ -1913,6 +2079,9 @@ async function importGoPro(files){
     if(p[3]<=0.5&&last&&last[3]<=0.5&&p[2]-last[2]<2000){still=p;continue}if(still&&p[3]>0.5)raw.push(still);still=null;raw.push(p)}
   if(raw.length<5||pathLen(raw)<100){toast("The GPS track in that video is too short to save as a drive.");return}
   const dup=S.drives.find(d=>d.who==="me"&&/^GoPro/.test(d.source||"")&&Math.abs(d.start-raw[0][2])<5000);if(dup){toast("You've already imported this drive");openDrive(dup.id);return}
+  // Filmed by a paired GoPro during a drive already saved: that drive is the one to add it to, not a new one.
+  const during=S.drives.find(d=>d.who==="me"&&d.gopros&&d.gopros.length&&d.pts.length>1&&raw[0][2]>d.start-120000&&raw[0][2]<d.pts[d.pts.length-1][2]+60000);
+  if(during){toast(`This clip is from your ${during.title.toLowerCase()}. Tap Video there and choose it.`);openDrive(during.id);return}
   const model=(withGps.find(t=>t.model)||{}).model||"";const nice=/hero|max|fusion/i.test(model)?"GoPro "+model.replace(/^GoPro\s*/i,"").replace(/\bHERO/i,"HERO"):"GoPro";
   const h=new Date(raw[0][2]).getHours();const title=h<11?"Morning drive":h<14?"Midday drive":h<18?"Afternoon drive":"Evening drive";
   const d={id:uid(),who:"me",title,vehicle:S.settings.vehicle,source:nice,start:raw[0][2],pts:thin(raw),stats:analyze(raw),video:{gopro:true,clips:withGps.map(t=>({name:t.file.name,start:t.start}))}};
@@ -1955,6 +2124,7 @@ function openDrive(id,fresh){
       ${statBlock("Avg speed",Math.round(fSpeed(s.avg)),sLabel())}${statBlock("Top speed",Math.round(fSpeed(s.max)),sLabel())}${statBlock("Elev. gain",s.altMin==null?"–":Math.round(fAlt(s.up)),s.altMin==null?"":aLabel())}
       ${statBlock("Max accel",fG(s.gAcc),"g")}${statBlock("Max braking",fG(s.gBrk),"g")}${statBlock("Max lateral",fG(s.gLat),"g")}
     </div>
+    ${mine&&d.gopros&&d.gopros.length?`<p class="muted small" style="margin:0 2px">Filmed on ${esc(d.gopros.join(" and "))}. Tap Video and choose the clip from the camera to add the overlay.</p>`:""}
     ${mine&&d.gpsCheck?`<p class="muted small" style="margin:0 2px">${esc(d.gpsCheck)}</p>`:""}
     <p class="muted small" style="margin:-4px 2px 0">${s.gSensor?"G-force from the device's accelerometer.":"G-force estimated from GPS speed and heading."}${s.altMin!=null?` Elevation ranges ${Math.round(fAlt(s.altMin))}–${Math.round(fAlt(s.altMax))} ${aLabel()}.`:""}</p>
     <div class="panel"><h3>Timed runs</h3>${runsTable(s)}</div>
@@ -2442,7 +2612,7 @@ async function openVideo(id){
   sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span><h3>Drive video</h3></div></div>
     <div class="wrap body stack">
       <p class="muted" style="margin:0">Pick a clip you filmed during this drive. We line it up with your GPS and add speed, g-force, the route, elevation and any timed runs.</p>
-      <div class="row">${d.video&&!d.video.gopro?`<button class="btn primary" id="v-own" type="button">Use the video from this drive</button><button class="btn" id="v-pick" type="button">Choose another</button>`:`<button class="btn primary" id="v-pick" type="button">${d.video&&d.video.gopro?"Choose the GoPro clip":"Choose video"}</button>`}</div>
+      <div class="row">${d.video&&!d.video.gopro?`<button class="btn primary" id="v-own" type="button">Use the video from this drive</button><button class="btn" id="v-pick" type="button">Choose another</button>`:`<button class="btn primary" id="v-pick" type="button">${(d.video&&d.video.gopro)||(d.gopros&&d.gopros.length)?"Choose the GoPro clip":"Choose video"}</button>`}</div>
       <input type="file" id="v-in" accept="video/*" class="sr" tabindex="-1" aria-hidden="true">
       <div id="v-ui" hidden class="stack">
         <canvas id="v-cv" class="share-preview" style="max-width:100%;background:#000"></canvas>

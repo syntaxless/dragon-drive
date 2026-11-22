@@ -70,7 +70,7 @@
 		<string>bluetooth-central</string>
 	</array>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Dragon Drive connects to your RaceBox, Dragy or other Bluetooth GPS when you choose it as the data source for a drive.</string>
+	<string>Dragon Drive connects to your RaceBox, Dragy or other Bluetooth GPS when you choose it as the data source for a drive, and to GoPros you pair so they record with your drives.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>Dragon Drive reads the motion sensors while you record a drive to measure acceleration, braking and cornering g-force.</string>
 	<key>NSCameraUsageDescription</key>

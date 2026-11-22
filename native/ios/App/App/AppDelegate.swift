@@ -7,7 +7,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // The drive recorder runs on every launch, including a background one for Siri or one from the car screen,
+        // and saves a drive the app was closed in the middle of.
+        // bluetoothCentrals: iOS relaunched the app for the RaceBox during a RaceBox drive (RaceBoxLink.swift).
+        DriveRecorder.shared.boot(bluetooth: launchOptions?[.bluetoothCentrals] != nil)
+        // Paired GoPros start and stop with every drive (GoPros.swift).
+        GoPros.shared.boot()
         return true
     }
 

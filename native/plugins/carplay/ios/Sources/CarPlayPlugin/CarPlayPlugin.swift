@@ -6,10 +6,14 @@ import Capacitor
 // CarPlay for Dragon Drive (category: Driving Task, entitlement com.apple.developer.carplay-driving-task).
 //
 // The car screen is one list: Start drive or Finish drive (with the drive's time and distance), and Follow a
-// route, which opens the list of planned routes (each can be navigated in Apple Maps on the car screen). The drive itself still lives in the web app (app.html):
-// a tap here becomes an event for it ("start", "finish", "follow", "unfollow"), and the web app answers
-// with update(), the state the car screen shows. CarPlayHub holds that state and any events the page has not
-// collected yet, because CarPlay can connect before the web view exists (the app launched from the car).
+// route, which opens the list of planned routes (each can be navigated in Apple Maps on the car screen).
+// Start and Finish go first to the app's native drive recorder (App/DriveRecorder.swift), so they work with the phone
+// locked and the web app paused; the recorder answers whether it took the tap, and a Bluetooth drive (which lives in
+// the web app) falls back to an event for the page. The recorder and this plugin talk through NotificationCenter by
+// name ("DDRecorderCommand", "DDRecorderState"), because the app target and this package can't import each other.
+// The other taps become events for the web app (app.html: "follow", "unfollow"), which answers with update(), the
+// state the car screen shows. CarPlayHub holds that state and any events the page has not collected yet, because
+// CarPlay can connect before the web view exists (the app launched from the car).
 //
 // Apple's rules for driving-task apps that shape this: only the system templates (no map, no video), at most
 // two templates deep, and the data on screen refreshed no more than once every 10 seconds. So the time and
@@ -25,7 +29,36 @@ final class CarPlayHub {
     weak var plugin: CarPlayPlugin?
     weak var scene: CarPlaySceneDelegate?
     private(set) var state: [String: Any] = [:]
+    // What the native recorder last said: available, recording, time, dist, notice, noticeId.
+    private(set) var recorder: [String: Any] = [:]
     private var pending: [(String, [String: Any])] = []
+
+    private init() {
+        NotificationCenter.default.addObserver(forName: Notification.Name("DDRecorderState"), object: nil, queue: .main) { [weak self] n in
+            guard let self = self else { return }
+            var d: [String: Any] = [:]
+            for (k, v) in n.userInfo ?? [:] { if let k = k as? String { d[k] = v } }
+            self.recorder = d
+            self.scene?.refresh()
+        }
+        // Ask the recorder for its state now (it may have announced it before this hub existed).
+        NotificationCenter.default.post(name: Notification.Name("DDRecorderCommand"), object: nil, userInfo: ["action": "state"])
+    }
+
+    // Start or Finish: the native recorder first; if it doesn't take it (a Bluetooth drive), the page.
+    func drive(_ action: String) {
+        var answered = false
+        let reply: ([String: Any]) -> Void = { [weak self] r in
+            answered = true
+            guard let self = self else { return }
+            if (r["handled"] as? Bool) != true { self.send(action); return }
+            if let n = r["notice"] as? String { self.recorder["notice"] = n; self.recorder["noticeId"] = "tap\(Date().timeIntervalSince1970)" }
+            self.scene?.refresh()
+        }
+        NotificationCenter.default.post(name: Notification.Name("DDRecorderCommand"), object: nil,
+                                        userInfo: ["action": action, "origin": "carplay", "reply": reply])
+        if !answered { send(action) }   // no recorder in this build: the page, as before
+    }
 
     var connected: Bool { scene != nil }
 
@@ -64,6 +97,7 @@ public class CarPlayPlugin: CAPPlugin, CAPBridgedPlugin {
     // What the car screen shows. Keys (all optional):
     //   ready: Bool            the page is running (until it says so, Start asks to open the app once)
     //   recording: Bool        a drive is being recorded
+    //   pageDrive: Bool        that drive is the page's own (Bluetooth), not the native recorder's
     //   time, dist: String     "12:34", "8.2 mi" (already in the driver's units)
     //   source, vehicle: String
     //   following: String      title of the route being followed, or absent
@@ -89,11 +123,18 @@ public class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelega
     private var lastShape = ""
     private var lastDraw = Date.distantPast
     private var shownNotice = ""
+    private var seenNotices = Set<String>()
     private var timer: Timer?
 
     private var hub: CarPlayHub { CarPlayHub.shared }
     private func str(_ k: String) -> String? { (hub.state[k] as? String).flatMap { $0.isEmpty ? nil : $0 } }
     private func flag(_ k: String) -> Bool { hub.state[k] as? Bool ?? false }
+    private var nativeOn: Bool { hub.recorder["recording"] as? Bool ?? false }
+    private var nativeReady: Bool { hub.recorder["available"] as? Bool ?? false }
+    // A Phone GPS drive is the recorder's; the page's own "recording" only counts for a Bluetooth drive ("pageDrive"),
+    // because the page's last update can be stale while iOS has it paused.
+    private var recording: Bool { nativeReady ? (nativeOn || (flag("recording") && flag("pageDrive"))) : flag("recording") }
+    private func rstr(_ k: String) -> String? { (hub.recorder[k] as? String).flatMap { $0.isEmpty ? nil : $0 } }
     private var routes: [[String: Any]] { hub.state["routes"] as? [[String: Any]] ?? [] }
 
     public func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene,
@@ -122,7 +163,7 @@ public class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelega
     // waits for the 10-second step.
     private func shape() -> String {
         let ids = routes.compactMap { $0["id"] as? String }.joined(separator: ",")
-        return "\(flag("ready"))|\(flag("recording"))|\(str("followingId") ?? "")|\(ids)"
+        return "\(flag("ready") || nativeReady)|\(recording)|\(str("followingId") ?? "")|\(ids)"
     }
 
     func refresh() {
@@ -133,15 +174,17 @@ public class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelega
             root.updateSections(mainSections())
             routesList?.updateSections(routeSections())
         }
-        if let n = str("notice"), let id = str("noticeId"), id != shownNotice {
-            shownNotice = id
-            alert(n, [CPAlertAction(title: "OK", style: .cancel) { [weak self] _ in self?.dismissAlert() }])
+        for (n, id) in [(str("notice"), str("noticeId")), (rstr("notice"), rstr("noticeId"))] {
+            if let n = n, let id = id, id != shownNotice, !seenNotices.contains(id) {
+                shownNotice = id; seenNotices.insert(id)
+                alert(n, [CPAlertAction(title: "OK", style: .cancel) { [weak self] _ in self?.dismissAlert() }])
+            }
         }
     }
 
     private func mainSections() -> [CPListSection] {
         let drive: CPListItem
-        if !flag("ready") {
+        if !flag("ready") && !nativeReady {
             drive = CPListItem(text: "Start drive", detailText: "Open Dragon Drive on your iPhone once first",
                                image: UIImage(systemName: "iphone"))
             drive.handler = { [weak self] _, done in
@@ -149,8 +192,9 @@ public class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelega
                             [CPAlertAction(title: "OK", style: .cancel) { _ in self?.dismissAlert() }])
                 done()
             }
-        } else if flag("recording") {
-            let detail = [str("time"), str("dist")].compactMap { $0 }.joined(separator: " · ")
+        } else if recording {
+            // The recorder's numbers for its drive (they keep coming with the phone locked), else the page's.
+            let detail = (nativeOn ? [rstr("time"), rstr("dist")] : [str("time"), str("dist")]).compactMap { $0 }.joined(separator: " · ")
             drive = CPListItem(text: "Finish drive", detailText: detail.isEmpty ? "Recording" : "Recording · " + detail,
                                image: UIImage(systemName: "stop.circle.fill"))
             drive.handler = { [weak self] _, done in self?.confirmFinish(); done() }
@@ -158,7 +202,7 @@ public class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelega
             let detail = [str("source"), str("vehicle")].compactMap { $0 }.joined(separator: " · ")
             drive = CPListItem(text: "Start drive", detailText: detail.isEmpty ? nil : detail,
                                image: UIImage(systemName: "record.circle"))
-            drive.handler = { [weak self] _, done in self?.hub.send("start"); done() }
+            drive.handler = { [weak self] _, done in self?.hub.drive("start"); done() }
         }
 
         let follow = CPListItem(text: "Follow a route",
@@ -224,7 +268,7 @@ public class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelega
     // On the phone a drive finishes by holding the button, so a stray touch can't end it; here it's a confirmation.
     private func confirmFinish() {
         alert("Finish this drive?", [
-            CPAlertAction(title: "Finish", style: .destructive) { [weak self] _ in self?.hub.send("finish"); self?.dismissAlert() },
+            CPAlertAction(title: "Finish", style: .destructive) { [weak self] _ in self?.dismissAlert(); self?.hub.drive("finish") },
             CPAlertAction(title: "Keep recording", style: .cancel) { [weak self] _ in self?.dismissAlert() }
         ])
     }
