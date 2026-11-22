@@ -11,6 +11,19 @@ The iOS app is [Capacitor](https://capacitorjs.com) 8 around the same web app th
 - The app has no service worker and no visit counter (GoatCounter runs only on dragondrive.turboloser.co).
 - Links people share (invites, routes) and the sign-in email always point at https://dragondrive.turboloser.co.
 
+## Siri, CarPlay and a locked phone
+
+Phone GPS drives are owned by native code, `App/DriveRecorder.swift` (in the app target, next to `DriveIntents.swift`), so Siri and the car screen can start and finish a drive without the web app running, with the phone locked. Its plugin, `DriveRecorder`, is registered on the bridge by `DDBridgeViewController` (`SceneDelegate.swift`) rather than through a plugin package, because the Siri intents need to call the recorder directly. `AppDelegate` boots it on every launch.
+
+- Siri intents (`DriveIntents.swift`) have `openAppWhenRun = false` and `authenticationPolicy = .alwaysAllowed`, so they run on a locked phone with no Face ID, as long as **Settings, Siri, Allow Siri When Locked** is on. Finishing always works that way. Starting with the phone locked needs location **Always**: iOS lets a "While Using" app start GPS only while it is on screen. The Drive screen's Hands-free panel asks for it (iOS asks once; after that it opens Settings). Without Always, Siri asks iOS to unlock and open the app and starts the drive there.
+- A Bluetooth drive (RaceBox, Dragy) still lives in the web app, so Siri starting or finishing one asks to unlock first.
+- Every fix goes to `Application Support/DriveRecorder/current.jsonl` as it arrives (file protection "until first unlock", so it can be written while locked). If the app is closed mid-drive, the next launch saves what was recorded.
+- A drive finished natively is written to `finished/<id>.json` (raw fixes). `app.html` (`importNative`) builds it with the same code as a drive finished on screen (`makeDrive`: the same name by time of day, thinning, stats, 5 points and 100 m to keep it) and then acks it. The home privacy zone is applied when a drive is shared, so it covers these too.
+- `app.html` picks up a drive it didn't start (`syncNative`, on launch, on every return to the screen and on the recorder's `changed` event) and shows it as a normal live drive. A drive started on the phone also goes through the recorder, and the page finishes it itself and tells the recorder to drop its copy (`cancel`).
+- The page sends the recorder its settings (`config`: data source, vehicle, units, g-force on or off). The recorder measures g-force itself with Core Motion, so g still logs with the phone locked.
+- Lost while nothing is on screen: the camera (iOS doesn't allow filming in the background), speed limit alerts and beeps, Follow a route, and the live map. They come back when the app is opened mid-drive (except the camera, which starts only with a drive started on the phone).
+- CarPlay's Start and Finish go to the recorder first through `NotificationCenter` (`DDRecorderCommand`, `DDRecorderState`), so the plugin package and the app target don't import each other.
+
 ## CarPlay
 
 `plugins/carplay` puts Dragon Drive on the car screen in Apple's **Driving Task** category: one list with Start drive / Finish drive (time and distance while recording, Finish asks to confirm) and Follow a route (the planned routes; picking one offers Navigate in Maps, which opens Apple Maps on the car screen with the route's stops plus points along its line, or Follow only, which shows it on the phone's drive screen as usual). The taps run the same code as the phone's buttons in `app.html` (`cpState()` and the `CARPLAY` listeners); the web app has to have been opened on the phone at least once since the phone started, otherwise the car screen asks for that.
