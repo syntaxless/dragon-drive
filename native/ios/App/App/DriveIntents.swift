@@ -12,13 +12,15 @@ import WebKit
 // Siri) they work on a locked phone with no Face ID. Two cases still need the phone unlocked, and then the intent
 // asks iOS to bring the app up (needsToContinueInForegroundError: iOS asks for Face ID or the passcode) and carries
 // on there:
-// - starting without "Always" location permission (iOS lets a "While Using" app start GPS only on screen);
-// - a Bluetooth drive (RaceBox, Dragy), which lives in the web app, whose JavaScript is paused off screen.
+// - starting a Phone GPS drive without "Always" location permission (iOS lets a "While Using" app start GPS only on screen);
+// - a Dragy or other Bluetooth GPS drive, which lives in the web app, whose JavaScript is paused off screen;
+// - a RaceBox drive before the RaceBox has been connected once in the app (iOS asks for Bluetooth only on screen).
+// A RaceBox drive needs no location permission: the recorder connects the remembered RaceBox itself.
 
 @available(iOS 16.4, *)
 struct StartDriveIntent: AppIntent, ForegroundContinuableIntent {
     static var title: LocalizedStringResource = "Start a drive"
-    static var description = IntentDescription("Starts recording a drive with Phone GPS, even with the phone locked.")
+    static var description = IntentDescription("Starts recording a drive with Phone GPS or your RaceBox, even with the phone locked.")
     static var openAppWhenRun: Bool = false
     static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
 
@@ -26,8 +28,16 @@ struct StartDriveIntent: AppIntent, ForegroundContinuableIntent {
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let rec = DriveRecorder.shared
         rec.boot()
+        // The Bluetooth state is not known for a moment after the app launches in the background.
+        if rec.config.source == "racebox" { _ = await RaceBoxLink.shared.whenReady(timeout: 3) }
         switch rec.start(origin: "siri") {
         case .started:
+            if rec.source == "racebox" {
+                if await rec.waitForRaceBox(seconds: 8) {
+                    return .result(dialog: "Recording your drive from your RaceBox. Say \"Dragon Drive, I'm done\" when you finish.")
+                }
+                return .result(dialog: "Your drive will record as soon as your RaceBox connects. Make sure it's on.")
+            }
             return .result(dialog: "Recording your drive. Say \"Dragon Drive, I'm done\" when you finish.")
         case .already:
             return .result(dialog: "You're already recording a drive.")
@@ -37,6 +47,12 @@ struct StartDriveIntent: AppIntent, ForegroundContinuableIntent {
             throw needsToContinueInForegroundError("Unlock your iPhone to start your drive with your Bluetooth device.") {
                 PageCommand.send("siri-start")
             }
+        case .needsDevice:
+            throw needsToContinueInForegroundError("Unlock your iPhone to connect your RaceBox. After that, Siri can start RaceBox drives with the phone locked.") {
+                PageCommand.send("siri-start")
+            }
+        case .bluetoothOff:
+            return .result(dialog: "Bluetooth is off. Turn it on to record from your RaceBox, then try again.")
         case .needsForeground:
             throw needsToContinueInForegroundError("Unlock your iPhone to start your drive. To start with it locked, allow location Always on the Drive screen.") {
                 DriveRecorder.shared.start(origin: "siri", force: true)
@@ -59,7 +75,7 @@ struct FilmDriveIntent: AppIntent, ForegroundContinuableIntent {
     @MainActor
     static func go() {
         let rec = DriveRecorder.shared
-        if rec.config.source == "phone" && !rec.pageDrive { rec.start(origin: "siri", force: true) }
+        if (rec.config.source == "phone" || rec.config.source == "racebox") && !rec.pageDrive { rec.start(origin: "siri", force: true) }
         PageCommand.send("film")
     }
 
@@ -94,7 +110,7 @@ struct FinishDriveIntent: AppIntent, ForegroundContinuableIntent {
             return .result(dialog: "That drive was too short to save.")
         case .notRecording:
             if rec.pageDrive {
-                throw needsToContinueInForegroundError("Unlock your iPhone to finish your Bluetooth drive.") {
+                throw needsToContinueInForegroundError("Unlock your iPhone to finish your Dragy or Bluetooth GPS drive.") {
                     PageCommand.send("finish")
                 }
             }

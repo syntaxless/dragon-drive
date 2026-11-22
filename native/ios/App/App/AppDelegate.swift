@@ -9,7 +9,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // The drive recorder runs on every launch, including a background one for Siri or one from the car screen,
         // and saves a drive the app was closed in the middle of.
-        DriveRecorder.shared.boot()
+        // bluetoothCentrals: iOS relaunched the app for the RaceBox during a RaceBox drive (RaceBoxLink.swift).
+        DriveRecorder.shared.boot(bluetooth: launchOptions?[.bluetoothCentrals] != nil)
         return true
     }
 
