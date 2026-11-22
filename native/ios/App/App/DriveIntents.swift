@@ -40,6 +40,8 @@ struct FinishDriveIntent: AppIntent {
 struct DriveShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(intent: StartDriveIntent(), phrases: [
+            "Start \(.applicationName)",
+            "\(.applicationName) start",
             "Start a drive with \(.applicationName)",
             "Start a drive in \(.applicationName)",
             "Start my drive with \(.applicationName)",
@@ -70,9 +72,15 @@ struct DriveShortcuts: AppShortcutsProvider {
             "\(.applicationName) let's drive",
             "Let's drive with \(.applicationName)"
         ])
-        // No "end", "stop", "drive", "route" or "trip" here: while driving, Siri sends those to Apple Maps
-        // ("end my drive" ended navigation or looked for a road), and the app's own name already says "drive".
+        // The short ones first (Chefff's wording). Avoid "end/stop ... my drive", "route" or "trip": while driving,
+        // Siri sent "End my drive in Dragon Drive" to Apple Maps (ended navigation or looked for a road).
         AppShortcut(intent: FinishDriveIntent(), phrases: [
+            "End \(.applicationName)",
+            "Finish \(.applicationName)",
+            "Stop \(.applicationName)",
+            "\(.applicationName) end",
+            "\(.applicationName) finish",
+            "\(.applicationName) stop",
             "\(.applicationName) I'm done",
             "\(.applicationName) finish recording",
             "\(.applicationName) wrap it up",
