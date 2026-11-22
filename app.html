@@ -1374,7 +1374,7 @@ function viewRecord(){
       <label class="check"><input type="checkbox" id="al-above" ${AL().aboveOn?"checked":""}> Warn above <input type="number" id="al-above-v" inputmode="numeric" min="10" max="250" value="${AL().above}" style="width:72px"> ${sLabel()}</label>
       <label class="check"><input type="checkbox" id="al-lim" ${S.settings.limits!==false?"checked":""}> Show speed limits. They come from OpenStreetMap, which gets your approximate location while you drive. Main roads are well covered, side streets less so.</label>
       <p class="muted small" style="margin:0">Alerts beep and flash the screen. Turn the ringer on to hear them.</p></div>
-    <div class="panel"><div class="row"><div style="flex:1;min-width:200px"><h3 style="margin:0 0 4px">Action camera</h3><p class="muted small" style="margin:0">Import the video and Dragon Drive reads the GoPro's own GPS to log the drive, then lines the video up with it for the overlay. Pick every file from one recording if the GoPro split it.</p></div><button class="btn" id="gp-import" type="button" ${REC.on?"disabled":""}>Import GoPro video</button></div></div>
+    ${GP_OK?gpPanel():`<div class="panel"><div class="row"><div style="flex:1;min-width:200px"><h3 style="margin:0 0 4px">Action camera</h3><p class="muted small" style="margin:0">Import the video and Dragon Drive reads the GoPro's own GPS to log the drive, then lines the video up with it for the overlay. Pick every file from one recording if the GoPro split it.</p></div><button class="btn" id="gp-import" type="button" ${REC.on?"disabled":""}>Import GoPro video</button></div></div>`}
     <div class="notice"><strong>Drive first.</strong> Mount your phone and tap Start drive before you pull away. Dragon Drive switches to a simple screen with one large control, and you finish by holding the button. Every stat, from elevation and g-force to 0–60 and quarter-mile times, is logged automatically on every drive. Your choices on this screen are remembered for next time.</div>
     ${NATIVE?"":`<div class="notice"><strong>Keep it open.</strong> iPhone pauses GPS for web apps when the screen locks or you switch to another app, which leaves straight lines across your route. Dragon Drive keeps the screen awake while recording; leave it on screen and plug the phone in for long drives.</div>`}
     ${geoOK||src!=="phone"?"":`<div class="notice">This browser doesn't offer location, so drives can't be recorded here. Open Dragon Drive on your phone.</div>`}
@@ -1382,6 +1382,7 @@ function viewRecord(){
   document.querySelectorAll("[data-src]").forEach(b=>b.onclick=()=>{S.settings.source=b.dataset.src;save();viewRecord();autoConnect()});
   const m=$("#motion");if(m)m.onchange=e=>{S.settings.motion=e.target.checked;save()};
   if(DREC_OK)lockFill();
+  if(GP_OK)gpFill();
   $("#film").onchange=e=>{S.settings.film=e.target.checked;save();const r=$("#rec-sum");if(r)r.innerHTML=recSummary()};
   const cp=$("#cam-prev");if(cp){cp.srcObject=CAM.stream;cp.play().catch(()=>{})}
   const c=$("#connect");if(c)c.onclick=()=>connectDevice(src);
@@ -1610,7 +1611,7 @@ async function importNative(){const r=await DREC.finished().catch(()=>null);cons
   for(const x of list){ids.push(x.id);if(S.drives.some(d=>d.id===x.id))continue;const raw=nativePts(x.fixes||[]);if(raw.length<5||pathLen(raw)<100)continue;
     const d=makeDrive(raw,{id:x.id,vehicle:x.vehicle||S.settings.vehicle,source:"Phone GPS",diag:x.diag});
     if(REC.vidFor&&REC.vidFor.id===x.id){d.video=REC.vidFor.v;REC.vidFor=null}
-    S.drives.push(d);last=d;n++}
+    S.drives.push(d);last=d;n++;gpTag(d)}
   if(last){S.drives.sort((a,b)=>a.start-b.start);dropExamples();save();toast(n>1?`Saved ${n} drives you finished with Siri or CarPlay`:"Saved the drive you finished with Siri or CarPlay");
     if(location.hash==="#feed"){render();openDrive(last.id,true)}else{pendingOpen=last.id;location.hash="#feed"}}
   await DREC.ack({ids}).catch(()=>{});cpState()}
@@ -1624,6 +1625,52 @@ async function lockFill(){const t=$("#lock-t"),b=$("#lock-b");if(!t||!b)return;c
   t.textContent=`Siri and the car screen can finish a drive with the phone locked. To start one without unlocking, for example on a motorcycle, allow location Always. Without it, Siri asks you to unlock first. Phone GPS only: camera, speed alerts and Bluetooth devices need the app open. To film, say "Start filming with Dragon Drive".`;b.hidden=false;
   b.onclick=async()=>{const r=await DREC.requestAlways().catch(()=>null);if(r&&r.status==="always"){toast("Done. Siri can start a drive with the phone locked.");lockFill()}
     else{toast('In Settings, tap Location, then "Always".');DREC.openSettings().catch(()=>{})}}}
+/* ================= GoPro control (iOS app only) ================= */
+// Paired GoPros (HERO9 Black and newer, Open GoPro over Bluetooth) start recording when a drive starts and stop when it
+// ends. The native side (native/ios/App/App/GoPros.swift) does it, so it works when Siri or the car screen starts the
+// drive with the phone locked. This panel pairs cameras and shows their state; the video stays on the camera and
+// comes in through the GoPro import, which lines it up by the camera's clock (set from the phone on every connect).
+const GOPRO=NATIVE&&Capacitor.registerPlugin?Capacitor.registerPlugin("GoPro"):null;let GP_OK=false,GP={cams:[],found:[]},gpPairing=false;
+const gpState=c=>({connecting:"Looking for the camera…",connected:REC.on?"Connected, starting…":"Connected",recording:"Recording",stopping:"Stopping…",error:"Needs attention"}[c.state]||(c.auto?"Records with your next drive":"Not recording with drives"));
+function gpPanel(){return `<div class="panel stack" id="gp-panel" style="gap:10px"><h3 style="margin:0">Action camera</h3>
+  <p class="muted small" style="margin:0">Paired GoPros (HERO9 Black and newer) start recording when a drive starts and stop when it ends, also when Siri or the car screen starts it with the phone locked. A sleeping GoPro wakes up for the drive. The video stays on the camera: import it afterwards to add it to the drive.</p>
+  <div id="gp-cams" class="stack" style="gap:8px"></div><div id="gp-pair" class="stack" style="gap:8px"></div>
+  <label class="check" id="gp-sleep-l" hidden><input type="checkbox" id="gp-sleep"> Turn the GoPros off after a drive (they stay ready to wake for the next one)</label>
+  <div class="row"><button class="btn" id="gp-pair-b" type="button">Pair a GoPro</button><button class="btn ghost" id="gp-import" type="button" ${REC.on?"disabled":""}>Import GoPro video</button></div>
+  <p class="muted small" style="margin:0">Importing reads the GoPro's own GPS and lines the video up with the drive for the overlay. Pick every file from one recording if the GoPro split it.</p></div>`}
+function gpFill(){const box=$("#gp-cams"),pb=$("#gp-pair"),b=$("#gp-pair-b");if(!box||!pb||!b)return;
+  box.innerHTML=GP.cams.map(c=>`<div class="dev"><span class="dot ${c.state==="recording"?"ok":c.state==="error"?"off":c.state==="idle"?"":"wait"}"></span><div style="flex:1;min-width:0"><div style="font-weight:600">${esc(c.name)}</div><div class="muted small">${esc(c.note||gpState(c))}</div></div>${c.battery!=null?`<span class="chip">${c.battery}% battery</span>`:""}${c.videoLeft!=null?`<span class="chip">${Math.floor(c.videoLeft/60)} min left</span>`:""}</div>
+    <div class="row" style="margin-top:-2px;align-items:center;gap:6px"><label class="check" style="flex:1 1 100%"><input type="checkbox" data-gpauto="${c.id}" ${c.auto?"checked":""}> Record with drives</label>${REC.on?"":`<button class="btn ghost" style="padding:6px 10px" type="button" data-gpcheck="${c.id}">Check</button><button class="btn ghost" style="padding:6px 10px" type="button" data-gptest="${c.id}">Test</button><button class="btn ghost" style="padding:6px 10px" type="button" data-gpforget="${c.id}">Forget</button>`}</div>`).join("");
+  const sl=$("#gp-sleep-l");if(sl)sl.hidden=!GP.cams.length;const sc=$("#gp-sleep");if(sc)sc.checked=!!GP.sleepAfter;
+  b.hidden=gpPairing;b.textContent=GP.cams.length?"Pair another GoPro":"Pair a GoPro";
+  if(!gpPairing){pb.innerHTML=GP.pairNote?`<p class="small" style="margin:0;color:var(--bad)">${esc(GP.pairNote)}</p>`:"";}
+  else{const bt=GP.bluetooth;pb.innerHTML=`<div class="notice small"><b>Put the GoPro in pairing mode.</b> On the camera, swipe down, open Preferences, then Wireless Connections (Connections on HERO9 and HERO10), Connect Device, GoPro Quik App. Keep it next to the phone, pick it below, and tap Pair when iPhone asks.</div>
+    ${bt==="off"?`<p class="small" style="margin:0;color:var(--bad)">Bluetooth is off. Turn it on in Control Center.</p>`:bt==="denied"?`<p class="small" style="margin:0;color:var(--bad)">Bluetooth is off for Dragon Drive. Turn it on in Settings, Dragon Drive.</p>`:""}
+    ${GP.pairing&&GP.pairing.length?`<p class="muted small" style="margin:0">Pairing… accept the request on the iPhone if it asks.</p>`:GP.found.length?GP.found.map(f=>`<button class="btn" type="button" data-gpfound="${f.id}">${esc(f.name)}</button>`).join(""):`<p class="muted small" style="margin:0">${GP.scanning?"Looking for GoPros…":"Search stopped."}</p>`}
+    ${GP.pairNote?`<p class="small" style="margin:0;color:var(--bad)">${esc(GP.pairNote)}</p>`:""}
+    <div class="row">${GP.scanning||(GP.pairing&&GP.pairing.length)?"":`<button class="btn ghost" type="button" id="gp-again">Search again</button>`}<button class="btn ghost" type="button" id="gp-cancel">Cancel</button></div>`}
+  b.onclick=()=>{gpPairing=true;GOPRO.scan().catch(()=>{});gpFill()};
+  const ag=$("#gp-again");if(ag)ag.onclick=()=>GOPRO.scan().catch(()=>{});
+  const cx=$("#gp-cancel");if(cx)cx.onclick=()=>{gpPairing=false;GOPRO.stopScan().catch(()=>{});gpFill()};
+  if(sc)sc.onchange=e=>GOPRO.setSleepAfter({on:e.target.checked}).catch(()=>{});
+  pb.querySelectorAll("[data-gpfound]").forEach(x=>x.onclick=()=>GOPRO.pair({id:x.dataset.gpfound}).catch(()=>toast("That GoPro went out of range. Search again.")));
+  box.querySelectorAll("[data-gpauto]").forEach(x=>x.onchange=e=>GOPRO.setAuto({id:x.dataset.gpauto,on:e.target.checked}).catch(()=>{}));
+  box.querySelectorAll("[data-gpcheck]").forEach(x=>x.onclick=()=>GOPRO.check({id:x.dataset.gpcheck}).catch(()=>{}));
+  box.querySelectorAll("[data-gptest]").forEach(x=>x.onclick=()=>{toast("Recording 5 seconds on the GoPro…");GOPRO.check({id:x.dataset.gptest,test:true}).catch(()=>{})});
+  box.querySelectorAll("[data-gpforget]").forEach(x=>x.onclick=()=>{GOPRO.forget({id:x.dataset.gpforget}).catch(()=>{});toast("Forgotten. To pair it again later, also forget it in iPhone Settings, Bluetooth.")})}
+function gpUpdate(st){const before=GP;GP=st||GP;
+  // A camera that just paired ends the pairing view.
+  if(gpPairing&&before.pairing&&before.pairing.length&&!(GP.pairing&&GP.pairing.length)&&GP.cams.length>before.cams.length){gpPairing=false;toast("GoPro paired. It records with your drives.")}
+  // While driving: say when each camera starts, or why it can't.
+  if(REC.on)for(const c of GP.cams){const o=(before.cams||[]).find(x=>x.id===c.id);if(!o)continue;
+    if(c.state==="recording"&&o.state!=="recording")toast(`${c.name} is recording`);
+    else if(c.note&&c.note!==o.note&&c.state!=="recording")toast(`${c.name}: ${c.note}`)}
+  if(current==="record")gpFill()}
+// Which GoPros filmed a drive, from the camera log the native side keeps (by time), noted on the drive.
+async function gpTag(d){if(!GP_OK||!d||!d.pts||d.pts.length<2)return;const r=await GOPRO.sessions().catch(()=>null);const end=d.pts[d.pts.length-1][2];
+  const hit=((r&&r.sessions)||[]).filter(x=>x.start<end+60000&&x.end>d.start-60000).flatMap(x=>x.cams||[]);
+  if(hit.length){d.gopros=[...new Set(hit)];save();if(SHEET&&SHEET.kind==="drive"&&SHEET.id===d.id)openDrive(d.id,true)}}
+if(GOPRO){GOPRO.state().then(st=>{GP_OK=true;GP=st;if(current==="record")viewRecord()}).catch(()=>{});GOPRO.addListener("state",gpUpdate).catch(()=>{})}
 function geoWatch(ok,fail,plug){if(!DLOC)return navigator.geolocation.watchPosition(ok,fail,{enableHighAccuracy:true,maximumAge:0,timeout:20000});
   const P=plug||DLOC;const w={dead:false,busy:null,timer:null,vis:null,seq:0,P,nid:null};
   const feed=r=>{if(w.dead||!r)return;if(r.diag)REC.diag=r.diag;
@@ -1656,6 +1703,7 @@ async function finishRec(){
   if(raw.length<5||pathLen(raw)<100){stopCam(true).then(v=>{});if(CAM.key)delDriveVideo({key:CAM.key});toast("That drive was too short to save.");viewRecord();return}
   const d=makeDrive(raw,{id:REC.nid,vehicle:S.settings.vehicle,source:REC.source,gaps:REC.gaps,diag:REC.diag});REC.gaps=[];
   S.drives.push(d);if(dropExamples())toast("First drive saved, example drives removed");save();
+  setTimeout(()=>gpTag(d),3000);   // the cameras' stop is logged a moment after the drive ends
   if(CAM.rec||CAM.stream)stopCam().then(v=>{if(v){d.video=v;save();if(SHEET&&SHEET.kind==="drive"&&SHEET.id===d.id)openDrive(d.id,true)}});
   if(location.hash==="#feed"){render();openDrive(d.id,true)}else{pendingOpen=d.id;location.hash="#feed"}cpState();
 }
@@ -1956,6 +2004,9 @@ async function importGoPro(files){
     if(p[3]<=0.5&&last&&last[3]<=0.5&&p[2]-last[2]<2000){still=p;continue}if(still&&p[3]>0.5)raw.push(still);still=null;raw.push(p)}
   if(raw.length<5||pathLen(raw)<100){toast("The GPS track in that video is too short to save as a drive.");return}
   const dup=S.drives.find(d=>d.who==="me"&&/^GoPro/.test(d.source||"")&&Math.abs(d.start-raw[0][2])<5000);if(dup){toast("You've already imported this drive");openDrive(dup.id);return}
+  // Filmed by a paired GoPro during a drive already saved: that drive is the one to add it to, not a new one.
+  const during=S.drives.find(d=>d.who==="me"&&d.gopros&&d.gopros.length&&d.pts.length>1&&raw[0][2]>d.start-120000&&raw[0][2]<d.pts[d.pts.length-1][2]+60000);
+  if(during){toast(`This clip is from your ${during.title.toLowerCase()}. Tap Video there and choose it.`);openDrive(during.id);return}
   const model=(withGps.find(t=>t.model)||{}).model||"";const nice=/hero|max|fusion/i.test(model)?"GoPro "+model.replace(/^GoPro\s*/i,"").replace(/\bHERO/i,"HERO"):"GoPro";
   const h=new Date(raw[0][2]).getHours();const title=h<11?"Morning drive":h<14?"Midday drive":h<18?"Afternoon drive":"Evening drive";
   const d={id:uid(),who:"me",title,vehicle:S.settings.vehicle,source:nice,start:raw[0][2],pts:thin(raw),stats:analyze(raw),video:{gopro:true,clips:withGps.map(t=>({name:t.file.name,start:t.start}))}};
@@ -1998,6 +2049,7 @@ function openDrive(id,fresh){
       ${statBlock("Avg speed",Math.round(fSpeed(s.avg)),sLabel())}${statBlock("Top speed",Math.round(fSpeed(s.max)),sLabel())}${statBlock("Elev. gain",s.altMin==null?"–":Math.round(fAlt(s.up)),s.altMin==null?"":aLabel())}
       ${statBlock("Max accel",fG(s.gAcc),"g")}${statBlock("Max braking",fG(s.gBrk),"g")}${statBlock("Max lateral",fG(s.gLat),"g")}
     </div>
+    ${mine&&d.gopros&&d.gopros.length?`<p class="muted small" style="margin:0 2px">Filmed on ${esc(d.gopros.join(" and "))}. Tap Video and choose the clip from the camera to add the overlay.</p>`:""}
     ${mine&&d.gpsCheck?`<p class="muted small" style="margin:0 2px">${esc(d.gpsCheck)}</p>`:""}
     <p class="muted small" style="margin:-4px 2px 0">${s.gSensor?"G-force from the device's accelerometer.":"G-force estimated from GPS speed and heading."}${s.altMin!=null?` Elevation ranges ${Math.round(fAlt(s.altMin))}–${Math.round(fAlt(s.altMax))} ${aLabel()}.`:""}</p>
     <div class="panel"><h3>Timed runs</h3>${runsTable(s)}</div>
@@ -2485,7 +2537,7 @@ async function openVideo(id){
   sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span><h3>Drive video</h3></div></div>
     <div class="wrap body stack">
       <p class="muted" style="margin:0">Pick a clip you filmed during this drive. We line it up with your GPS and add speed, g-force, the route, elevation and any timed runs.</p>
-      <div class="row">${d.video&&!d.video.gopro?`<button class="btn primary" id="v-own" type="button">Use the video from this drive</button><button class="btn" id="v-pick" type="button">Choose another</button>`:`<button class="btn primary" id="v-pick" type="button">${d.video&&d.video.gopro?"Choose the GoPro clip":"Choose video"}</button>`}</div>
+      <div class="row">${d.video&&!d.video.gopro?`<button class="btn primary" id="v-own" type="button">Use the video from this drive</button><button class="btn" id="v-pick" type="button">Choose another</button>`:`<button class="btn primary" id="v-pick" type="button">${(d.video&&d.video.gopro)||(d.gopros&&d.gopros.length)?"Choose the GoPro clip":"Choose video"}</button>`}</div>
       <input type="file" id="v-in" accept="video/*" class="sr" tabindex="-1" aria-hidden="true">
       <div id="v-ui" hidden class="stack">
         <canvas id="v-cv" class="share-preview" style="max-width:100%;background:#000"></canvas>

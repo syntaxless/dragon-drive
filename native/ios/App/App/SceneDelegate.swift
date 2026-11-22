@@ -40,9 +40,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 }
 
-// Capacitor's view controller plus the plugin that lives in the app target (DriveRecorder.swift).
+// Capacitor's view controller plus the plugins that live in the app target (DriveRecorder.swift, GoPros.swift).
 class DDBridgeViewController: CAPBridgeViewController {
     override func capacitorDidLoad() {
         bridge?.registerPluginInstance(DriveRecorderPlugin())
+        bridge?.registerPluginInstance(GoProPlugin())
     }
 }

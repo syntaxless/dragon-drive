@@ -24,6 +24,18 @@ Phone GPS drives are owned by native code, `App/DriveRecorder.swift` (in the app
 - Lost while nothing is on screen: the camera (iOS doesn't allow filming in the background), speed limit alerts and beeps, Follow a route, and the live map. They come back when the app is opened mid-drive (except the camera, which starts only with a drive started on the phone).
 - CarPlay's Start and Finish go to the recorder first through `NotificationCenter` (`DDRecorderCommand`, `DDRecorderState`), so the plugin package and the app target don't import each other.
 
+## GoPros
+
+`App/GoPros.swift` (app target, plugin `GoPro`, registered next to `DriveRecorder`) starts and stops paired GoPros with every drive over Bluetooth, using GoPro's published API, [Open GoPro](https://gopro.github.io/OpenGoPro). Supported: HERO9 Black (firmware 1.70+), HERO10, HERO11, HERO11 Mini, HERO12, HERO13, MAX 2, MISSION and LIT. Older GoPros don't have the API.
+
+- `DriveRecorder` calls `GoPros.shared.drive(on:)` when any drive starts or ends: its own (phone, Siri, CarPlay, with the phone locked) and a Bluetooth drive the page runs (`pageDrive`).
+- Pairing is once per camera, on the Drive screen (Action camera, Pair a GoPro), with the camera in its pairing mode. iOS shows its own Bluetooth pairing request and keeps the bond.
+- On every connection: Set Third Party Client Info, the camera's clock set from the phone (so the GoPro import lines clips up with the drive), Get Hardware Info (model). Then Keep Alive and a status query (busy, encoding, battery, video left, overheating) every 3 s, and Set Shutter on once the camera isn't busy.
+- A sleeping GoPro advertises for 8 hours and wakes when connected. iOS keeps a connection attempt open with no time limit, so a camera turned on mid-drive starts then. A camera lost mid-drive is reconnected and restarted (a new clip).
+- Drive ends: Set Shutter off, Sleep if "Turn the GoPros off after a drive" is on, disconnect, inside a background task.
+- Only Bluetooth, never the camera's Wi-Fi. Videos stay on the card; the existing GoPro import brings them in. The page notes which GoPros filmed a drive from the camera log the native side keeps (`sessions`).
+- DJI (Osmo Action, Pocket, 360): DJI publishes no control API for other apps, so DJI cameras stay on video import.
+
 ## CarPlay
 
 `plugins/carplay` puts Dragon Drive on the car screen in Apple's **Driving Task** category: one list with Start drive / Finish drive (time and distance while recording, Finish asks to confirm) and Follow a route (the planned routes; picking one offers Navigate in Maps, which opens Apple Maps on the car screen with the route's stops plus points along its line, or Follow only, which shows it on the phone's drive screen as usual). The taps run the same code as the phone's buttons in `app.html` (`cpState()` and the `CARPLAY` listeners); the web app has to have been opened on the phone at least once since the phone started, otherwise the car screen asks for that.

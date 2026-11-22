@@ -43,7 +43,7 @@ final class DriveRecorder: NSObject, CLLocationManagerDelegate {
     private(set) var startMs: Double = 0
     private(set) var origin = ""
     // The page is recording from a Bluetooth device (RaceBox, Dragy): that drive lives in the page, not here.
-    var pageDrive = false
+    var pageDrive = false { didSet { if pageDrive != oldValue { GoPros.shared.drive(on: recording || pageDrive) } } }
 
     private var manager: CLLocationManager?
     private var session: AnyObject?          // CLBackgroundActivitySession on iOS 17+
@@ -191,6 +191,7 @@ final class DriveRecorder: NSObject, CLLocationManagerDelegate {
         }
         m.startUpdatingLocation()
         startMotion()
+        GoPros.shared.drive(on: true)
         note("start \(origin) " + authName(a) + (appActive ? "" : " locked"))
 
         // Started off screen without Always (the car screen tries anyway): give up if no fix arrives.
@@ -218,6 +219,7 @@ final class DriveRecorder: NSObject, CLLocationManagerDelegate {
         session = nil
         motion.stopDeviceMotionUpdates()
         recording = false
+        GoPros.shared.drive(on: pageDrive)
     }
 
     // Finish and save here (Siri, CarPlay). Same rules as the page: at least 5 points and 100 m, else it is dropped.
