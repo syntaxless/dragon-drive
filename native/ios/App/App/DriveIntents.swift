@@ -3,7 +3,7 @@ import UIKit
 import Capacitor
 import WebKit
 
-// Siri and Shortcuts: "Start a drive with Dragon Drive" and "End my drive with Dragon Drive" ("in" works too). They need no setup and no
+// Siri and Shortcuts: "Start a drive with Dragon Drive" and "Dragon Drive, I'm done" ("in" works too for start). They need no setup and no
 // entitlement: App Shortcuts appear in Siri, Spotlight and the Shortcuts app as soon as the app is installed, so a
 // Shortcuts automation such as "when my iPhone connects to CarPlay, start a drive" can start one with no tap.
 //
@@ -25,14 +25,14 @@ struct StartDriveIntent: AppIntent {
 
 @available(iOS 16.0, *)
 struct FinishDriveIntent: AppIntent {
-    static var title: LocalizedStringResource = "End my drive"
+    static var title: LocalizedStringResource = "Finish recording"
     static var description = IntentDescription("Finishes and saves the drive you're recording.")
     static var openAppWhenRun: Bool = true
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
         PageCommand.send("finish")
-        return .result(dialog: "Ending your drive.")
+        return .result(dialog: "Saving your drive.")
     }
 }
 
@@ -70,35 +70,21 @@ struct DriveShortcuts: AppShortcutsProvider {
             "\(.applicationName) let's drive",
             "Let's drive with \(.applicationName)"
         ])
+        // No "end", "stop", "drive", "route" or "trip" here: while driving, Siri sends those to Apple Maps
+        // ("end my drive" ended navigation or looked for a road), and the app's own name already says "drive".
         AppShortcut(intent: FinishDriveIntent(), phrases: [
-            "End my drive with \(.applicationName)",
-            "End my drive in \(.applicationName)",
-            "End the drive with \(.applicationName)",
-            "End the drive in \(.applicationName)",
-            "End a drive with \(.applicationName)",
-            "End a drive in \(.applicationName)",
-            "Finish my drive with \(.applicationName)",
-            "Finish my drive in \(.applicationName)",
-            "Finish the drive with \(.applicationName)",
-            "Finish the drive in \(.applicationName)",
-            "Stop my drive with \(.applicationName)",
-            "Stop my drive in \(.applicationName)",
-            "Stop the drive with \(.applicationName)",
-            "Stop the drive in \(.applicationName)",
-            "Stop driving with \(.applicationName)",
-            "Stop driving in \(.applicationName)",
-            "Stop recording with \(.applicationName)",
-            "Stop recording in \(.applicationName)",
-            "Stop logging with \(.applicationName)",
-            "Stop logging in \(.applicationName)",
-            "Save my drive with \(.applicationName)",
-            "Save my drive in \(.applicationName)",
-            "\(.applicationName) end my drive",
-            "\(.applicationName) finish my drive",
-            "\(.applicationName) stop my drive",
-            "\(.applicationName) stop recording",
-            "I'm done driving with \(.applicationName)",
-            "I'm done driving in \(.applicationName)"
+            "\(.applicationName) I'm done",
+            "\(.applicationName) finish recording",
+            "\(.applicationName) wrap it up",
+            "\(.applicationName) save it",
+            "Finish recording with \(.applicationName)",
+            "Finish recording in \(.applicationName)",
+            "Done recording with \(.applicationName)",
+            "I'm done with \(.applicationName)",
+            "Wrap it up with \(.applicationName)",
+            "Save my recording with \(.applicationName)",
+            "Save my recording in \(.applicationName)",
+            "Finish up with \(.applicationName)"
         ])
     }
 }
