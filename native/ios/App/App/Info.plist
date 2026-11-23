@@ -19,6 +19,17 @@
 			<string>Dragon</string>
 		</dict>
 	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.itschefff.dragondrive</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>dragondrive</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>

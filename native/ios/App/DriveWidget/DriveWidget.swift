@@ -14,12 +14,18 @@ struct DriveWidgetBundle: WidgetBundle {
 
 private let orange = Color(red: 1.0, green: 0.42, blue: 0.1)
 
+// Where a tap on the drive goes. On the CarPlay dashboard, CarPlay opens the app's car screen (Finish drive,
+// Follow a route) with this URL; on the lock screen and Dynamic Island it opens the app on the phone, as before.
+// Registered in the app's Info.plist (CFBundleURLTypes); CarPlayPlugin.swift and SceneDelegate.swift read it.
+private let driveURL = URL(string: "dragondrive://drive")
+
 struct DriveLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: DriveActivityAttributes.self) { ctx in
             LockScreenView(ctx: ctx)
                 .activityBackgroundTint(Color.black.opacity(0.85))
                 .activitySystemActionForegroundColor(.white)
+                .widgetURL(driveURL)
         } dynamicIsland: { ctx in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
@@ -43,6 +49,8 @@ struct DriveLiveActivity: Widget {
             } minimal: {
                 Image(systemName: "record.circle").foregroundColor(orange)
             }
+            // CarPlay draws the dashboard tile from the compact views above, so the tap URL goes on the island too.
+            .widgetURL(driveURL)
         }
     }
 }
