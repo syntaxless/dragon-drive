@@ -8,7 +8,7 @@ import Capacitor
 //
 // Why it is native: iOS pauses the web app's JavaScript whenever the app is not on screen, and a Siri request or a
 // CarPlay tap with the phone locked never brings it on screen. So the recorder runs without the web view: Siri
-// ("Start Dragon Drive", "Dragon Drive, I'm done"), CarPlay and the page all drive this one object.
+// ("Start Dragon Drive", "Dragon, I'm done"), CarPlay and the page all drive this one object.
 //
 // - Every fix is kept in memory and appended to a file as it arrives (Application Support/DriveRecorder), so a drive
 //   survives the app being closed or crashing: the next launch finishes it from the file.
@@ -89,7 +89,7 @@ final class DriveRecorder: NSObject, CLLocationManagerDelegate {
     enum StartResult { case started, already, denied, needsForeground, needsPage, needsDevice, bluetoothOff }
     enum FinishResult { case saved(meters: Double), tooShort, notRecording }
 
-    private(set) var recording = false
+    private(set) var recording = false { didSet { if recording != oldValue { stayAwake() } } }
     private(set) var driveId = ""
     private(set) var startMs: Double = 0
     private(set) var origin = ""
@@ -97,7 +97,24 @@ final class DriveRecorder: NSObject, CLLocationManagerDelegate {
     private(set) var source = "phone"
     private(set) var deviceName = ""
     // The page is recording from a Bluetooth device (RaceBox, Dragy): that drive lives in the page, not here.
-    var pageDrive = false { didSet { if pageDrive != oldValue { GoPros.shared.drive(on: recording || pageDrive) } } }
+    var pageDrive = false { didSet { if pageDrive != oldValue { pageSince = Date(); GoPros.shared.drive(on: recording || pageDrive); stayAwake() } } }
+    private var pageSince = Date()
+
+    // The screen doesn't dim or lock while any drive is recording and the app is on screen (iOS ignores this off
+    // screen). Set here as well as by the page's keep-awake, so a drive Siri or the car screen started counts too.
+    private func stayAwake() {
+        DispatchQueue.main.async { UIApplication.shared.isIdleTimerDisabled = self.recording || self.pageDrive }
+        liveActivity()
+    }
+
+    // The lock screen and Dynamic Island show the drive (DriveActivity.swift) while one records.
+    private func liveActivity() {
+        guard #available(iOS 16.2, *) else { return }
+        let on = recording || pageDrive
+        let src = recording ? (source == "racebox" ? "RaceBox" : "Phone GPS") : "Bluetooth GPS"
+        LiveDrive.shared.sync(on: on, start: recording ? startedAt : pageSince,
+                              state: .init(distance: recording ? distText() : "", source: src, canFinish: recording))
+    }
 
     private var manager: CLLocationManager?
     private var session: AnyObject?          // CLBackgroundActivitySession on iOS 17+
@@ -167,6 +184,9 @@ final class DriveRecorder: NSObject, CLLocationManagerDelegate {
         nc.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
             guard let self = self, self.recording else { return }
             self.note("background"); self.flush()
+        }
+        nc.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.stayAwake()
         }
         nc.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak self] _ in
             guard let self = self, self.recording else { return }
@@ -468,6 +488,7 @@ final class DriveRecorder: NSObject, CLLocationManagerDelegate {
     func publish(notice: String? = nil) {
         var s: [String: Any] = ["available": true, "recording": recording]
         if recording { s["time"] = timeText(); s["dist"] = distText() }
+        liveActivity()
         if let n = notice { noticeSeq += 1; s["notice"] = n; s["noticeId"] = "rec\(noticeSeq)" }
         DispatchQueue.main.async { NotificationCenter.default.post(name: DriveRecorder.stateName, object: nil, userInfo: s) }
     }

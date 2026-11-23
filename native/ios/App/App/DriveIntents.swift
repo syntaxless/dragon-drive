@@ -3,15 +3,18 @@ import UIKit
 import Capacitor
 import WebKit
 
-// Siri and Shortcuts: "Start a drive with Dragon Drive" and "Dragon Drive, I'm done" ("in" works too for start). They need no setup and no
+// Siri and Shortcuts: "Start Dragon Drive" and "Dragon, I'm done". "Dragon" is the app's Siri synonym (INAlternativeAppNames in
+// Info.plist), so every \(.applicationName) phrase works with "Dragon" as well as "Dragon Drive". The short name matters
+// for finishing: anything with "drive" in it, said while driving, Siri may hand to Apple Maps. They need no setup and no
 // entitlement: App Shortcuts appear in Siri, Spotlight and the Shortcuts app as soon as the app is installed, so a
 // Shortcuts automation such as "when my iPhone connects to CarPlay, start a drive" can start one with no tap.
 //
 // The drive is recorded by native code (DriveRecorder.swift), so these intents run without opening the app:
 // openAppWhenRun is false and authenticationPolicy is alwaysAllowed, so with "Allow Siri When Locked" on (Settings,
-// Siri) they work on a locked phone with no Face ID. Two cases still need the phone unlocked, and then the intent
-// asks iOS to bring the app up (needsToContinueInForegroundError: iOS asks for Face ID or the passcode) and carries
-// on there:
+// Siri) they work on a locked phone with no Face ID. These cases need the app itself on screen, and then the intent
+// asks iOS to bring the app up (needsToContinueInForegroundError: iOS shows an Open button, plus Face ID or the
+// passcode if the phone is locked) and carries on there. Siri runs intents with the app off screen even when the phone
+// is unlocked, so they happen unlocked too, which is why the dialogs say "open Dragon Drive", not "unlock":
 // - starting a Phone GPS drive without "Always" location permission (iOS lets a "While Using" app start GPS only on screen);
 // - a Dragy or other Bluetooth GPS drive, which lives in the web app, whose JavaScript is paused off screen;
 // - a RaceBox drive before the RaceBox has been connected once in the app (iOS asks for Bluetooth only on screen).
@@ -34,33 +37,38 @@ struct StartDriveIntent: AppIntent, ForegroundContinuableIntent {
         case .started:
             if rec.source == "racebox" {
                 if await rec.waitForRaceBox(seconds: 8) {
-                    return .result(dialog: "Recording your drive from your RaceBox. Say \"Dragon Drive, I'm done\" when you finish.")
+                    return .result(dialog: "Recording your drive from your RaceBox. Say \"Dragon, I'm done\" when you finish.")
                 }
                 return .result(dialog: "Your drive will record as soon as your RaceBox connects. Make sure it's on.")
             }
-            return .result(dialog: "Recording your drive. Say \"Dragon Drive, I'm done\" when you finish.")
+            return .result(dialog: "Recording your drive. Say \"Dragon, I'm done\" when you finish.")
         case .already:
             return .result(dialog: "You're already recording a drive.")
         case .denied:
             return .result(dialog: "Location is off for Dragon Drive. Turn it on in Settings, then try again.")
         case .needsPage:
-            throw needsToContinueInForegroundError("Unlock your iPhone to start your drive with your Bluetooth device.") {
+            throw needsToContinueInForegroundError("Your Bluetooth GPS runs inside Dragon Drive, so I need to open the app to start.") {
                 PageCommand.send("siri-start")
             }
         case .needsDevice:
-            throw needsToContinueInForegroundError("Unlock your iPhone to connect your RaceBox. After that, Siri can start RaceBox drives with the phone locked.") {
+            throw needsToContinueInForegroundError("I need to open Dragon Drive once to connect your RaceBox. After that, I can start RaceBox drives without opening it.") {
                 PageCommand.send("siri-start")
             }
         case .bluetoothOff:
             return .result(dialog: "Bluetooth is off. Turn it on to record from your RaceBox, then try again.")
         case .needsForeground:
-            throw needsToContinueInForegroundError("Unlock your iPhone to start your drive. To start with it locked, allow location Always on the Drive screen.") {
+            throw needsToContinueInForegroundError("I need to open Dragon Drive to start, because its location is set to While Using. Set it to Always on the Drive screen and I can start drives without opening it.") {
                 DriveRecorder.shared.start(origin: "siri", force: true)
                 PageCommand.send("show")
             }
         }
     }
 }
+
+// Lets Siri's start put the drive on the lock screen (a Live Activity, DriveActivity.swift) with the phone locked:
+// iOS lets an app start one from the background only from an intent that says it does.
+@available(iOS 17.0, *)
+extension StartDriveIntent: LiveActivityStartingIntent {}
 
 // "Start filming with Dragon Drive": a drive with the phone camera on. A plain start never films; filming has to be
 // asked for. iOS lets an app use the camera only on screen, so this one always needs the phone unlocked and the app
@@ -86,7 +94,7 @@ struct FilmDriveIntent: AppIntent, ForegroundContinuableIntent {
             FilmDriveIntent.go()
             return .result(dialog: "Filming your drive.")
         }
-        throw needsToContinueInForegroundError("Unlock your iPhone to start filming. The camera only works with Dragon Drive on screen.") {
+        throw needsToContinueInForegroundError("iPhone only lets apps film while they're open on screen, so I need to open Dragon Drive to film. For video with the phone locked, pair a GoPro on the Drive screen.") {
             FilmDriveIntent.go()
         }
     }
@@ -110,7 +118,7 @@ struct FinishDriveIntent: AppIntent, ForegroundContinuableIntent {
             return .result(dialog: "That drive was too short to save.")
         case .notRecording:
             if rec.pageDrive {
-                throw needsToContinueInForegroundError("Unlock your iPhone to finish your Dragy or Bluetooth GPS drive.") {
+                throw needsToContinueInForegroundError("Your Bluetooth GPS drive runs inside Dragon Drive, so I need to open the app to finish it.") {
                     PageCommand.send("finish")
                 }
             }
@@ -153,7 +161,10 @@ struct DriveShortcuts: AppShortcutsProvider {
             "\(.applicationName) start my drive",
             "\(.applicationName) start recording",
             "\(.applicationName) let's drive",
-            "Let's drive with \(.applicationName)"
+            "Let's drive with \(.applicationName)",
+            "\(.applicationName) let's ride",
+            "\(.applicationName) let's go",
+            "Let's ride with \(.applicationName)"
         ])
         AppShortcut(intent: FilmDriveIntent(), phrases: [
             "Start driving with \(.applicationName) and film it",
@@ -170,26 +181,30 @@ struct DriveShortcuts: AppShortcutsProvider {
             "Record video with \(.applicationName)",
             "Record video in \(.applicationName)"
         ])
-        // The short ones first (Chefff's wording). Avoid "end/stop ... my drive", "route" or "trip": while driving,
-        // Siri sent "End my drive in Dragon Drive" to Apple Maps (ended navigation or looked for a road).
+        // Finishing. Keep "drive", "route", "trip" and "navigation" out of these: said while driving, Siri sent "End my
+        // drive in Dragon Drive" to Apple Maps. "Dragon, I'm done" (the synonym, no "drive" at all) is the one to teach.
         AppShortcut(intent: FinishDriveIntent(), phrases: [
-            "End \(.applicationName)",
-            "Finish \(.applicationName)",
+            "\(.applicationName) I'm done",
+            "\(.applicationName) done",
+            "\(.applicationName) all done",
+            "\(.applicationName) we're done",
+            "I'm done with \(.applicationName)",
+            "Done with \(.applicationName)",
+            "\(.applicationName) stop",
             "Stop \(.applicationName)",
             "\(.applicationName) end",
+            "End \(.applicationName)",
             "\(.applicationName) finish",
-            "\(.applicationName) stop",
-            "\(.applicationName) I'm done",
+            "Finish \(.applicationName)",
+            "\(.applicationName) stop recording",
             "\(.applicationName) finish recording",
-            "\(.applicationName) wrap it up",
             "\(.applicationName) save it",
+            "\(.applicationName) wrap it up",
+            "Stop recording with \(.applicationName)",
             "Finish recording with \(.applicationName)",
-            "Finish recording in \(.applicationName)",
             "Done recording with \(.applicationName)",
-            "I'm done with \(.applicationName)",
             "Wrap it up with \(.applicationName)",
             "Save my recording with \(.applicationName)",
-            "Save my recording in \(.applicationName)",
             "Finish up with \(.applicationName)"
         ])
     }

@@ -32,7 +32,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
-        SceneDelegateProxy.shared.scene(scene, openURLContexts: URLContexts)
+        // dragondrive://drive is a tap on the drive's Live Activity (lock screen, Dynamic Island): opening the app is
+        // all it asks for, so it isn't passed on to the page. Other links go to Capacitor as before.
+        let rest = URLContexts.filter { $0.url.scheme != "dragondrive" }
+        if rest.isEmpty { return }
+        SceneDelegateProxy.shared.scene(scene, openURLContexts: rest)
     }
 
     func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {

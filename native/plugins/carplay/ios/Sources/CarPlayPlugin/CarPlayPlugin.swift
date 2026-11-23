@@ -159,6 +159,16 @@ public class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelega
         hub.send("disconnected")
     }
 
+    // A tap on the drive's tile on the CarPlay dashboard (the Live Activity, DriveWidget.swift) opens this app on the
+    // car screen with dragondrive://drive. CarPlay brings the app to the front itself; this only makes sure the
+    // driver lands on the main list (Finish drive) rather than an alert or the routes list left open earlier.
+    public func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+        guard let ic = ic, URLContexts.contains(where: { $0.url.scheme == "dragondrive" }) else { return }
+        let toRoot = { ic.popToRootTemplate(animated: false, completion: nil) }
+        if ic.presentedTemplate != nil { ic.dismissTemplate(animated: false) { _, _ in toRoot() } } else { toRoot() }
+        refresh()
+    }
+
     // What changes the layout or the meaning of a row: shown at once. Everything else (time, distance)
     // waits for the 10-second step.
     private func shape() -> String {
