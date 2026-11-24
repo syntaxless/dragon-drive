@@ -23,6 +23,9 @@ import Capacitor
 //   and starts recording. Once it is not busy and not already encoding, Set Shutter on.
 // - During the drive: Keep Alive and a status query every 3 s (battery, remaining video, encoding, overheating). A
 //   camera that drops out (range, battery) is reconnected and, if it stopped, started again: that makes a new clip.
+// - Paused from the car screen (CarPlay's GoPro row, or anything that posts "DDGoProCommand"): Set Shutter off but
+//   stay connected for the rest of the drive (keep-alive and status go on), so resuming is one Set Shutter on and
+//   a new clip. Every drive starts unpaused.
 // - The drive ends: Set Shutter off, then Sleep if "Turn the GoPros off after a drive" is on, then disconnect. iOS gives
 //   the app a background task for this, because location stops with the drive and the app may be suspended soon after.
 //
@@ -48,7 +51,9 @@ final class GoPros: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     private static let keepAlive: [UInt8] = [0x03, 0x5B, 0x01, 0x42]        // setting 91 (LED) = 66, the BLE keep-alive
 
     // What a camera is connected for.
-    enum Want: String { case none, pair, record, stop, check, test }
+    // pause: connected during a drive, not recording (paused from the car screen).
+    enum Want: String { case none, pair, record, pause, stop, check, test }
+    static let command = Notification.Name("DDGoProCommand")
 
     final class Cam {
         let id: UUID
@@ -114,6 +119,8 @@ final class GoPros: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     private var scanTimer: Timer?
     private var tick: Timer?
     private var driveOn = false
+    private var paused = false              // filming paused for the rest of this drive (car screen)
+    private var driveWant: Want { paused ? .pause : .record }
     private var driveStart: Double = 0
     private var bgTask: UIBackgroundTaskIdentifier = .invalid
     private var booted = false
@@ -123,6 +130,19 @@ final class GoPros: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     var sleepAfter: Bool {
         get { UserDefaults.standard.bool(forKey: sleepKey) }
         set { UserDefaults.standard.set(newValue, forKey: sleepKey); publish() }
+    }
+
+    override init() {
+        super.init()
+        // The car screen (CarPlay plugin, a separate package that can't import this file) talks by name:
+        // ["action": "film" | "pause" | "state"]. The answer is the usual DDGoProChanged state.
+        NotificationCenter.default.addObserver(forName: GoPros.command, object: nil, queue: .main) { [weak self] n in
+            switch n.userInfo?["action"] as? String {
+            case "film": self?.setPaused(false)
+            case "pause": self?.setPaused(true)
+            default: self?.publish()
+            }
+        }
     }
 
     // MARK: launch
@@ -142,6 +162,7 @@ final class GoPros: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             cams[id] = c
         }
         if !cams.isEmpty { ensureCentral() }
+        publish()
     }
 
     private func ensureCentral() {
@@ -170,6 +191,7 @@ final class GoPros: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     private func setDrive(_ on: Bool) {
         if on == driveOn { return }
         driveOn = on
+        paused = false
         if on {
             driveStart = (Date().timeIntervalSince1970 * 1000).rounded()
             for c in cams.values where c.saved && c.auto {
@@ -183,7 +205,7 @@ final class GoPros: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             let names = cams.values.filter { $0.sawRecording }.map { $0.label }
             if !names.isEmpty { logSession(names) }
             var any = false
-            for c in cams.values where c.want == .record || c.want == .test {
+            for c in cams.values where c.want == .record || c.want == .pause || c.want == .test {
                 c.sawRecording = false
                 c.want = .stop
                 c.stopSent = false; c.sleepSent = false
@@ -191,6 +213,20 @@ final class GoPros: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
                 else { drop(c, state: "idle") }
             }
             if any { holdBackground() }
+        }
+        publish()
+    }
+
+    // Stop or start filming for the rest of the drive, from the car screen. Only during a drive: outside one the
+    // cameras are off and the next drive films as usual.
+    func setPaused(_ p: Bool) {
+        guard driveOn, p != paused else { publish(); return }
+        paused = p
+        for c in cams.values where c.saved && c.auto && (c.want == .record || c.want == .pause || c.want == .none) {
+            c.want = driveWant
+            c.note = ""
+            c.shutterSent = nil; c.stopSent = false
+            if c.ready { act(c) } else { connect(c) }
         }
         publish()
     }
@@ -257,7 +293,7 @@ final class GoPros: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
 
     func check(_ id: UUID, test: Bool) {
         guard let c = cams[id], c.saved else { return }
-        if driveOn && c.want == .record { return }
+        if driveOn && (c.want == .record || c.want == .pause) { return }
         c.note = ""
         c.want = test ? .test : .check
         c.testUntil = nil; c.shutterSent = nil; c.stopSent = false; c.sleepSent = false
@@ -270,7 +306,7 @@ final class GoPros: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         c.auto = on
         save()
         // Turned on mid-drive: join the drive now.
-        if on && driveOn && c.want == .none { c.want = .record; connect(c) }
+        if on && driveOn && c.want == .none { c.want = driveWant; connect(c) }
         publish()
     }
 
@@ -353,12 +389,12 @@ final class GoPros: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
            e.code == CBError.peerRemovedPairingInformation.rawValue || e.code == CBError.encryptionTimedOut.rawValue {
             c.state = "error"
             c.note = "The pairing is out of date. In iPhone Settings, Bluetooth, tap (i) next to the GoPro and Forget This Device, then pair it again here."
-            if c.want != .record { c.want = .none }
+            if c.want != .record && c.want != .pause { c.want = .none }
             publish()
             return
         }
         switch c.want {
-        case .record:
+        case .record, .pause:
             // Out of range or battery: keep trying for the rest of the drive.
             c.state = "connecting"; c.note = "Lost the camera. Reconnecting…"
             if let p = c.p { central?.connect(p, options: nil) }
@@ -482,7 +518,7 @@ final class GoPros: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
                 save()
                 c.note = "Paired"
                 // Paired mid-drive: join it.
-                if driveOn { c.want = .record; act(c) } else { drop(c, state: "idle") }
+                if driveOn { c.want = driveWant; act(c) } else { drop(c, state: "idle") }
             } else if c.saved { save() }
             publish()
         case Cmd.shutter:
@@ -545,6 +581,14 @@ final class GoPros: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
                 c.shutterSent = Date()
                 send(c, GoPros.cmd, [0x03, Cmd.shutter, 0x01, 0x01])
             }
+        case .pause:
+            // Paused from the car screen: shutter off, then stay connected for a quick resume.
+            c.state = c.encoding ? "stopping" : "paused"
+            // (shutterSent paces it like the start: resent after 4 s, or on the next status if the camera said no)
+            if c.encoding && (c.shutterSent == nil || Date().timeIntervalSince(c.shutterSent!) > 4) {
+                c.shutterSent = Date()
+                send(c, GoPros.cmd, [0x03, Cmd.shutter, 0x01, 0x00])
+            } else if !c.encoding { c.shutterSent = nil; c.note = "" }
         case .stop:
             c.state = "stopping"
             if c.encoding && !c.stopSent {
@@ -628,7 +672,7 @@ final class GoPros: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             }
         }
         return ["cams": list, "found": f, "scanning": scanning, "pairing": pairing, "sleepAfter": sleepAfter,
-                "drive": driveOn, "bluetooth": bt, "pairNote": pairNote]
+                "drive": driveOn, "paused": paused, "bluetooth": bt, "pairNote": pairNote]
     }
 
     private func publish() {

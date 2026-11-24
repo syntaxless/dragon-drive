@@ -5,12 +5,14 @@ import Capacitor
 
 // CarPlay for Dragon Drive (category: Driving Task, entitlement com.apple.developer.carplay-driving-task).
 //
-// The car screen is one list: Start drive or Finish drive (with the drive's time and distance), and Follow a
-// route, which opens the list of planned routes (each can be navigated in Apple Maps on the car screen).
+// The car screen is one list: Start drive or Finish drive (with the drive's time and distance), a GoPro row when a
+// GoPro is paired (stop and start filming during a drive), and Follow a route, which opens the list of planned routes (each can be navigated in Apple Maps on the car screen).
 // Start and Finish go first to the app's native drive recorder (App/DriveRecorder.swift), so they work with the phone
 // locked and the web app paused; the recorder answers whether it took the tap, and a Bluetooth drive (which lives in
 // the web app) falls back to an event for the page. The recorder and this plugin talk through NotificationCenter by
 // name ("DDRecorderCommand", "DDRecorderState"), because the app target and this package can't import each other.
+// The GoPro row talks to App/GoPros.swift the same way: "DDGoProCommand" (["action": "film" | "pause" | "state"])
+// and its answer, "DDGoProChanged" (the state the phone's GoPro panel shows, plus "drive" and "paused").
 // The other taps become events for the web app (app.html: "follow", "unfollow"), which answers with update(), the
 // state the car screen shows. CarPlayHub holds that state and any events the page has not collected yet, because
 // CarPlay can connect before the web view exists (the app launched from the car).
@@ -31,6 +33,8 @@ final class CarPlayHub {
     private(set) var state: [String: Any] = [:]
     // What the native recorder last said: available, recording, time, dist, notice, noticeId.
     private(set) var recorder: [String: Any] = [:]
+    // What App/GoPros.swift last said: cams [{name, auto, state, note, battery, videoLeft}], drive, paused.
+    private(set) var gopro: [String: Any] = [:]
     private var pending: [(String, [String: Any])] = []
 
     private init() {
@@ -41,6 +45,14 @@ final class CarPlayHub {
             self.recorder = d
             self.scene?.refresh()
         }
+        NotificationCenter.default.addObserver(forName: Notification.Name("DDGoProChanged"), object: nil, queue: .main) { [weak self] n in
+            guard let self = self else { return }
+            var d: [String: Any] = [:]
+            for (k, v) in n.userInfo ?? [:] { if let k = k as? String { d[k] = v } }
+            self.gopro = d
+            self.scene?.refresh()
+        }
+        NotificationCenter.default.post(name: Notification.Name("DDGoProCommand"), object: nil, userInfo: ["action": "state"])
         // Ask the recorder for its state now (it may have announced it before this hub existed).
         NotificationCenter.default.post(name: Notification.Name("DDRecorderCommand"), object: nil, userInfo: ["action": "state"])
     }
@@ -58,6 +70,11 @@ final class CarPlayHub {
         NotificationCenter.default.post(name: Notification.Name("DDRecorderCommand"), object: nil,
                                         userInfo: ["action": action, "origin": "carplay", "reply": reply])
         if !answered { send(action) }   // no recorder in this build: the page, as before
+    }
+
+    // Stop (false) or start (true) filming on the paired GoPros for the rest of this drive.
+    func film(_ on: Bool) {
+        NotificationCenter.default.post(name: Notification.Name("DDGoProCommand"), object: nil, userInfo: ["action": on ? "film" : "pause"])
     }
 
     var connected: Bool { scene != nil }
@@ -173,7 +190,55 @@ public class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelega
     // waits for the 10-second step.
     private func shape() -> String {
         let ids = routes.compactMap { $0["id"] as? String }.joined(separator: ",")
-        return "\(flag("ready") || nativeReady)|\(recording)|\(str("followingId") ?? "")|\(ids)"
+        return "\(flag("ready") || nativeReady)|\(recording)|\(str("followingId") ?? "")|\(ids)|\(goShape)"
+    }
+
+    // MARK: GoPro
+
+    private var goCams: [[String: Any]] { hub.gopro["cams"] as? [[String: Any]] ?? [] }
+    private var goDrive: Bool { hub.gopro["drive"] as? Bool ?? false }
+    private var goPaused: Bool { hub.gopro["paused"] as? Bool ?? false }
+    private var goShape: String { "\(goCams.count)|\(goDrive)|\(goPaused)" }
+
+    // Paired GoPros film every drive on their own (GoPros.swift). This row lets the driver stop filming and start it
+    // again during a drive, for example to keep a stretch off the card. Outside a drive it only says what happens.
+    private func goproItem() -> CPListItem? {
+        let cams = goCams
+        if cams.isEmpty { return nil }
+        let film = cams.filter { $0["auto"] as? Bool ?? true }
+        let noun = film.count > 1 ? "\(film.count) GoPros" : "GoPro"
+        if !goDrive || film.isEmpty {
+            let it = CPListItem(text: "GoPro",
+                                detailText: film.isEmpty ? "Not set to film with drives" : "Films with every drive",
+                                image: UIImage(systemName: "video"))
+            it.handler = { [weak self] _, done in
+                self?.alert(film.isEmpty ? "Turn on \"Record with drives\" for a GoPro on the Drive screen of your iPhone."
+                                         : "Your \(noun) start filming when a drive starts. During a drive you can stop and start filming here.",
+                            [CPAlertAction(title: "OK", style: .cancel) { _ in self?.dismissAlert() }])
+                done()
+            }
+            return it
+        }
+        if goPaused {
+            let it = CPListItem(text: "Start filming", detailText: "\(noun) paused", image: UIImage(systemName: "video.slash"))
+            it.handler = { [weak self] _, done in self?.hub.film(true); done() }
+            return it
+        }
+        let states = film.compactMap { $0["state"] as? String }
+        let note = film.compactMap { $0["note"] as? String }.first { !$0.isEmpty }
+        let detail: String
+        if states.contains("recording") {
+            let n = states.filter { $0 == "recording" }.count
+            let bat = film.compactMap { $0["battery"] as? Int }.min()
+            detail = (film.count > 1 ? "\(n) of \(film.count) GoPros filming" : "GoPro filming") + (bat.map { " · \($0)% battery" } ?? "")
+        } else if let note = note {
+            detail = note
+        } else {
+            detail = "\(noun) starting…"
+        }
+        let it = CPListItem(text: "Stop filming", detailText: detail, image: UIImage(systemName: "video.fill"))
+        it.handler = { [weak self] _, done in self?.hub.film(false); done() }
+        return it
     }
 
     func refresh() {
@@ -221,7 +286,7 @@ public class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelega
         follow.accessoryType = .disclosureIndicator
         follow.handler = { [weak self] _, done in self?.openRoutes(); done() }
 
-        return [CPListSection(items: [drive, follow])]
+        return [CPListSection(items: [drive] + (goproItem().map { [$0] } ?? []) + [follow])]
     }
 
     private func routeSections() -> [CPListSection] {

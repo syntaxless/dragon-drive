@@ -1721,7 +1721,7 @@ async function lockFill(){const t=$("#lock-t"),b=$("#lock-b");if(!t||!b)return;c
 // drive with the phone locked. This panel pairs cameras and shows their state; the video stays on the camera and
 // comes in through the GoPro import, which lines it up by the camera's clock (set from the phone on every connect).
 const GOPRO=NATIVE&&Capacitor.registerPlugin?Capacitor.registerPlugin("GoPro"):null;let GP_OK=false,GP={cams:[],found:[]},gpPairing=false;
-const gpState=c=>({connecting:"Looking for the camera…",connected:REC.on?"Connected, starting…":"Connected",recording:"Recording",stopping:"Stopping…",error:"Needs attention"}[c.state]||(c.auto?"Records with your next drive":"Not recording with drives"));
+const gpState=c=>({connecting:"Looking for the camera…",connected:REC.on?"Connected, starting…":"Connected",recording:"Recording",stopping:"Stopping…",paused:"Filming stopped from the car screen",error:"Needs attention"}[c.state]||(c.auto?"Records with your next drive":"Not recording with drives"));
 function gpPanel(){return `<div class="panel stack" id="gp-panel" style="gap:10px"><h3 style="margin:0">Action camera</h3>
   <p class="muted small" style="margin:0">Paired GoPros (HERO9 Black and newer) start recording when a drive starts and stop when it ends, also when Siri or the car screen starts it with the phone locked. A sleeping GoPro wakes up for the drive. The video stays on the camera: import it afterwards to add it to the drive.</p>
   <div id="gp-cams" class="stack" style="gap:8px"></div><div id="gp-pair" class="stack" style="gap:8px"></div>
