@@ -132,6 +132,8 @@ final class DriveRecorder: NSObject, CLLocationManagerDelegate {
     private var file: FileHandle?
     private var unflushed = 0
     private var diagBackground = 0
+    private var badRun = 0                   // fixes turned down (accuracy) since the last good one, and the best of them
+    private var badBest = Double.infinity
     private var events: [String] = []
     private let lock = NSLock()
     private let maxKept = 400000             // about 4.4 hours of RaceBox at 25 Hz, or 110 hours of Phone GPS (about 40 MB)
@@ -231,7 +233,7 @@ final class DriveRecorder: NSObject, CLLocationManagerDelegate {
 
     private func resumeRaceBox(meta: [String: Any], rows: [DriveFix], meters m: Double, good n: Int, last: DriveFix?) {
         lock.lock()
-        fixes = rows; seq = rows.last?.seq ?? 0; meters = m; good = n; lastGood = last; diagBackground = 0; events.removeAll(); gPeak = 0
+        fixes = rows; seq = rows.last?.seq ?? 0; meters = m; good = n; lastGood = last; diagBackground = 0; badRun = 0; badBest = .infinity; events.removeAll(); gPeak = 0
         lock.unlock()
         driveId = meta["id"] as? String ?? ""
         startMs = meta["start"] as? Double ?? (Date().timeIntervalSince1970 * 1000).rounded()
@@ -315,7 +317,7 @@ final class DriveRecorder: NSObject, CLLocationManagerDelegate {
 
     private func beginDrive(origin: String, source src: String, device: String) {
         lock.lock()
-        fixes.removeAll(); seq = 0; meters = 0; good = 0; lastGood = nil; diagBackground = 0; events.removeAll(); gPeak = 0
+        fixes.removeAll(); seq = 0; meters = 0; good = 0; lastGood = nil; diagBackground = 0; badRun = 0; badBest = .infinity; events.removeAll(); gPeak = 0
         lock.unlock()
         driveId = "n" + String(Int(Date().timeIntervalSince1970 * 1000), radix: 36) + String(Int.random(in: 0..<46656), radix: 36)
         startMs = (Date().timeIntervalSince1970 * 1000).rounded()
@@ -578,16 +580,25 @@ final class DriveRecorder: NSObject, CLLocationManagerDelegate {
         let bg = !appActive
         lock.lock()
         var lines = ""
+        var gaps: [String] = []
         for var r in rows {
             seq += 1; r.seq = seq; r.bg = bg
             if bg { diagBackground += 1 }
-            if accept(r, after: lastGood, source: source) { if let l = lastGood { meters += hav(l, r) }; lastGood = r; good += 1 }
+            if accept(r, after: lastGood, source: source) {
+                // A hole of over 15 s (what the map draws dashed): say whether iOS sent nothing or sent fixes too rough to keep
+                if let l = lastGood, r.t - l.t > 15000 {
+                    let best = badBest.isFinite ? " best \(Int(badBest)) m" : ""
+                    gaps.append("gap \(Int((r.t - l.t) / 1000))s: \(badRun) rough" + best + (bg ? " bg" : ""))
+                }
+                if let l = lastGood { meters += hav(l, r) }; lastGood = r; good += 1; badRun = 0; badBest = .infinity
+            } else if source != "racebox" && !(r.acc <= 40) { badRun += 1; badBest = min(badBest, r.acc) }
             fixes.append(r)
             if let d = try? JSONSerialization.data(withJSONObject: r.dict), let s = String(data: d, encoding: .utf8) { lines += s + "\n" }
         }
         if fixes.count > maxKept { fixes.removeFirst(fixes.count - maxKept) }
         unflushed += rows.count
         lock.unlock()
+        for g in gaps { note(g) }
         if let d = lines.data(using: .utf8) { file?.write(d) }
         // A RaceBox sends 25 a second: write to disk about once a second either way.
         if unflushed >= (source == "racebox" ? 25 : 15) { flush() }
