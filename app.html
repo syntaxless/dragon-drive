@@ -408,9 +408,15 @@ function homeZone(){const h=S.settings.home;if(!h||!isFinite(h.lat)||!isFinite(h
 function cutHome(pts,z,id){const n=pts.length;if(n<2)return pts;const inZ=i=>hav(z.c,pts[i])<z.R,far=i=>hav(z.c,pts[i])>3*z.R;
   const ex=t=>z.r*.3*hash01(z.k+"|"+id+"|"+t);
   const walk=(i,st,e)=>{let s=0;while(i+st>=0&&i+st<n&&s<e){s+=hav(pts[i],pts[i+st]);i+=st}return i};
-  let a=0,b=n-1;
-  if(inZ(0)){let f=0;while(f<n&&!far(f))f++;let l=0;for(let i=0;i<f;i++)if(inZ(i))l=i;if(l+1>=n)return [];a=walk(l+1,1,ex("s"))}
-  if(inZ(n-1)){let f=n-1;while(f>=0&&!far(f))f--;let l=n-1;for(let i=n-1;i>f;i--)if(inZ(i))l=i;if(l-1<0)return [];b=walk(l-1,-1,ex("e"))}
+  let a=0,b=n-1,ok=true;
+  if(inZ(0)){let f=0;while(f<n&&!far(f))f++;let l=0;for(let i=0;i<f;i++)if(inZ(i))l=i;if(l+1>=n)ok=false;else a=walk(l+1,1,ex("s"))}
+  if(ok&&inZ(n-1)){let f=n-1;while(f>=0&&!far(f))f--;let l=n-1;for(let i=n-1;i>f;i--)if(inZ(i))l=i;if(l-1<0)ok=false;else b=walk(l-1,-1,ex("e"))}
+  if(ok&&b-a>=1)return pts.slice(a,b+1);
+  // A short loop from home that never gets 3 zone radii away left nothing above. Then keep what is outside the zone between
+  // the first time it leaves and the last time it comes back (cut the same random extra), so the card still has a route.
+  a=0;b=n-1;
+  if(inZ(0)){while(a<n&&inZ(a))a++;if(a>=n)return [];a=walk(a,1,ex("s"))}
+  if(inZ(n-1)){while(b>=0&&inZ(b))b--;if(b<0)return [];b=walk(b,-1,ex("e"))}
   return b-a>=1?pts.slice(a,b+1):[]}
 // The points of my drive that anyone else may see. With no home set, the old rule: the first and last 300 m.
 function sharePts(d){const pts=d.pts||[];if(S.settings.hideEnds===false||pts.length<2)return pts;const z=homeZone();return z?cutHome(pts,z,d.id):Social.trimEnds(pts,300)}
@@ -463,7 +469,9 @@ function timedRuns(pts){
 }
 function analyze(pts,full){
   let dist=0,moving=0,max=0,up=0,down=0,altMin=Infinity,altMax=-Infinity,lastAlt=null;
-  let gAcc=0,gBrk=0,gLat=0,gTot=0,sensor=false;
+  // sensor: the device gave g; dir: it also gave the along and sideways parts. The native recorder (Siri and CarPlay drives)
+  // gives only the total, so accel, braking and lateral still come from GPS then (they read 0.00 before).
+  let gAcc=0,gBrk=0,gLat=0,gTot=0,sensor=false,dir=false,qAcc=0,qBrk=0,qLat=0;
   const n=pts.length;
   // 3-point smoothed speed for GPS-derived g when the device gives none
   const sp=pts.map((p,i)=>(pts[Math.max(0,i-1)][3]+p[3]+pts[Math.min(n-1,i+1)][3])/3);
@@ -474,19 +482,20 @@ function analyze(pts,full){
       if(lastAlt==null)lastAlt=p[4];else if(p[4]-lastAlt>2){up+=p[4]-lastAlt;lastAlt=p[4]}else if(lastAlt-p[4]>2){down+=lastAlt-p[4];lastAlt=p[4]}}
     max=Math.max(max,p[3]);
     if(p[5]!=null||p[7]!=null){sensor=true;
-      if(p[5]!=null){gAcc=Math.max(gAcc,p[5]);gBrk=Math.max(gBrk,-p[5])}
-      if(p[6]!=null)gLat=Math.max(gLat,Math.abs(p[6]));
+      if(p[5]!=null){dir=true;gAcc=Math.max(gAcc,p[5]);gBrk=Math.max(gBrk,-p[5])}
+      if(p[6]!=null){dir=true;gLat=Math.max(gLat,Math.abs(p[6]))}
       gTot=Math.max(gTot,p[7]!=null?p[7]:Math.hypot(p[5]||0,p[6]||0));}
     if(i===0)continue;
     const a=pts[i-1],d=hav(a,p),dt=(p[2]-a[2])/1000;
     dist+=d;if(dt>0&&d/dt>1)moving+=dt;
-    if(!sensor&&dt>0&&dt<5){
+    if(!dir&&dt>0&&dt<5){
       const lo=(sp[i]-sp[i-1])/dt/G;
       let la=0;if(i>1&&p[3]>5){const h1=bearing(pts[i-2],a),h2=bearing(a,p);let dh=h2-h1;dh=((dh+540)%360)-180;la=Math.abs(rad(dh)/dt*p[3])/G}
-      if(Math.abs(lo)<1.6){gAcc=Math.max(gAcc,lo);gBrk=Math.max(gBrk,-lo)}
-      if(la<1.3)gLat=Math.max(gLat,la);
+      if(Math.abs(lo)<1.6){qAcc=Math.max(qAcc,lo);qBrk=Math.max(qBrk,-lo)}
+      if(la<1.3)qLat=Math.max(qLat,la);
     }
   }
+  if(!dir){gAcc=qAcc;gBrk=qBrk;gLat=qLat}
   if(!sensor)gTot=Math.max(gAcc,gBrk,gLat);
   const dur=n>1?(pts[n-1][2]-pts[0][2])/1000:0;
   const hz=dur>0?Math.round((n-1)/dur*10)/10:0;
@@ -2100,6 +2109,9 @@ let SHEET=null;
 function openDrive(id,fresh){
   const d=findDrive(id);if(!d)return;SHEET={kind:"drive",id};if(DETAIL_MAP){DETAIL_MAP.remove();DETAIL_MAP=null}
   const p=person(d.who),s=d.stats,mine=d.who==="me";
+  // drives saved by the native recorder before analyze() learned to take accel, braking and lateral from GPS when the phone
+  // gives only total g stored 0 for all three: work them out again from the points
+  const gs=s.gSensor&&!s.gAcc&&!s.gBrk&&!s.gLat&&d.pts.length>2&&!d.pts.some(q=>q[5]!=null||q[6]!=null)?analyze(d.pts,false):s;
   const hasAlt=d.pts.some(q=>q[4]!=null);const hasGG=d.pts.some(q=>q[5]!=null);
   const sh=$("#sheet");
   sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span>${d.sample?'<span class="chip example">Example</span>':""}${d.remote?(Social.ready()?'<button class="btn ghost" id="d-report" type="button">Report</button>':""):'<button class="btn" id="d-video" type="button">Video</button>'}<button class="btn primary" id="d-share" type="button">Share</button></div></div>
@@ -2117,7 +2129,7 @@ function openDrive(id,fresh){
     <div class="detail-stats">
       ${statBlock("Distance",fDist(s.dist).toFixed(2),dLabel())}${statBlock("Moving time",fDur(s.moving))}${statBlock("Elapsed",fDur(s.dur))}
       ${statBlock("Avg speed",Math.round(fSpeed(s.avg)),sLabel())}${statBlock("Top speed",Math.round(fSpeed(s.max)),sLabel())}${statBlock("Elev. gain",s.altMin==null?"–":Math.round(fAlt(s.up)),s.altMin==null?"":aLabel())}
-      ${statBlock("Max accel",fG(s.gAcc),"g")}${statBlock("Max braking",fG(s.gBrk),"g")}${statBlock("Max lateral",fG(s.gLat),"g")}
+      ${statBlock("Max accel",fG(gs.gAcc),"g")}${statBlock("Max braking",fG(gs.gBrk),"g")}${statBlock("Max lateral",fG(gs.gLat),"g")}
     </div>
     ${mine&&d.gopros&&d.gopros.length?`<p class="muted small" style="margin:0 2px">Filmed on ${esc(d.gopros.join(" and "))}. Tap Video and choose the clip from the camera to add the overlay.</p>`:""}
     ${mine&&d.gpsCheck?`<p class="muted small" style="margin:0 2px">${esc(d.gpsCheck)}</p>`:""}
@@ -2250,6 +2262,8 @@ async function buildCard(d,alive){
   const top=800;let photo=null;const k=backdrop(),ink=routeInk(k);
   // my own drives lose the part near home (sharePts), the same as what my followers see
   const RP=d.who==="me"?sharePts(d):d.pts||[];let map=!!BACKDROPS[k].map&&RP.length>1;
+  // the whole drive stayed inside my home zone: no route and no map (a map of the area would point at home), just a note
+  if(d.who==="me"&&RP.length<2&&(d.pts||[]).length>1)c.allHome=true;
   if(d.photo){const u=await photos.url(d.id);if(u)try{photo=await loadImage(u)}catch(e){}}
   const routeBox=(x,y,w,h,lw)=>{if(RP.length<2)return;const P=projector(RP,w,h,Math.round(w*0.08));const P2=p=>{const[a,b]=P(p);return[a+x,b+y]};
     const solid=k==="solid";g.save();if(!solid){g.shadowColor="rgba(0,0,0,.55)";g.shadowBlur=12}strokePath(g,P2,RP,solid?ink.casing:"#ffffff",lw+5);g.restore();strokePath(g,P2,RP,solid?ink.route:BLUE,lw);
@@ -2261,7 +2275,7 @@ async function buildCard(d,alive){
     const gt=g.createLinearGradient(0,0,0,180);gt.addColorStop(0,"rgba(15,21,19,.65)");gt.addColorStop(1,"rgba(15,21,19,0)");g.fillStyle=gt;g.fillRect(0,0,W,180);
     const bx=W-340,by=40,bs=300;
     if(map){try{const img=await snapshot(k,bs/2,bs/2,2,RP,18,(g2,P)=>inkRoute(g2,P,RP,ink,3),null,alive);g.save();roundRect(g,bx,by,bs,bs,28);g.clip();g.drawImage(img,bx,by,bs,bs);if(BACKDROPS[k].crt)crtArea(g,bx,by,bs,bs,BACKDROPS[k].px?2:3);g.restore()}catch(e){map=false;c.mapMissed=true}}
-    if(!map){g.fillStyle=k==="solid"?ink.bg:"rgba(15,21,19,.55)";roundRect(g,bx,by,bs,bs,28);g.fill();routeBox(bx,by,bs,bs,6)}
+    if(!map&&!c.allHome){g.fillStyle=k==="solid"?ink.bg:"rgba(15,21,19,.55)";roundRect(g,bx,by,bs,bs,28);g.fill();routeBox(bx,by,bs,bs,6)}
   }else{
     if(map){try{const img=await snapshot(k,W/2,top/2,2,RP,50,(g2,P)=>inkRoute(g2,P,RP,ink,5),null,alive);g.drawImage(img,0,0,W,top);if(BACKDROPS[k].crt)crtArea(g,0,0,W,top,BACKDROPS[k].px?2:3);
       const gr=g.createLinearGradient(0,top-160,0,top);gr.addColorStop(0,"rgba(15,21,19,0)");gr.addColorStop(1,BG);g.fillStyle=gr;g.fillRect(0,top-160,W,160);
@@ -2269,7 +2283,9 @@ async function buildCard(d,alive){
     if(!map){
       if(k==="solid"){g.fillStyle=ink.bg;g.fillRect(0,0,W,top);const gr=g.createLinearGradient(0,top-160,0,top);gr.addColorStop(0,"rgba(15,21,19,0)");gr.addColorStop(1,BG);g.fillStyle=gr;g.fillRect(0,top-160,W,160)}
       else{g.strokeStyle="rgba(255,255,255,.05)";g.lineWidth=2;for(let x=0;x<W;x+=60){g.beginPath();g.moveTo(x,0);g.lineTo(x,top);g.stroke()}for(let y=0;y<top;y+=60){g.beginPath();g.moveTo(0,y);g.lineTo(W,y);g.stroke()}}
-      routeBox(60,120,W-120,top-160,10)}
+      routeBox(60,120,W-120,top-160,10);
+      if(c.allHome){g.save();g.textAlign="center";g.textBaseline="middle";g.fillStyle=MUTED;g.font=`600 40px ${DF}`;g.fillText("ROUTE KEPT PRIVATE",W/2,top/2-10);
+        g.font=`500 28px ${BF}`;g.fillText("This whole drive stayed near home.",W/2,top/2+36);g.restore()}}
   }
   // driver row (top left): avatar circle, name, then date and vehicle
   const p=person(d.who);const who=d.who==="me"?(S.settings.name||""):p.name;
@@ -2319,7 +2335,7 @@ async function openShare(id,back){
   sh.innerHTML=`<div class="sheet-bar"><div class="wrap"><button class="btn ghost" id="sh-x" type="button">← Back</button><span class="spacer"></span><h3>Share card</h3></div></div>
     <div class="wrap body stack">${stylePicker()}<div class="empty" id="card-wait">Building your card…</div><p class="muted small" id="card-nomap" style="text-align:center;margin:0" hidden>The ${esc(BACKDROPS[backdrop()].label)} map didn't load, so this card has a plain background. Tap the style again to retry.</p><img class="share-preview" id="card-img" alt="Share card for ${esc(d.title)}" hidden>
     <div class="row" style="justify-content:center"><button class="btn primary" id="card-share" type="button" hidden>Share</button><button class="btn" id="card-save" type="button" disabled>Save image</button>${d.who==="me"&&!d.photo?`<button class="btn ghost" id="card-photo" type="button">Add a photo first</button>`:""}</div>
-    <p class="muted small" style="text-align:center;margin:0">1080 × 1350, sized for Instagram, stories and group chats.${d.who==="me"&&isReal(d)&&S.settings.hideEnds!==false?(homeZone()?" The part of the route near your home is left out.":" The first and last 300 m of the route are left out."):""}</p></div>`;
+    <p class="muted small" style="text-align:center;margin:0">1080 × 1350, sized for Instagram, stories and group chats.${d.who==="me"&&isReal(d)&&S.settings.hideEnds!==false?(homeZone()?(sharePts(d).length<2?" This whole drive stayed inside your home privacy zone, so the card has no route or map.":" The part of the route near your home is left out."):" The first and last 300 m of the route are left out."):""}</p></div>`;
   sh.hidden=false;sh.scrollTop=0;document.body.style.overflow="hidden";
   $("#sh-x").onclick=()=>wasOpen?openDrive(d.id):closeSheet();
   const tok=openShare._tok=(openShare._tok||0)+1;
